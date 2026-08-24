@@ -28,12 +28,22 @@ permissions:
   pull-requests: write
   issues: read
 
+# Per-PR cancellation, matching the repo-wide pattern (ci.yml, secret-scan.yml).
+# The classify job runs ~5-6s end-to-end (2026-08-24), so 2 minutes is ~20x
+# observed — generous against a cold gh-api paginate stall while still bounding
+# the hung-step failure the standing CI rule names: one unbounded step can
+# otherwise burn 360 billable minutes on the shared runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   MONTHLY_CAP: "3"
 
 jobs:
   classify:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     if: github.event.pull_request.draft == false
     steps:
       - name: Decide whether this PR earns a review
