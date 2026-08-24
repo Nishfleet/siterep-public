@@ -1,0 +1,88 @@
+{
+  "$schema": "/opt/homebrew/lib/node_modules/wrangler/config-schema.json",
+  "name": "siterep",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-05-03",
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *", "0 9 * * 1"]
+  },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
+  "vars": {
+    "SITEREP_PUBLIC_BASE_URL": "https://siterep.net",
+    "SITEREP_NOTIFY_ENABLED": "true",
+    "SITEREP_NOTIFY_PROVIDER": "cloudflare",
+    "EMAIL_FROM_EMAIL": "hello@siterep.net",
+    "EMAIL_FROM_NAME": "Site Rep",
+    "EMAIL_REPLY_TO": "hello@siterep.net",
+    "SITEREP_OWNER_NOTIFY_TO": "hello@siterep.net",
+    "OWNED_INTERNAL_EMAIL_DOMAINS": "siterep.net",
+    "SITEREP_OVERAGE_BILLING_ENABLED": "true",
+    "DODO_SITEREP_ENVIRONMENT": "live",
+    "DODO_SITEREP_CURRENCY": "USD",
+    "DODO_SITEREP_PRODUCT_STARTER_ID": "pdt_0NfMc6WlzAEndduP2rBeW",
+    "DODO_SITEREP_PRODUCT_GROWTH_ID": "pdt_0NfMc6YeMT1oaACxyoBfT",
+    "DODO_SITEREP_PRODUCT_PRO_ID": "pdt_0NfMc6ZaWCpaBnL7kgqMd",
+    "DODO_SITEREP_PRODUCT_AGENCY_ID": "pdt_0NfMc6adTArb0GmNjpj9j",
+    "DODO_SITEREP_PRODUCT_COLLECTION_ID": "pdc_0NfMc6ekoidSejlUMlvcn"
+  },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    {
+      "pattern": "siterep.net",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.siterep.net",
+      "custom_domain": true
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "CITEREP_STORE",
+      "id": "03d4436929974958a250211be1530812"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "SITEREP_PAYMENTS_DB",
+      "database_name": "siterep_payments",
+      "database_id": "ec176fc4-b4f2-44c0-a925-b36ec067cff5"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SITEREP_SOURCE_CONTENT",
+      "bucket_name": "siterep-source-content"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CITEREP_COORDINATOR",
+        "class_name": "CiteRepCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-citerep-coordinator",
+      "new_sqlite_classes": ["CiteRepCoordinator"]
+    }
+  ]
+}

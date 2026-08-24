@@ -1,0 +1,52 @@
+# Site Rep
+
+Site Rep is a source-backed website assistant for small business sites that need a private front desk before a full support stack.
+
+Current public offer:
+- Source-backed answers for website visitors.
+- Follow-up capture when source content does not prove an answer.
+- Lead capture for questions needing human follow-up.
+- Private follow-up queue for missing or weak website content.
+- Public demo bot for Site Rep pricing, setup, source-backed answers, and unsupported-question handoff.
+- Buyer-intent guide at /ai-website-chatbot-for-small-business explains the small-business website assistant angle without helpdesk, CRM, compliance, conversion-lift, or automation overclaims.
+- Honest, dated comparison pages at /vs (hub), /vs/customgpt, /vs/chatbase, /vs/intercom-fin, /vs/tidio-lyro, /vs/webspeaker, and /vs/chatling state durable structural differences (live local checkout pricing, no-card free trial, source-backed handoff behavior, and public trust notes) with date-stamped competitor pricing and a candid "where they fit better" section; they are not parity claims.
+- Source import supports website crawl, sitemap discovery during crawl, manual text, supported files, FAQ exports, single URL import, exact URL-list import, public cloud-link import for readable public/published sources, and RSS/Atom feed import.
+- Customer deletion-review requests are tracked for private follow-up; Site Rep does not claim instant erasure or compliance certification.
+- Public trust and data notes at /trust separate confirmed controls from larger compliance, retention, and integration requests that need written review.
+- Honesty page at /honesty explains the source-backed handoff behavior; /api/public/honesty-check runs the live should-answer/should-handoff evals against the demo bot's real sources and publishes the pass counts, reproducible in the public demo.
+- Docs Mode install guide at /docs/install gives host-specific recipes for Mintlify, Docusaurus, GitBook, static docs, Webflow, Framer, WordPress, and generic sites, and links to the no-card free-start signup and the customer sign-in so installers can get their bot ID, public widget key, and allowed-domain lock from the dashboard. Hosted GitBook is marked as not directly installable because it does not currently support arbitrary custom JavaScript; Site Rep can still ingest public GitBook docs as sources.
+
+Live read-only MCP surface for AI agents:
+- Site Rep runs a live, read-only MCP server at https://siterep.net/api/mcp (Streamable HTTP JSON-RPC, protocol version 2025-06-18). The unauthenticated GET discovery payload lists the server name, transport, auth requirements, and tools, so any agent can verify the surface before connecting.
+- Authenticated agents holding a Site Rep API key can call three account-owned read-only tools; all outputs omit private access material:
+  - get_site_rep_agent_brief — the account-owned handoff brief: readiness, unresolved conversation work, lead follow-ups, source gaps, answer QA gaps, account tasks, and safe exports.
+  - list_site_rep_pending_work — the account-owned customer work queues that still need team review, keeping conversation-linked customer work separated from account tasks.
+  - get_site_rep_customer_receipt — the first-customer receipt with payment/free-start, source, cited-answer, widget-install, lead, and export evidence.
+- Auth is server-verified bearer: Authorization: Bearer <Site Rep API key> with the read-only scopes bot:read, sources:read, conversations:read, leads:read. Customers create scoped API keys in the dashboard's API access card.
+- The endpoint is team-review-only: agents draft replies and source fixes for team review; the tools never send outbound messages, never write to a CRM or helpdesk, and never execute external systems.
+
+How the first setup works:
+- Add a customer website URL, approved source text, exact URL lists, public cloud links, public feed URLs, or supported source files.
+- Test pricing, setup, trust, and fit questions with cited answers.
+- Lock the allowed install domain and verify one real widget ping.
+- Review leads, unanswered questions, and source gaps in the private dashboard.
+
+Relationship to Tiny Studio:
+- Site Rep is the standalone product at siterep.net.
+- Tiny Studio can package Site Rep with site, source-backed reports, and weekly care work.
+
+What is included today:
+- Site Rep is a website chat, source-backed answer, lead capture, and private follow-up product.
+- Support-ticket automation, native CRM sync, private cloud folder sync, and compliance certification are not included in the current self-serve product.
+- The buyer-intent page explains a use case; it is not conversion proof or a parity claim.
+- Public cloud-link import works for readable public or published links. Private Google Drive, Notion, Dropbox, OneDrive, SharePoint, Confluence, GitBook, and Box folder sync are not included today.
+- Buyer-facing trust details live at /trust.
+- Machine-readable trust details remain available at /api/public/trust-status and /api/public/release-status for agents and monitoring. The release-status payload reports the actually deployed release (commit and deploy time), the current release marker and its date, and never implies launch readiness or general availability; the deep health endpoint enforces one readiness invariant so required storage components cannot report not-ready while the aggregate self-serve check reports green.
+
+Machine-readable MCP surface for agents:
+- A read-only MCP server is available at /api/mcp over Streamable HTTP JSON-RPC (MCP protocol version 2025-06-18) with bearer authentication using a Site Rep API key. A plain GET request returns the live discovery payload with the endpoint, transport, auth, and tool list; calling the tools requires the account's own API key.
+- It exposes three read-only tools: get_site_rep_agent_brief (the account-owned handoff brief with readiness, conversation-linked work, lead follow-ups, source gaps, answer QA gaps, account tasks, and safe exports), list_site_rep_pending_work (conversation-linked customer work queues that need team review), and get_site_rep_customer_receipt (first-customer receipt evidence with payment or free-start, source, cited-answer, widget-install, lead, and export evidence).
+- Required scopes are limited to reading the account's own bot, sources, conversations, and leads; the server never writes, never sends outbound email, never writes to CRM or helpdesk systems, and never executes external systems. Access still requires the account's own API key.
+
+Contact:
+- hello@siterep.net

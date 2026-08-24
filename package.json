@@ -1,0 +1,40 @@
+{
+  "name": "siterep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "api": "node -e \"console.error('Local Node API is retired for product routes. Use npm run cf:dev for the Worker API.'); process.exit(1)\"",
+    "cf:dev": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "dev": "vite --host 127.0.0.1",
+    "dev:all": "npm run cf:dev & npm run dev",
+    "test": "node --test tests/*.test.js",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "cf:check": "wrangler deploy --dry-run",
+    "smoke:public-layout": "node scripts/siterep-public-layout-smoke.mjs",
+    "smoke:widget-host": "node scripts/siterep-widget-host-smoke.mjs",
+    "monitor:health": "node scripts/siterep-live-synthetic.mjs --health",
+    "monitor:live": "node scripts/siterep-live-synthetic.mjs",
+    "monitor:local": "SITEREP_MONITOR_BASE_URL=http://127.0.0.1:8787 SITEREP_MONITOR_ORIGIN=https://siterep.net node scripts/siterep-live-synthetic.mjs",
+    "monitor:launch": "node scripts/siterep-live-synthetic.mjs --strict",
+    "growth:gsc": "node scripts/siterep-search-console.mjs",
+    "deploy:cloudflare": "npm run build && wrangler deploy --var SITEREP_RELEASE_COMMIT:$(git rev-parse HEAD) --var SITEREP_RELEASE_DEPLOYED_AT:$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "lucide-react": "^0.577.0",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.1.2",
+    "playwright": "^1.62.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1",
+    "wrangler": "4.120.0"
+  }
+}

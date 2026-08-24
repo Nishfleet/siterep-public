@@ -1,0 +1,22 @@
+.DS_Store
+
+# Dependencies and generated builds
+node_modules
+dist/
+artifacts/
+
+# Local runtime/cache state
+.wrangler/
+.worktrees/
+.playwright-cli/
+.playwright-mcp/
+.mavis/
+.opencode/
+data/
+scratchpad.md
+
+# Environment and secrets
+.env
+.env.*
+*.local
+*.log

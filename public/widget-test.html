@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Site Rep Install Preview</title>
+    <style>
+      :root {
+        color: #111614;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        background: #f6f7f9;
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      main {
+        padding: 18px;
+      }
+
+      h1 {
+        font-size: 22px;
+        line-height: 1.08;
+        margin: 0 0 8px;
+      }
+
+	      p {
+	        color: #5c665f;
+	        line-height: 1.45;
+	        margin: 0;
+	        max-width: 360px;
+	      }
+
+	      .preview-controls {
+	        align-items: center;
+	        display: flex;
+	        flex-wrap: wrap;
+	        gap: 8px;
+	        margin-top: 16px;
+	      }
+
+	      .preview-controls button {
+	        background: #111614;
+	        border: 0;
+	        border-radius: 8px;
+	        color: #fff;
+	        cursor: pointer;
+	        font: 750 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+	        height: 36px;
+	        padding: 0 12px;
+	      }
+
+	      .preview-controls button.secondary {
+	        background: #fff;
+	        border: 1px solid #cfd8c8;
+	        color: #111614;
+	      }
+
+	      .preview-status {
+	        color: #5c665f;
+	        font-size: 13px;
+	        font-weight: 750;
+	      }
+	    </style>
+	  </head>
+	  <body>
+	    <main>
+		      <h1>Site Rep install preview</h1>
+		      <p>Use this page to confirm the widget opens for the selected site before it goes on the live site.</p>
+		      <div class="preview-controls">
+		        <button id="preview-open" type="button">Open widget</button>
+		        <button id="preview-uninstall" class="secondary" type="button" hidden>Uninstall widget</button>
+		        <span id="preview-status" class="preview-status">Waiting for preview details</span>
+		      </div>
+		    </main>
+	    <script>
+	      const params = new URLSearchParams(window.location.search);
+		      const previewStatus = document.querySelector("#preview-status");
+		      const openButton = document.querySelector("#preview-open");
+		      const uninstallButton = document.querySelector("#preview-uninstall");
+		      const debugMode = params.get("debug") === "1" || params.get("uninstallSmoke") === "1";
+		      const botId = params.get("botId") || "";
+		      const publicKey = params.get("publicKey") || "";
+			      const requestedApiBase = params.get("apiBase") || "";
+			      function safeApiBase(value) {
+			        if (!value) return "https://siterep.net";
+			        try {
+			          const parsed = new URL(value, window.location.origin);
+			          const isProduction = parsed.origin === "https://siterep.net";
+			          const isSameOrigin = parsed.origin === window.location.origin;
+			          const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+			          if (isProduction || isSameOrigin || (debugMode && isLocalhost)) return parsed.origin;
+			        } catch {
+			          return "https://siterep.net";
+			        }
+			        return "https://siterep.net";
+			      }
+			      window.siterep = {
+			        botId,
+			        publicKey,
+			        apiBase: safeApiBase(requestedApiBase),
+			        previewMode: true,
+			      };
+		      if (debugMode) uninstallButton.hidden = false;
+
+		      function updatePreviewStatus() {
+		        previewStatus.textContent = window.SiteRep ? "Widget installed" : "Widget removed";
+		      }
+
+		      openButton.addEventListener("click", function () {
+		        window.SiteRep?.open?.();
+		        updatePreviewStatus();
+		      });
+
+		      uninstallButton.addEventListener("click", function () {
+		        window.SiteRep?.uninstall?.();
+		        updatePreviewStatus();
+		      });
+
+			      if (botId && publicKey) {
+			        previewStatus.textContent = "Loading widget";
+			        const script = document.createElement("script");
+			        script.src = "/widget.js";
+			        script.defer = true;
+			        script.onload = function () {
+			          window.SiteRep?.open?.();
+			          updatePreviewStatus();
+			        };
+			        script.onerror = function () {
+			          previewStatus.textContent = "Widget could not load";
+			        };
+			        document.body.appendChild(script);
+			      } else {
+		        previewStatus.textContent = "Open this preview from your Site Rep dashboard.";
+		        openButton.disabled = true;
+		      }
+		    </script>
+  </body>
+</html>

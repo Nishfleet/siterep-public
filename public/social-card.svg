@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Site Rep</title>
+  <desc id="desc">Source-backed website rep preview card for Site Rep.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f6f7f9"/>
+      <stop offset="0.52" stop-color="#eef7f1"/>
+      <stop offset="1" stop-color="#d7eadf"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#111614" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="66" y="62" width="1068" height="506" rx="42" fill="#ffffff" filter="url(#shadow)"/>
+  <rect x="110" y="108" width="96" height="96" rx="26" fill="#111614"/>
+  <path d="M138 146c0-14.4 11.6-26 26-26h20c14.4 0 26 11.6 26 26v20c0 14.4-11.6 26-26 26h-12l-22 16v-16h-12c-14.4 0-26-11.6-26-26v-20Z" fill="#1f8f5f"/>
+  <circle cx="158" cy="156" r="5" fill="#ffffff"/>
+  <circle cx="178" cy="156" r="5" fill="#ffffff"/>
+  <path d="M154 172c13 10 30 10 43 0" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <text x="240" y="146" fill="#1f8f5f" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="800" letter-spacing="6">SITE REP</text>
+  <text x="110" y="292" fill="#111614" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="900">Your site should</text>
+  <text x="110" y="382" fill="#111614" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="900">answer with proof.</text>
+  <text x="112" y="456" fill="#44514b" font-family="Arial, Helvetica, sans-serif" font-size="34">Answers from proof. Leads captured.</text>
+  <text x="112" y="504" fill="#44514b" font-family="Arial, Helvetica, sans-serif" font-size="34">Gaps become repair queues.</text>
+  <g transform="translate(804 132)">
+    <rect width="258" height="342" rx="30" fill="#111614"/>
+    <rect x="28" y="34" width="202" height="46" rx="18" fill="#eaf7ef"/>
+    <rect x="28" y="108" width="154" height="18" rx="9" fill="#dce8df"/>
+    <rect x="28" y="142" width="196" height="18" rx="9" fill="#dce8df"/>
+    <rect x="28" y="204" width="202" height="70" rx="20" fill="#1f8f5f"/>
+    <circle cx="62" cy="239" r="13" fill="#ffffff"/>
+    <rect x="88" y="228" width="98" height="12" rx="6" fill="#ffffff"/>
+    <rect x="88" y="248" width="70" height="12" rx="6" fill="#ffffff" opacity="0.7"/>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://static.cloudflareinsights.com 'sha256-fkyzLoZdr62MqznQcguEvkDNu0crDfWyD/QStx24HyA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+/robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/sitemap.xml
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/social-card.svg
+  Content-Type: image/svg+xml; charset=utf-8
+  Cache-Control: public, max-age=86400
+
+/social-card.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400
+
+/widget.js
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
