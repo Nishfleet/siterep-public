@@ -190,7 +190,7 @@ jobs:
           ]).strip()
           pin_q = (
               "mutation($id:ID!){ pinIssue(input:{issueId:$id}){ "
-              "pinnedIssue { issue { number } } } }"
+              "issue { number } } }"
           )
           # Tolerate already-pinned (and any other pin error) — pinning is a
           # once-act; the body replacement above is the real work.
@@ -202,7 +202,6 @@ jobs:
               "--json", "url", "--jq", ".url",
           ]).strip()
           print(f"::notice::Audit issue updated: {issue_url}")
-          print(f"::set-output name=audit_url::{issue_url}")
           print("===AUDIT_BODY_START===")
           print(body)
           print("===AUDIT_BODY_END===")
