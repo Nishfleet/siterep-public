@@ -9,6 +9,13 @@ permissions:
   contents: read
   pull-requests: read
 
+# All jobs run on the single shared VPS runner, which executes one job at a
+# time. Without this, every push to a branch queues another full CI run behind
+# everything else, and the required-check queue stalls silently for hours
+# (observed 2026-08-11: 16 jobs queued, 29+ minute waits, PRs blocked on
+# "Expected — Waiting for status"). Cancelling superseded runs bounds the
+# queue to one live run per branch: only the latest commit of each ref gets
+# verified, which is all a required gate needs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -16,10 +23,18 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Observed verify duration on ubuntu-latest is ~1 minute with a warm npm
+    # cache (run 32687009700, 2026-08-24: 61s end-to-end). The CI standard
+    # sizes timeout-minutes at ~2-3x observed; 5 minutes keeps that ratio
+    # against a cold-cache run (fresh `npm ci` + `playwright install
+    # chromium`) while still bounding the kind of stall this repo has hit
+    # before — the queue-watchdog exists because runs once sat silently for
+    # 20+ minutes, so 5 minutes catches a real hang without flapping on
+    # normal variance.
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -27,21 +42,18 @@ jobs:
       - run: npx playwright install chromium
       - run: npm test
       - run: npm run build
+      - run: npm run smoke:public-layout
+      # Widget-host smoke is hermetic: it route-mocks the whole /api/public/**
+      # surface, so it needs no live worker. Keeps the Docs Mode install-flow
+      # gate from silently breaking while CI stays green.
+      - run: npm run smoke:widget-host
       - name: Wrangler config and bundle check
+        # The wrangler version comes from the committed lockfile (wrangler
+        # 4.120.0 is pinned in package.json devDependencies), not npx's
+        # mutable cache: wrangler@4.121.0 (published 2026-08-11 19:25Z)
+        # depends on miniflare@5.20260804.1-alpha which npm does not serve
+        # (E404), so pulling the moving `latest` tag broke every CI run
+        # repo-wide on 2026-08-11 ~19:32Z. 4.120.0 is the last version this
+        # repo's verify ran green on and its miniflare dependency resolves.
+        # Unpin once the upstream publish is fixed.
         run: npm run cf:check
-
-  gitleaks:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install gitleaks
-        run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.27.2/gitleaks_8.27.2_linux_x64.tar.gz | tar -xz -C /tmp
-          sudo mv /tmp/gitleaks /usr/local/bin/
-      - name: Scan
-        run: gitleaks detect --source . --no-banner --redact

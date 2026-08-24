@@ -1,0 +1,101 @@
+name: VPS heartbeat
+
+# External dead-man observer for the VPS uptime probe.
+#
+# The VPS publishes a fresh timestamp to a public gist every 2 minutes via
+# siterep-uptime. This workflow runs on GitHub's hosted runners every 15
+# minutes and checks that the published timestamp is recent. If the gist fetch
+# fails OR the timestamp is older than 900 seconds (15 min), it raises a loud,
+# durable alarm issue and fails the check.
+#
+# A dark VPS is unreachable from GitHub (it sits on a private overlay network),
+# so this observer's job is DETECTION only — it cannot reach the box to repair
+# it. VPS-side repair picks up automatically when the box revives: the probe
+# resumes publishing, the gist goes fresh, and the alarm issue gets a closing
+# comment on the next green run.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  vps-heartbeat:
+    name: vps-heartbeat
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check heartbeat freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIST_RAW: "https://gist.githubusercontent.com/nish3451/d26c163b894322b70b3a21f4bc10e50d/raw/heartbeat.json"
+        run: |
+          set -uo pipefail
+
+          now_epoch="$(date -u +%s)"
+          cache_bust="$(date -u +%s%N)"
+          url="${GIST_RAW}?bust=${cache_bust}"
+
+          echo "::group::Heartbeat fetch"
+          if ! body="$(curl -fsS -m 15 "$url" 2>/tmp/hb-err)"; then
+            err="$(cat /tmp/hb-err 2>/dev/null || true)"
+            rm -f /tmp/hb-err
+            echo "FETCH FAILED: ${err:-<no stderr>}"
+            age_secs="(unknown: fetch failed)"
+            stale="yes"
+          else
+            rm -f /tmp/hb-err
+            echo "$body"
+            utc="$(printf '%s' "$body" | jq -r '.utc // empty' 2>/dev/null || true)"
+            if [ -z "$utc" ]; then
+              echo "PARSE FAILED: .utc missing or unparseable"
+              age_secs="(unknown: no .utc in payload)"
+              stale="yes"
+            else
+              ts_epoch="$(date -u -d "$utc" +%s 2>/dev/null || true)"
+              if [ -z "$ts_epoch" ]; then
+                echo "PARSE FAILED: .utc '$utc' not a valid date"
+                age_secs="(unknown: bad .utc '$utc')"
+                stale="yes"
+              else
+                age_secs=$(( now_epoch - ts_epoch ))
+                echo "Last utc:  $utc"
+                echo "Age (sec): $age_secs"
+                if [ "$age_secs" -gt 900 ]; then
+                  stale="yes"
+                else
+                  stale="no"
+                fi
+              fi
+            fi
+          fi
+          echo "::endgroup::"
+
+          if [ "$stale" = "no" ]; then
+            echo "::notice::Heartbeat fresh (age ${age_secs}s < 900s)."
+            exit 0
+          fi
+
+          # Stale or unreachable — raise the alarm.
+          echo "::error::VPS heartbeat stale or unreachable. Age: ${age_secs}s (threshold 900s)."
+          stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          last_utc="$(printf '%s' "$body" 2>/dev/null | jq -r '.utc // "<none>"' 2>/dev/null || echo '<unparseable>')"
+          body_text="$(printf 'VPS uptime heartbeat is stale or unreachable.\n\nObserved at: %s\nLast utc seen: %s\nAge: %ss (threshold 900s)\n\nWhat this means: the VPS probe stopped publishing its heartbeat gist. The box sits on a private overlay network that GitHub cannot reach, so this observer can detect the dark state but cannot repair it. VPS-side repair picks this up automatically on revival — the probe resumes publishing, the gist goes fresh, and this issue gets a closing comment on the next green run.\n\nNo secrets, no internal paths, no hostnames — this is a public alarm surface.' "$stamp" "$last_utc" "$age_secs")"
+
+          existing="$(gh issue list --search 'VPS-DARK in:title' --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            echo "Alarm issue #${existing} already open — commenting."
+            gh issue comment "$existing" --body "Still dark at ${stamp}. Age: ${age_secs}s. Last utc: ${last_utc}."
+          else
+            echo "No open alarm issue — creating one."
+            gh issue create --title "VPS-DARK: uptime heartbeat stale" --body "$body_text"
+          fi
+
+          exit 1

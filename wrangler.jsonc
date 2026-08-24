@@ -22,7 +22,7 @@
     "EMAIL_FROM_NAME": "Site Rep",
     "EMAIL_REPLY_TO": "hello@siterep.net",
     "SITEREP_OWNER_NOTIFY_TO": "hello@siterep.net",
-    "OWNED_INTERNAL_EMAIL_DOMAINS": "siterep.net",
+    "OWNED_INTERNAL_EMAIL_DOMAINS": "0509.io,0509.in,inish.in,aiconverter.app,siterep.net,tinystudio.io,tinystudio.in,seofixkit.com",
     "SITEREP_OVERAGE_BILLING_ENABLED": "true",
     "DODO_SITEREP_ENVIRONMENT": "live",
     "DODO_SITEREP_CURRENCY": "USD",
