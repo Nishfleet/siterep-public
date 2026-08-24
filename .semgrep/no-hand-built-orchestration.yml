@@ -1,0 +1,197 @@
+# No hand-built orchestration — mechanical gate.
+#
+# The fleet's most important rule ("No hand-built orchestration. Ever.") was
+# enforced only by prose until this file. Every banned shape below is something
+# systemd already owns; the fix is named in each rule's message, not in a doc.
+#
+# Why `languages: [generic]` for every rule (not `bash`):
+#   Semgrep's bash parser only reads files with .sh/.bash extensions. The
+#   shell that matters here lives inside `run: |` blocks of GitHub Actions
+#   workflow YAML, which the bash parser never opens. Generic mode scans every
+#   file as text, so `pattern-regex` reaches shell inside YAML `run:` blocks
+#   AND standalone .sh files with one rule. Bash-language variants would be
+#   redundant (generic already covers .sh) and would silently miss workflow
+#   shell, which is where the violations actually live.
+#
+# Scope (paths.include):
+#   Only shell-bearing locations: .github/workflows/** (run: | blocks) and
+#   **/*.sh / **/*.bash / **/*.bats (standalone shell files anywhere, including
+#   scripts/). A no-extension shell script dropped in scripts/ is not scanned
+#   here, but the .semgrep/shell-line-budget ratchet counts it (shebang-detected)
+#   and forces a baseline bump, so the gate still holds. Node/Python/PHP app
+#   code is NOT scanned, so JS retry counters or setInterval loops in app code
+#   are not flagged — the ban is on hand-built SHELL orchestration, not
+#   application logic.
+#
+# Bounded-wait exclusion:
+#   A single bounded propagation wait inside a unit's ExecStart, e.g.
+#     timeout 120 sh -c 'until systemctl is-active x; do sleep 10; done'
+#   is LEGITIMATE substrate use and is NOT flagged. The poll-loop rule uses a
+#   pattern-not-regex that excludes until/sleep/done spans wrapped in a
+#   `timeout ... sh -c '...'` on the same line. Unbounded `until ...; do sleep
+#   ...; done` (no timeout envelope) is flagged.
+#
+# Severity: every rule is ERROR (semgrep's ERROR tier == HIGH). The CI job
+# fails on ERROR/HIGH findings only; lower-severity p/default findings are
+# reported but do not block.
+
+rules:
+  - id: no-hand-built-while-true-loop
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Unbounded `while true` loop — hand-built orchestration is banned.
+      Replace with a systemd .timer (OnCalendar=) for periodic work, or a
+      .service with Restart=always for a long-running daemon. For
+      failure-driven work use OnFailure= on a companion unit.
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-regex: '(?m)\bwhile\s+(?:true|1)\b'
+
+  - id: no-hand-built-until-sleep-poll-loop
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Poll loop (`until ...; do sleep ...; done`) — hand-built orchestration
+      is banned. Use a systemd .timer + ExecCondition= for condition-gated
+      periodic work, or OnFailure= for failure-driven work. For a one-shot
+      bounded propagation wait inside a unit, wrap it in `timeout N sh -c
+      '...'` (that bounded form is excluded from this rule).
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    patterns:
+      - pattern-regex: '(?ms)\buntil\b.*?\bsleep\b.*?\bdone\b'
+      - pattern-not-regex: '(?ms)\btimeout\b[^\n]*\bsh\b[^\n]*\buntil\b[^\n]*\bsleep\b[^\n]*\bdone\b'
+
+  - id: no-hand-built-retry-counter
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Retry/attempt counter — hand-built orchestration is banned. systemd
+      owns retries: Restart= (on-failure/always/on-watchdog/on-abnormal),
+      RestartSec= for backoff, and RestartSteps= + RestartMaxDelay= for
+      stepped backoff. Give-up thresholds belong in StartLimitBurst= /
+      StartLimitIntervalSec= on the unit (or the slice).
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-either:
+      - pattern-regex: '(?mi)\bMAX_(?:RETRIES|ATTEMPTS|TRIES)\b'
+      - pattern-regex: '(?m)\b(?:attempt|retries|tries|retry_count|retry_limit|attempt_count|retry_attempt)s?\s*=(?!=)\s*[0-9$\(\)]'
+      - pattern-regex: '(?m)\btries\s*=\s*\$\(\('
+
+  - id: no-hand-built-cooldown-timestamp
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Cooldown timestamp (recording last-ran/last-failed epoch to decide when
+      to act again) — hand-built orchestration is banned. systemd owns
+      scheduling cadence: OnCalendar= / OnUnitInactiveSec= / OnBootSec= for
+      spacing, and RandomizedDelaySec= to jitter. Failure backoff is
+      RestartSec= + RestartSteps=, not a hand-rolled "last_failed_at" gate.
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-either:
+      - pattern-regex: '(?mi)\b(?:last_run|last_ran|last_failed|last_attempt|last_check|last_success|next_run|next_attempt|cooldown_until|cooldown|retry_after)\b\s*=(?!=)'
+      - pattern-regex: '(?mi)\b(?:last_run|last_ran|last_failed|last_attempt|last_check|last_success|next_run|cooldown_until|retry_after)\b\s*=\s*[^\n]*\bdate\b[^\n]*%s'
+
+  - id: no-hand-built-flock-mutex
+    languages: [generic]
+    severity: ERROR
+    message: >
+      flock-based mutex wrapper around dispatch/queue logic — hand-built
+      orchestration is banned. systemd owns single-instance semantics:
+      RefuseManualStart= + Conflicts= on peer units, or a .service with
+      Restart= and a queue .timer. For serialised work, a per-queue .service
+      with RemainAfterExit= and OnFailure= is the substrate; do not rebuild
+      locking in shell.
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-regex: '(?m)\bflock\b'
+
+  - id: no-hand-built-state-ledger-tombstone
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Attempt-ledger / tombstone / state file (writing .state / .ledger /
+      .tombstone / .attempts to track work in flight) — hand-built
+      orchestration is banned. systemd owns unit state: ConditionPathExists=
+      / Unit.AssertPathExists= for idempotency gates, OnFailure= + a
+      companion .service for failure handoff, and RuntimeDirectory= for
+      ephemeral state. Durable "did this run" markers belong in the unit's
+      ConditionACPower= / ConditionPath= predicates, not a hand-rolled file.
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-either:
+      - pattern-regex: '(?i)\b[\w.-]+\.(?:state|ledger|tombstone|attempts|retry-state|retry_state)\b'
+      - pattern-regex: '(?m)\b(?:>|\| tee|tee)\s+[^\n]*\.(?:tombstone|ledger|state|attempts)\b'
+
+  - id: no-hand-built-liveness-poller
+    languages: [generic]
+    severity: ERROR
+    message: >
+      Liveness poller (pgrep/pidof or kill -0 $PID in a loop) — hand-built
+      orchestration is banned. systemd owns liveness: WatchdogSec= on the
+      unit + sd_notify("READY=1"/"WATCHDOG=1") from the process, with
+      OnFailure= / Restart=on-watchdog for recovery. For hang detection use
+      RuntimeMaxSec= (Type=exec) or TimeoutStartSec= (oneshot).
+    paths:
+      include:
+        - .github/workflows/**
+        - "**/*.sh"
+        - "**/*.bash"
+        - "**/*.bats"
+      exclude:
+        - node_modules/**
+        - dist/**
+        - .wrangler/**
+    pattern-either:
+      - pattern-regex: '(?m)\b(?:pgrep|pidof)\b'
+      - pattern-regex: '(?m)\bkill\s+-0\s+\$\{?\w+\}?'
