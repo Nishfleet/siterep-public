@@ -60,7 +60,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          short="$(git rev-parse --short 7 "$HEAD_SHA")"
+          short="$(git rev-parse --short=7 "$HEAD_SHA")"
           subject="$(git log --format=%s -n 1 "$HEAD_SHA")"
           parents="$(git rev-list --parents -n 1 "$HEAD_SHA")"
           merge_flag=""
