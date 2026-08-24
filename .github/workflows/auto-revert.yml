@@ -63,8 +63,8 @@ jobs:
           short="$(git rev-parse --short=7 "$HEAD_SHA")"
           subject="$(git log --format=%s -n 1 "$HEAD_SHA")"
           parents="$(git rev-list --parents -n 1 "$HEAD_SHA")"
-          merge_flag=""
-          [ "$(printf '%s' "$parents" | wc -w)" -gt 2 ] && merge_flag="-m 1"
+          merge_flag=()
+          [ "$(printf '%s' "$parents" | wc -w)" -gt 2 ] && merge_flag=(-m 1)
           gh label create auto-revert-halt --repo "$REPO" --color B60205 \
             --description "Auto-revert halted — a human must look" --force >/dev/null 2>&1 || true
           halt () {
@@ -106,7 +106,7 @@ jobs:
           branch="revert/$short"
           git config user.name "Nish"
           git config user.email "257724087+nish3451@users.noreply.github.com"
-          git revert --no-edit $merge_flag "$HEAD_SHA"
+          git revert --no-edit "${merge_flag[@]}" "$HEAD_SHA"
           git checkout -b "$branch"
           git push origin "$branch"
           gh pr create --repo "$REPO" --base main --head "$branch" \

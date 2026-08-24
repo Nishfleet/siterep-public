@@ -1,0 +1,41 @@
+name: actionlint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# One live lint per branch on the shared runner; superseded runs cancelled,
+# matching ci.yml / secret-scan.yml. Without this every push queues another
+# lint behind the single-runner backlog.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    # actionlint is a static check over small YAML files: observed well under
+    # 10s end-to-end. 3 minutes is ~18x observed — generous against a cold
+    # image pull while bounding the hung-step failure the standing CI rule
+    # names (one unbounded step can otherwise burn 360 billable minutes).
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check workflow files
+        # rhysd/actionlint 1.7.12, pinned by image digest — the container
+        # equivalent of the repo's 40-char SHA pinning for `uses:` actions.
+        # `uses:`-only shape: no `run:` shell, so .semgrep/shell-line-budget
+        # is untouched. The image entrypoint is /usr/local/bin/actionlint;
+        # `args` pass through and the workspace is auto-mounted at
+        # /github/workspace, so actionlint auto-detects .github/workflows/
+        # with no path arguments needed (per the actionlint usage docs).
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color
