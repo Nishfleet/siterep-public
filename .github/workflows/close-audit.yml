@@ -1,0 +1,209 @@
+name: Close Audit
+
+# Governance audit surface (commissioned 2026-08-24). Orchestrators may close
+# issues without a merged PR ONLY with machine-checkable evidence; every such
+# close must appear on a surface Nish actually reads. This workflow maintains
+# that surface: one pinned issue listing every close in the last 90 days that
+# was NOT backed by a merged PR, newest first.
+#
+# Event-driven first (the standing preference): it fires the moment an issue is
+# closed or reopened. The daily 03:00 UTC schedule is a reconcile belt behind
+# the event trigger — it catches any close whose event webhook was missed or
+# whose audit issue body drifted, without spending a run on every poll. Named
+# reason for the schedule: reconcile belt behind an event trigger.
+on:
+  issues:
+    types: [closed, reopened]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  close-audit:
+    name: close-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Rebuild the close audit issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timezone, timedelta
+
+          REPO = os.environ["REPO"]
+          OWNER, NAME = REPO.split("/", 1)
+          AUDIT_TITLE = "Audit: issues closed without a merged PR"
+          TOKEN = os.environ["GH_TOKEN"]
+          now = datetime.now(timezone.utc)
+          NOW = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+          SINCE = (now - timedelta(days=90)).strftime("%Y-%m-%d")
+
+          def gh(args, check=True):
+              return subprocess.run(args, check=check,
+                                     capture_output=True, text=True)
+
+          def gh_out(args):
+              r = gh(args)
+              return r.stdout
+
+          def gh_json(args):
+              return json.loads(gh_out(args) or "[]")
+
+          # 1. Closed issues in the last 90 days (is:issue excludes pull requests).
+          q = f"repo:{REPO} is:issue is:closed closed:>={SINCE}"
+          tsv = gh_out([
+              "gh", "api", "-X", "GET", "search/issues",
+              "-f", f"q={q}", "--paginate",
+              "--jq", '.items[] | [.number,.title,.state_reason,.closed_at,.user.login] | @tsv',
+          ])
+          issues = []
+          for line in tsv.splitlines():
+              if not line.strip():
+                  continue
+              num, title, reason, closed_at, closed_by = line.split("\t")
+              issues.append({
+                  "num": int(num), "title": title, "reason": reason,
+                  "closed_at": closed_at, "closed_by": closed_by,
+              })
+
+          # 2. Locate the audit issue (by exact title) so it can be excluded.
+          audit_num = None
+          for it in gh_json([
+              "gh", "issue", "list", "--repo", REPO, "--state", "all",
+              "--search", f'in:title "{AUDIT_TITLE}"', "--limit", "100",
+              "--json", "number,title",
+          ]):
+              if it.get("title") == AUDIT_TITLE:
+                  audit_num = it["number"]
+                  break
+
+          # 3. Was this issue closed BY A MERGED PR? GraphQL timeline closer.
+          def closed_by_merged_pr(num):
+              query = (
+                  "query { repository(owner:\"%s\", name:\"%s\") { "
+                  "issue(number:%d) { timelineItems(first:50, "
+                  "itemTypes:[CLOSED_EVENT]) { nodes { ... on ClosedEvent { "
+                  "closer { __typename ... on PullRequest { merged } } } } } "
+                  "} } }" % (OWNER, NAME, num)
+              )
+              data = json.loads(gh_out([
+                  "gh", "api", "graphql", "-f", f"query={query}",
+              ]))
+              nodes = (data["data"]["repository"]["issue"]
+                       ["timelineItems"]["nodes"])
+              for n in nodes:
+                  closer = n.get("closer")
+                  if (closer and closer.get("__typename") == "PullRequest"
+                          and closer.get("merged") is True):
+                      return True
+              return False
+
+          # 4. Last comment body before close (the rationale), first 200 chars.
+          def rationale(num, closed_at):
+              raw = gh_out([
+                  "gh", "api", f"repos/{REPO}/issues/{num}/comments",
+                  "--paginate", "--jq", ".[] | @json",
+              ])
+              bodies = []
+              for line in raw.splitlines():
+                  if not line.strip():
+                      continue
+                  c = json.loads(line)
+                  if c.get("created_at", "") <= closed_at:
+                      bodies.append(c.get("body", ""))
+              if not bodies or not bodies[-1].strip():
+                  return "NO RATIONALE — POLICY VIOLATION"
+              return bodies[-1][:200]
+
+          # 5. Build audit rows: every close with no merged-PR closer.
+          rows = []
+          for it in issues:
+              if audit_num is not None and it["num"] == audit_num:
+                  continue
+              if closed_by_merged_pr(it["num"]):
+                  continue
+              rows.append((
+                  it["num"], it["title"][:60], it["reason"],
+                  it["closed_at"], it["closed_by"], rationale(it["num"], it["closed_at"]),
+              ))
+          rows.sort(key=lambda r: r[3], reverse=True)
+
+          def esc(s):
+              return (s or "").replace("|", "\\|").replace("\n", " ").strip()
+
+          header = (
+              "## Audit: issues closed without a merged PR\n\n"
+              "Policy: an issue may be closed without a merged PR only with "
+              "machine-checkable evidence (command + output + SHA + reason). "
+              "Workers never close issues; only Nish or an orchestrator with "
+              "evidence may. This surface lists every close in the last 90 days "
+              "that was NOT backed by a merged PR, so a close without a "
+              "rationale shows up as a policy violation.\n\n"
+              f"Generated at {NOW} UTC (covers closes since {SINCE}). "
+              "Rebuilt on every issue close/reopen and once daily at 03:00 UTC.\n\n"
+          )
+          if not rows:
+              table = "_No closes without a merged PR in the last 90 days._\n"
+          else:
+              table = (
+                  "| # | title | state reason | closed at | closed by | "
+                  "rationale (≤200ch) |\n"
+                  "|---|---|---|---|---|---|\n"
+              )
+              for num, title, reason, closed_at, closed_by, rat in rows:
+                  table += (
+                      f"| #{num} | {esc(title)} | {esc(reason)} | "
+                      f"{esc(closed_at)} | {esc(closed_by)} | {esc(rat)} |\n"
+                  )
+          body = header + table
+
+          # 6. Create the audit issue if absent, then pin it once and replace
+          # its body. Edit the body only — no comments, no spam.
+          if audit_num is None:
+              url = gh_out([
+                  "gh", "issue", "create", "--repo", REPO,
+                  "--title", AUDIT_TITLE, "--body", body,
+              ]).strip()
+              audit_num = int(url.rstrip("/").split("/")[-1])
+          else:
+              gh(["gh", "issue", "edit", str(audit_num), "--repo", REPO,
+                  "--body", body])
+
+          node_id = gh_out([
+              "gh", "api", f"repos/{REPO}/issues/{audit_num}",
+              "--jq", ".node_id",
+          ]).strip()
+          pin_q = (
+              "mutation($id:ID!){ pinIssue(input:{issueId:$id}){ "
+              "pinnedIssue { issue { number } } } }"
+          )
+          # Tolerate already-pinned (and any other pin error) — pinning is a
+          # once-act; the body replacement above is the real work.
+          gh(["gh", "api", "graphql", "-f", f"query={pin_q}",
+              "-f", f"id={node_id}"], check=False)
+
+          issue_url = gh_out([
+              "gh", "issue", "view", str(audit_num), "--repo", REPO,
+              "--json", "url", "--jq", ".url",
+          ]).strip()
+          print(f"::notice::Audit issue updated: {issue_url}")
+          print(f"::set-output name=audit_url::{issue_url}")
+          print("===AUDIT_BODY_START===")
+          print(body)
+          print("===AUDIT_BODY_END===")
+          PY
