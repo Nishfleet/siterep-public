@@ -1,0 +1,4 @@
+{
+  "deploy_command": "npm run deploy:cloudflare",
+  "health_url": "https://siterep.net"
+}
