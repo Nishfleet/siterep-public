@@ -69,6 +69,21 @@ test("answered questions cite the topically right source first", () => {
   }
 });
 
+test("plan-differentiator questions from the homepage are answered with a cited source", () => {
+  const questions = [
+    "Can I remove the Site Rep branding?",
+    "What plan lets me remove branding?",
+    "Can I use Site Rep on multiple client sites?",
+    "What is the difference between Growth and Pro?",
+  ];
+  for (const question of questions) {
+    const result = answerFromSources(question, DEMO_SOURCES);
+    assert.equal(result.unknown, false, `refused: ${question}`);
+    assert.ok(result.sources.length > 0, `${question} returned no sources`);
+    assert.equal(result.sources[0].id, "demo-plan-features", `${question} cited ${result.sources[0]?.id}, expected demo-plan-features`);
+  }
+});
+
 // Named-plan exact-price path: the live demo worker answers named Starter
 // price-intent questions from a dedicated "Starter pricing" source built from
 // the country-aware Dodo checkout preview amount the public pricing/checkout
