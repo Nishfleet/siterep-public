@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { answerFromSources, publicSource } from "../server/search.js";
@@ -81,6 +82,69 @@ test("plan-differentiator questions from the homepage are answered with a cited 
     assert.equal(result.unknown, false, `refused: ${question}`);
     assert.ok(result.sources.length > 0, `${question} returned no sources`);
     assert.equal(result.sources[0].id, "demo-plan-features", `${question} cited ${result.sources[0]?.id}, expected demo-plan-features`);
+  }
+});
+
+const SMALL_COUNT_WORDS = {
+  1: "one",
+  2: "two",
+  3: "three",
+  4: "four",
+  5: "five",
+  10: "ten",
+};
+
+function countPattern(n) {
+  const word = SMALL_COUNT_WORDS[n];
+  return word ? `${n}|${word}` : String(n);
+}
+
+function readPlanLimits(worker) {
+  const starterPage = Number(/const STARTER_PAGE_LIMIT = (\d+)/.exec(worker)?.[1]);
+  const starterReplies = Number(/const STARTER_RESPONSE_LIMIT = (\d+)/.exec(worker)?.[1]);
+  assert.ok(starterPage > 0 && starterReplies > 0, "Starter page/reply constants missing");
+  const plans = {};
+  for (const name of ["Starter", "Growth", "Pro", "Agency"]) {
+    const match = worker.match(
+      new RegExp(
+        `${name}: \\{\\s+priceCents: [^,]+,\\s+botLimit: (\\d+),\\s+pageLimit: ([^,]+),\\s+responseLimit: ([^,]+),\\s+monthlyRefreshLimit: (\\d+),\\s+allowedOriginsLimit: (\\d+),\\s+brandingLocked: (true|false),`,
+        "s",
+      ),
+    );
+    assert.ok(match, `PLAN_LIMITS.${name} not found`);
+    const pageRaw = match[2].trim();
+    const replyRaw = match[3].trim();
+    plans[name] = {
+      botLimit: Number(match[1]),
+      pageLimit: pageRaw === "STARTER_PAGE_LIMIT" ? starterPage : Number(pageRaw),
+      responseLimit: replyRaw === "STARTER_RESPONSE_LIMIT" ? starterReplies : Number(replyRaw),
+      allowedOriginsLimit: Number(match[5]),
+      brandingLocked: match[6] === "true",
+    };
+  }
+  return plans;
+}
+
+test("demo-plan-features source matches PLAN_LIMITS for every named plan", async () => {
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const source = PUBLIC_DEMO_SOURCES.find((item) => item.id === "demo-plan-features");
+  assert.ok(source, "demo-plan-features source missing");
+  const content = source.content;
+  const plans = readPlanLimits(worker);
+  for (const [name, limits] of Object.entries(plans)) {
+    assert.match(content, new RegExp(`\\b${limits.botLimit}\\s+bots?\\b`), `${name} botLimit ${limits.botLimit} missing`);
+    assert.match(content, new RegExp(`\\b${limits.pageLimit}\\s+pages\\b`), `${name} pageLimit ${limits.pageLimit} missing`);
+    assert.match(content, new RegExp(`\\b${limits.responseLimit}\\s+(?:source-backed\\s+)?replies\\b`), `${name} responseLimit ${limits.responseLimit} missing`);
+    assert.match(
+      content,
+      new RegExp(`\\b(?:${countPattern(limits.allowedOriginsLimit)})\\s+(?:client\\s+)?sites?\\b`, "i"),
+      `${name} allowedOriginsLimit ${limits.allowedOriginsLimit} missing`,
+    );
+    if (limits.brandingLocked) {
+      assert.match(content, /Starter plan keeps Site Rep branding on/);
+    } else {
+      assert.match(content, new RegExp(`\\b${name}\\b[\\s\\S]*?remove Site Rep branding`));
+    }
   }
 });
 
