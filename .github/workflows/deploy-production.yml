@@ -17,4 +17,7 @@ concurrency:
 jobs:
   deploy:
     uses: nish3451/shared-workflows/.github/workflows/deploy-production.yml@v1
-    secrets: inherit
+    # explicit map, not inherit — least privilege, semgrep-enforced
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
