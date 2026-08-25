@@ -193,3 +193,51 @@ test("the cap is enforced at the boundary: last allowed response served, past it
   assert.equal(again.responseCount, 1100);
   assert.equal(storedBot().responseCount, 1100);
 });
+
+// The public demo bot (site-rep-demo) is Nish's marketing surface on
+// siterep.net, not a customer bot. It must always answer real visitor
+// questions — it can never be allowed to hit the response cap and degrade
+// into lead-capture mode, or the live demo (and the synthetic monitor that
+// pins it) breaks. Regression: 2026-08-25, the demo bot burned through its
+// Starter 1000/month cap and started refusing every question.
+test("the public demo bot is exempt from the response cap — it always answers", async () => {
+  const { CiteRepCoordinator } = await import("../worker/index.js");
+  const PUBLIC_DEMO_BOT_ID = "site-rep-demo";
+  const demoSources = [
+    {
+      id: "demo-pricing",
+      title: "Pricing",
+      url: "https://siterep.net/pricing",
+      excerpt: "Starter plan pricing",
+      content: "The Starter plan costs 12 dollars per month.",
+      status: "indexed",
+      sourceType: "manual",
+      indexedAt: new Date().toISOString(),
+    },
+  ];
+  // Seed the demo bot already past the Starter cap + grace (1100) — the
+  // exact state that locked the live site. It must STILL answer.
+  const storage = fakeStorage({
+    store: {
+      bots: {
+        [PUBLIC_DEMO_BOT_ID]: seedBot(PUBLIC_DEMO_BOT_ID, {
+          plan: "Starter",
+          sources: demoSources,
+          count: 5000,
+        }),
+      },
+    },
+  });
+  const coordinator = new CiteRepCoordinator({ storage }, { CITEREP_ADMIN_KEY: "test-admin-key" });
+  const response = await coordinator.fetch(
+    new Request("https://siterep.test/api/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-citerep-admin-key": "test-admin-key" },
+      body: JSON.stringify({ botId: PUBLIC_DEMO_BOT_ID, question: "How much does the Starter plan cost?" }),
+    }),
+  );
+  const result = await response.json();
+  assert.equal(result.unknown, false, "the public demo bot must answer even past the cap");
+  assert.equal(result.conversation?.refused, false, "the public demo bot must never refuse for usage_locked");
+  assert.equal(result.usage?.locked, false, "the public demo bot usage meter must read unlocked");
+});
