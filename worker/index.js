@@ -13150,6 +13150,14 @@ function planLimitError(label, status) {
 }
 
 function usageFor(bot) {
+  // The public demo bot (site-rep-demo) is Nish's marketing surface on
+  // siterep.net, not a customer bot. It must never lock into lead-capture
+  // mode — the live demo and the synthetic monitor that pins it depend on it
+  // always answering. Treat it as unlimited. (Regression 2026-08-25: it
+  // burned through the Starter 1000/month cap and refused every question.)
+  if (isPublicDemoBotId(bot?.botId)) {
+    return meterFor(0, Number.MAX_SAFE_INTEGER);
+  }
   if (isFreePlan(bot)) {
     // Free usage is a lifetime cap of cited answers — never resets monthly,
     // and refusals don't count. When it locks, the existing usage-locked path
@@ -13184,6 +13192,8 @@ function overageReportedThisMonth(bot, now = new Date()) {
 // included | grace | overage | locked — the live answering decision. Display
 // meters keep using usageFor (the true cap); this governs whether we answer.
 function responseAnsweringMode(bot, env = activeEnv) {
+  // The public demo bot is exempt from the cap — see usageFor. It always answers.
+  if (isPublicDemoBotId(bot?.botId)) return "included";
   const limit = isFreePlan(bot) ? FREE_ANSWER_CAP : planLimitsFor(bot).responseLimit;
   const used = isFreePlan(bot) ? bot.freeTrial?.citedAnswersUsed || 0 : effectiveResponseCount(bot);
   const overage = bot.overage || {};
