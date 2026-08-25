@@ -19,6 +19,10 @@ export const SHOULD_ANSWER = [
   "how long does it take to get this running on my site",
   "ok how do i cancel if i dont like it",
   "can it answer with sources",
+  "Can I remove the Site Rep branding?",
+  "What plan lets me remove branding?",
+  "Can I use Site Rep on multiple client sites?",
+  "What is the difference between Growth and Pro?",
 ];
 
 // Off-topic or adjacent-but-unsupported — the bot must refuse rather than
@@ -39,6 +43,10 @@ export const CITATION_EXPECTATIONS = [
   ["How do I install the Site Rep widget on my website?", ["demo-install"]],
   ["ok how do i cancel if i dont like it", ["demo-cancel-refund"]],
   ["I want to buy this for my bakery website, what do I do next?", ["demo-get-started"]],
+  ["Can I remove the Site Rep branding?", ["demo-plan-features"]],
+  ["What plan lets me remove branding?", ["demo-plan-features"]],
+  ["Can I use Site Rep on multiple client sites?", ["demo-plan-features"]],
+  ["What is the difference between Growth and Pro?", ["demo-plan-features"]],
 ];
 
 // Run every eval against the provided sources using the given retrieval fn
