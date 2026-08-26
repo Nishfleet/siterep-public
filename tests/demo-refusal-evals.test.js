@@ -35,25 +35,12 @@ test("the shared honesty evals all pass against the real demo sources", () => {
   assert.deepEqual(result.shouldRefuse.wronglyAnswered, [], "wrongly answered unsupported questions");
   assert.equal(result.shouldAnswer.passed, result.shouldAnswer.total);
   assert.equal(result.shouldRefuse.passed, result.shouldRefuse.total);
-  // The citation dimension now also verifies the cited source's URL actually
-  // backs the answer (citationUrlSupportsAnswer): a homepage fragment must
-  // resolve to a section whose rendered text contains the answer's key nouns.
-  // Two citations currently fail that stronger check — both cite the
-  // demo-get-started source, whose url is #invitation (the start form). The
-  // start form's rendered text does not contain the checkout/pricing/setup
-  // nouns the answer recites, so a buyer who clicks the citation lands on a
-  // page that lacks the answer. That is the honest state today: passed < total.
-  // Correcting the wrong-URL demo sources (#61, #65, #67 and the
-  // demo-get-started url) is tracked separately; when those land the expected
-  // count goes back up. This is NOT xfail or skipped — the detector runs and
-  // the real lower number is pinned here.
-  assert.deepEqual(
-    result.citations.misCited,
-    ["how much is the starter plan", "I want to buy this for my bakery website, what do I do next?"],
-    "mis-cited answered questions",
-  );
+  // Citations must all pass: starter-plan uses the same live #public-pricing
+  // source as public chat, and the buy-next answer cites #how-it-works, whose
+  // rendered text contains the answer's key nouns.
+  assert.deepEqual(result.citations.misCited, [], "mis-cited answered questions");
   assert.equal(result.citations.total, 9);
-  assert.equal(result.citations.passed, 7);
+  assert.equal(result.citations.passed, result.citations.total);
 });
 
 test("demo bot answers natural phrasings of every covered topic", () => {
@@ -76,10 +63,10 @@ test("demo bot refuses off-topic and adjacent-but-unsupported questions", () => 
 
 test("answered questions cite the topically right source first", () => {
   const expectations = [
-    ["how much is the starter plan", new Set(["demo-pricing", "demo-get-started"])],
+    ["how much is the starter plan", new Set(["demo-pricing", "demo-get-started", "demo-starter-pricing"])],
     ["How do I install the Site Rep widget on my website?", new Set(["demo-install"])],
     ["ok how do i cancel if i dont like it", new Set(["demo-cancel-refund"])],
-    ["I want to buy this for my bakery website, what do I do next?", new Set(["demo-get-started"])],
+    ["I want to buy this for my bakery website, what do I do next?", new Set(["demo-buy-next"])],
   ];
   for (const [question, allowed] of expectations) {
     const result = answerFromSources(question, DEMO_SOURCES);

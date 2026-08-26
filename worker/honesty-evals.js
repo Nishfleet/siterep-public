@@ -1,3 +1,5 @@
+import { applyLiveDemoPricingAnswer } from "./demo-sources.js";
+
 // The cited-or-refuse honesty evals, in one place so the test suite and the
 // public /api/public/honesty-check endpoint run the EXACT same questions
 // against the EXACT same demo sources. The public endpoint is the proof: any
@@ -40,10 +42,10 @@ export const SHOULD_REFUSE = [
 
 // Answered questions must cite the topically correct source first.
 export const CITATION_EXPECTATIONS = [
-  ["how much is the starter plan", ["demo-pricing", "demo-get-started"]],
+  ["how much is the starter plan", ["demo-starter-pricing", "demo-plan-pricing", "demo-pricing", "demo-get-started"]],
   ["How do I install the Site Rep widget on my website?", ["demo-install"]],
   ["ok how do i cancel if i dont like it", ["demo-cancel-refund"]],
-  ["I want to buy this for my bakery website, what do I do next?", ["demo-get-started"]],
+  ["I want to buy this for my bakery website, what do I do next?", ["demo-buy-next"]],
   ["Can I remove the Site Rep branding?", ["demo-plan-features"]],
   ["What plan lets me remove branding?", ["demo-plan-features"]],
   ["Can I use Site Rep on multiple client sites?", ["demo-plan-features"]],
@@ -62,17 +64,21 @@ export const CITATION_EXPECTATIONS = [
 // exact `displayPrice` strings from the live catalog — proving the demo's
 // pricing matches what the live checkout would render.
 export function runHonestyEvals(answerFromSources, sources, pricingCatalog = null) {
+  // Match public demo chat: named-plan and generic price questions are
+  // rewritten onto the live #public-pricing sources before scoring.
+  const retrieve = (question, srcs) =>
+    applyLiveDemoPricingAnswer(question, answerFromSources(question, srcs), pricingCatalog);
   const falselyRefused = [];
   for (const question of SHOULD_ANSWER) {
-    if (answerFromSources(question, sources).unknown) falselyRefused.push(question);
+    if (retrieve(question, sources).unknown) falselyRefused.push(question);
   }
   const wronglyAnswered = [];
   for (const question of SHOULD_REFUSE) {
-    if (!answerFromSources(question, sources).unknown) wronglyAnswered.push(question);
+    if (!retrieve(question, sources).unknown) wronglyAnswered.push(question);
   }
   const misCited = [];
   for (const [question, allowed] of CITATION_EXPECTATIONS) {
-    const result = answerFromSources(question, sources);
+    const result = retrieve(question, sources);
     // A citation passes only when the topically correct source is cited AND
     // that source's URL actually backs the answer: a homepage fragment must
     // resolve to a section whose rendered text contains the answer's key

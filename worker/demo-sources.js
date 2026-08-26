@@ -144,6 +144,30 @@ export function isExactDemoPricingAnswer(answer) {
   return id === "demo-plan-pricing" || id === "demo-starter-pricing";
 }
 
+// Same replacement the public demo chat applies after retrieval: named Starter
+// price questions cite demo-starter-pricing, generic price questions cite
+// demo-plan-pricing. Both URLs are #public-pricing. The honesty check and the
+// chat must share this path so a visitor reproducing a check question in the
+// widget sees the same citation. Catalog may be null (checkout outage); the
+// dedicated source then carries the honest unavailable-price answer.
+export function applyLiveDemoPricingAnswer(question, answer, catalog = null) {
+  if (!answer || answer.unknown) return answer;
+  if (!isNamedStarterPriceQuestion(question) && !isPricingQuestion(question)) return answer;
+  const plans = Array.isArray(catalog?.plans) ? catalog.plans : [];
+  const priceSource = isNamedStarterPriceQuestion(question)
+    ? starterPricingSource(starterPriceAnswerFor(plans.find((plan) => plan.name === "Starter") || {}))
+    : planPricingSource(planPricesAnswerFor(plans));
+  const answerText = String(priceSource.content || "")
+    .split("\n")
+    .find((line) => line.startsWith("Answer: "))
+    ?.replace(/^Answer: /, "");
+  return {
+    ...answer,
+    answer: `${answerText} Source: ${priceSource.title}.`,
+    sources: [priceSource],
+  };
+}
+
 export const PUBLIC_DEMO_SOURCES = Object.freeze([
   {
     id: "demo-pricing",
@@ -171,7 +195,14 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
     title: "Getting started",
     url: `${PUBLIC_SITE_URL}/#invitation`,
     content:
-      "Question: How do I sign up and get started?\nAnswer: Click Start setup on siterep.net, enter your website address and email, and review the live checkout price for the plan you want. Free start needs no card; paid setup unlocks only after server-verified payment. Your dashboard opens with access details emailed to you.\n\nQuestion: I want to buy this for my website. What do I do next?\nAnswer: Choose a plan at live checkout, then train the rep from your site pages, test a few buyer questions, and paste the widget snippet on your site after review.\n\nQuestion: How long does it take to get this running on my site?\nAnswer: Setup is designed to be quick: train the rep from your pages, review cited answers, copy the snippet, and paste it before the closing body tag. The dashboard confirms when the widget is installed on your domain.\n\nQuestion: Will this work on my website platform?\nAnswer: Yes — the widget is one small script snippet that works on any website where you can add custom code, including WordPress, Wix, Squarespace, Shopify, and hand-built sites.",
+      "Question: How do I sign up and get started?\nAnswer: Click Start setup on siterep.net, enter your website address and email, and review the live checkout price for the plan you want. Free start needs no card; paid setup unlocks only after server-verified payment. Your dashboard opens with access details emailed to you.\n\nQuestion: How long does it take to get this running on my site?\nAnswer: Setup is designed to be quick: train the rep from your pages, review cited answers, copy the snippet, and paste it before the closing body tag. The dashboard confirms when the widget is installed on your domain.\n\nQuestion: Will this work on my website platform?\nAnswer: Yes — the widget is one small script snippet that works on any website where you can add custom code, including WordPress, Wix, Squarespace, Shopify, and hand-built sites.",
+  },
+  {
+    id: "demo-buy-next",
+    title: "What to do next to buy",
+    url: `${PUBLIC_SITE_URL}/#how-it-works`,
+    content:
+      "Question: I want to buy this for my website. What do I do next?\nAnswer: Choose a plan at live checkout, then train the rep from your site pages, test a few buyer questions, and paste the widget snippet on your site after review.",
   },
   {
     id: "demo-cancel-refund",
