@@ -100,6 +100,35 @@ test("public demo bot keeps a dedicated install source for the suggested install
   assert.match(installBlock[1], /\/docs\/install/);
 });
 
+test("public demo what-is source cites the product definition page, not how-it-works", async () => {
+  const demoSources = await readFile(new URL("../worker/demo-sources.js", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+
+  assert.match(demoSources, /id: "demo-what-is"/);
+  const whatIsBlock = demoSources.match(/id: "demo-what-is"[\s\S]{0,400}?url: `([^`]+)`/);
+  assert.ok(whatIsBlock, "demo-what-is source url not found");
+  assert.doesNotMatch(whatIsBlock[1], /#how-it-works/);
+  assert.match(whatIsBlock[1], /\/ai-website-chatbot-for-small-business/);
+
+  const answerMatch = demoSources.match(/id: "demo-what-is"[\s\S]*?Answer: ([^"\\]+)/);
+  assert.ok(answerMatch, "demo-what-is answer text not found");
+  const answer = answerMatch[1];
+  assert.match(answer, /Site Rep is a chat widget for your website/);
+  assert.match(answer, /approved pages/);
+  assert.match(answer, /private dashboard/);
+
+  const buyerStart = worker.indexOf("const BUYER_INTENT_MARKDOWN = `");
+  assert.ok(buyerStart >= 0, "BUYER_INTENT_MARKDOWN not found");
+  const buyerEnd = worker.indexOf("\n`;", buyerStart);
+  const buyer = worker.slice(buyerStart, buyerEnd);
+  assert.match(buyer, /## What Site Rep does/);
+  assert.match(buyer, /approved website pages/);
+  assert.match(buyer, /A live website widget/);
+  assert.match(buyer, /Captures lead details/);
+  assert.match(buyer, /private customer dashboard/);
+  assert.match(buyer, /source-backed answers/);
+});
+
 test("widget first impression is honest and visitor-voiced", async () => {
   const widget = await readFile(new URL("../public/widget.js", import.meta.url), "utf8");
 

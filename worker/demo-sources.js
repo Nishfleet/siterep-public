@@ -155,7 +155,7 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
   {
     id: "demo-what-is",
     title: "What Site Rep does",
-    url: `${PUBLIC_SITE_URL}/#how-it-works`,
+    url: `${PUBLIC_SITE_URL}/ai-website-chatbot-for-small-business`,
     content:
       "Question: What is Site Rep?\nAnswer: Site Rep is a chat widget for your website that answers visitor questions using only your own approved pages, shows the source behind every answer, says when your pages do not cover something, and captures the visitor's email as a lead so you can follow up. You see every question, answer, and lead in a private dashboard.",
   },
