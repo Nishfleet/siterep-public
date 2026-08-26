@@ -127,7 +127,7 @@ test("comparison pages stay honest: dated claims, sourced pricing, and a fit cav
     assert.ok(start >= 0, `${name} must exist`);
     const body = worker.slice(start, worker.indexOf("\n`;", start));
     // Every competitor claim is date-stamped so it can't silently go stale.
-    assert.match(body, /as of (June|August) 2026/i, `${name} must date-stamp competitor facts`);
+    assert.match(body, /as of (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}/i, `${name} must date-stamp competitor facts`);
     // ...and points to the vendor's own pricing page as the source of truth.
     assert.ok(body.includes(pricingSource), `${name} must link ${pricingSource}`);
     // ...and never overclaims: each page says where the competitor fits better.
@@ -237,4 +237,71 @@ test("every comparison page renders an actionable free-start link from the Try S
   assert.match(app, /window\.history\.replaceState\(null, "", `\$\{window\.location\.pathname\}/, "closing the query entry must rewrite the URL without losing other query parameters");
   assert.match(app, /window\.history\.replaceState\(null, "", window\.location\.pathname \+ window\.location\.search\)/, "closing must clear the sticky #free-start hash without adding history noise");
   assert.match(app, /if \(window\.location\.hash === "#free-start"\) \{\s*\n\s*window\.history\.replaceState/, "the close path must only clear the hash when the comparison CTA entry is active");
+});
+
+test("every comparison leaf carries a pricing-check stamp within 60 days that matches sitemap lastmod", async () => {
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
+
+  const MONTHS = {
+    January: 0, February: 1, March: 2, April: 3, May: 4, June: 5,
+    July: 6, August: 7, September: 8, October: 9, November: 10, December: 11,
+  };
+  const MONTH = "(January|February|March|April|May|June|July|August|September|October|November|December)";
+  const CHECKED_IN = new RegExp(`checked in ${MONTH} (\\d{4})`, "g");
+  const AS_OF = new RegExp(`as of ${MONTH} (\\d{4})`, "gi");
+  const MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
+  const extractBlock = (startNeedle, endNeedles) => {
+    const start = worker.indexOf(startNeedle);
+    assert.ok(start >= 0, `${startNeedle} must exist`);
+    let end = worker.length;
+    for (const needle of endNeedles) {
+      const idx = worker.indexOf(needle, start + startNeedle.length);
+      if (idx >= 0 && idx < end) end = idx;
+    }
+    return worker.slice(start, end);
+  };
+  const escapeHtmlFn = extractBlock("function escapeHtml", ["\nfunction withVaryAccept"]);
+  const renderInlineHtmlFn = extractBlock("function renderInlineHtml", ["\nfunction jsonLdScript"]);
+  const markdownBodyToHtmlFn = extractBlock("function markdownBodyToHtml", ["\nfunction renderInlineHtml"]);
+  const { markdownBodyToHtml } = new Function(`"use strict";\n${escapeHtmlFn}\n${renderInlineHtmlFn}\n${markdownBodyToHtmlFn}\nreturn { markdownBodyToHtml };`)();
+
+  const registeredLeaves = [...worker.matchAll(/"(\/vs\/[^"]+)": \{/g)].map((match) => match[1]);
+  const leafPaths = VS_PATHS.filter((path) => path !== "/vs");
+  assert.deepEqual([...new Set(registeredLeaves)].sort(), [...leafPaths].sort(), "every registered /vs/<competitor> leaf must be in the freshness set");
+
+  const stampDate = (month, year) => Date.UTC(Number(year), MONTHS[month], 1);
+
+  for (const path of leafPaths) {
+    const entryStart = worker.indexOf(`"${path}": {`);
+    assert.ok(entryStart >= 0, `${path} must be a registered TRUST_PAGES entry`);
+    const nameMatch = worker.slice(entryStart, entryStart + 800).match(/markdown:\s*(VS_\w+_MARKDOWN)/);
+    assert.ok(nameMatch, `${path} must point at a VS_*_MARKDOWN constant`);
+    const markdown = extractBlock(`const ${nameMatch[1]} = \``, ["\n`;"]);
+    const html = markdownBodyToHtml(markdown);
+
+    const checked = [...html.matchAll(CHECKED_IN)];
+    assert.ok(checked.length >= 1, `${path} must render a "checked in <Month YYYY>" stamp`);
+    const [, checkedMonth, checkedYear] = checked[0];
+    for (const extra of checked.slice(1)) {
+      assert.equal(`${extra[1]} ${extra[2]}`, `${checkedMonth} ${checkedYear}`, `${path} must not mix checked-in months`);
+    }
+
+    const asOf = [...html.matchAll(AS_OF)];
+    assert.ok(asOf.length >= 1, `${path} must render an "as of <Month YYYY>" stamp`);
+    for (const match of asOf) {
+      assert.equal(`${match[1]} ${match[2]}`, `${checkedMonth} ${checkedYear}`, `${path} in-body "as of" stamp must match the pricing-note month`);
+    }
+
+    const ageMs = Date.now() - stampDate(checkedMonth, checkedYear);
+    assert.ok(ageMs >= 0, `${path} stamp ${checkedMonth} ${checkedYear} must not be in the future`);
+    assert.ok(ageMs <= MAX_AGE_MS, `${path} stamp ${checkedMonth} ${checkedYear} is older than 60 days`);
+
+    const loc = `https://siterep.net${path}`;
+    const lastmodMatch = sitemap.match(new RegExp(`<loc>${loc.replaceAll(".", "\\.")}</loc>\\s*<lastmod>(\\d{4})-(\\d{2})-\\d{2}</lastmod>`));
+    assert.ok(lastmodMatch, `${path} must have a sitemap lastmod`);
+    assert.equal(Number(lastmodMatch[1]), Number(checkedYear), `${path} sitemap lastmod year must match the stamp`);
+    assert.equal(Number(lastmodMatch[2]), MONTHS[checkedMonth] + 1, `${path} sitemap lastmod month must match the stamp`);
+  }
 });
