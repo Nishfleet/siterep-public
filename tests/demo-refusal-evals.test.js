@@ -433,7 +433,7 @@ test("pricing answers built from the dedicated pricing sources are flagged exact
 });
 
 test("answers from any other source are not treated as exact demo pricing quotes", () => {
-  const OTHER = { id: "demo-install", title: "Installing the widget", url: "https://siterep.net/#how-it-works", excerpt: "How do I install Site Rep?", content: "Question: How do I install Site Rep?\nAnswer: One script snippet." };
+  const OTHER = { id: "demo-install", title: "Installing the widget", url: "https://siterep.net/docs/install", excerpt: "How do I install Site Rep?", content: "Question: How do I install Site Rep?\nAnswer: One script snippet." };
   assert.equal(isExactDemoPricingAnswer({}), false);
   assert.equal(isExactDemoPricingAnswer(null), false);
   assert.equal(isExactDemoPricingAnswer({ sources: [] }), false);

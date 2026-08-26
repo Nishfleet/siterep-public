@@ -95,6 +95,9 @@ test("public demo bot keeps a dedicated install source for the suggested install
 
   assert.match(demoSources, /id: "demo-install"/);
   assert.match(demoSources, /How do I install Site Rep on my website\?/);
+  const installBlock = demoSources.match(/id: "demo-install"[\s\S]{0,300}?url: `([^`]+)`/);
+  assert.ok(installBlock, "demo-install source url not found");
+  assert.match(installBlock[1], /\/docs\/install/);
 });
 
 test("widget first impression is honest and visitor-voiced", async () => {
