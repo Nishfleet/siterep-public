@@ -39,7 +39,7 @@ test("the shared honesty evals all pass against the real demo sources", () => {
   // source as public chat, and the buy-next answer cites #how-it-works, whose
   // rendered text contains the answer's key nouns.
   assert.deepEqual(result.citations.misCited, [], "mis-cited answered questions");
-  assert.equal(result.citations.total, 9);
+  assert.equal(result.citations.total, 11);
   assert.equal(result.citations.passed, result.citations.total);
 });
 
@@ -78,6 +78,8 @@ test("answered questions cite the topically right source first", () => {
 test("plan-differentiator questions from the homepage are answered with a cited source", () => {
   const questions = [
     "Can I remove the Site Rep branding?",
+    "Can I hide the Site Rep logo?",
+    "Does Starter show Site Rep branding?",
     "What plan lets me remove branding?",
     "Can I use Site Rep on multiple client sites?",
     "What is the difference between Growth and Pro?",
@@ -87,7 +89,13 @@ test("plan-differentiator questions from the homepage are answered with a cited 
     assert.equal(result.unknown, false, `refused: ${question}`);
     assert.ok(result.sources.length > 0, `${question} returned no sources`);
     assert.equal(result.sources[0].id, "demo-plan-features", `${question} cited ${result.sources[0]?.id}, expected demo-plan-features`);
+    assert.match(result.sources[0].url, /^https:\/\/siterep\.net\/#public-pricing/);
   }
+  const removeBranding = answerFromSources("Can I remove the Site Rep branding?", DEMO_SOURCES);
+  assert.match(removeBranding.answer, /Growth/);
+  const starterBranding = answerFromSources("Does Starter show Site Rep branding?", DEMO_SOURCES);
+  assert.match(starterBranding.answer, /Starter/);
+  assert.match(starterBranding.answer, /branding/i);
 });
 
 const PUBLIC_DEMO_SUGGESTED_QUESTIONS = [
