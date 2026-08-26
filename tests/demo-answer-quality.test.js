@@ -129,6 +129,31 @@ test("public demo what-is source cites the product definition page, not how-it-w
   assert.match(buyer, /source-backed answers/);
 });
 
+test("public demo lead-capture source cites the product page that describes lead capture, not how-it-works", async () => {
+  const { PUBLIC_DEMO_SOURCES } = await import("../worker/demo-sources.js");
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+
+  const lead = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-lead-capture");
+  assert.ok(lead, "demo-lead-capture source missing");
+  assert.equal(lead.id, "demo-lead-capture");
+  assert.doesNotMatch(lead.url, /#how-it-works/);
+  assert.match(lead.url, /\/ai-website-chatbot-for-small-business/);
+
+  // Answer text and source id stay put. Only the citation target moves.
+  assert.match(lead.content, /What happens when a visitor leaves their email\?/);
+  assert.match(lead.content, /captures the visitor's question and contact details as a lead/);
+  assert.match(lead.content, /notifies your team/);
+  assert.match(lead.content, /suggested follow-up draft/);
+  assert.match(lead.content, /contacted, won, or lost/);
+
+  const buyerStart = worker.indexOf("const BUYER_INTENT_MARKDOWN = `");
+  assert.ok(buyerStart >= 0, "BUYER_INTENT_MARKDOWN not found");
+  const buyerEnd = worker.indexOf("\n`;", buyerStart);
+  const buyer = worker.slice(buyerStart, buyerEnd);
+  assert.match(buyer, /Captures lead details when a visitor needs human follow-up/);
+  assert.match(buyer, /private dashboard for leads, conversations, source gaps, and follow-up items/);
+});
+
 test("demo-pricing citation points at a page that contains the free-trial text", async () => {
   const { PUBLIC_DEMO_SOURCES } = await import("../worker/demo-sources.js");
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");

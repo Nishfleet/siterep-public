@@ -221,7 +221,7 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
   {
     id: "demo-lead-capture",
     title: "Lead capture",
-    url: `${PUBLIC_SITE_URL}/#how-it-works`,
+    url: `${PUBLIC_SITE_URL}/ai-website-chatbot-for-small-business`,
     content:
       "Question: What happens when a visitor leaves their email?\nAnswer: Site Rep captures the visitor's question and contact details as a lead, notifies your team, and keeps the full conversation in your private dashboard with a suggested follow-up draft. You can mark each lead contacted, won, or lost.",
   },
