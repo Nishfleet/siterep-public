@@ -55,10 +55,39 @@ test("live monitor asserts cited answers are honest and citations are unique", a
   assert.match(monitor, /function assertHonestCitedAnswer/);
   assert.match(monitor, /cited the same source more than once/);
   assert.match(monitor, /non-answer dressed as a cited answer/);
-  // Both cited probes (pricing + install demo question) go through the shared assertion.
+  // All cited probes (pricing, install, and trust demo questions) go through the shared assertion.
   assert.match(monitor, /assertHonestCitedAnswer\("pricing demo", data\)/);
   assert.match(monitor, /assertHonestCitedAnswer\("install demo", data\)/);
-  assert.match(monitor, /How do I install the Site Rep widget on my website\?/);
+  assert.match(monitor, /assertHonestCitedAnswer\("trust demo", data\)/);
+  assert.match(monitor, /How do I install it\?/);
+});
+
+test("live monitor covers every public demo CTA question", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+
+  const appMatch = app.match(/const\s+publicDemoQuestions\s*=\s*(\[[^\]]+\]);/);
+  assert.ok(appMatch, "publicDemoQuestions array not found in src/App.tsx");
+  const appQuestions = [...appMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  const workerMatch = worker.match(/PUBLIC_DEMO_WIDGET_SETTINGS\s*=.*?suggestedQuestions:\s*(\[[^\]]+\])/s);
+  assert.ok(workerMatch, "PUBLIC_DEMO_WIDGET_SETTINGS.suggestedQuestions not found in worker/index.js");
+  const workerQuestions = [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  // The homepage and the public demo bot must agree on the CTA list.
+  assert.deepStrictEqual(appQuestions, workerQuestions);
+
+  // Every public demo CTA must be exercised by at least one canary probe.
+  for (const question of appQuestions) {
+    assert.ok(
+      monitor.includes(question),
+      `public demo CTA "${question}" is missing from the live canary`,
+    );
+  }
+
+  // New chat probes get a response-time budget.
+  assert.match(monitor, /"widget trust chat": 9000/);
 });
 
 test("public demo bot keeps a dedicated install source for the suggested install question", async () => {

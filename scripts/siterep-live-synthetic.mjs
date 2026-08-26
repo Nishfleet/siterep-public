@@ -112,6 +112,7 @@ const responseBudgetsMs = Object.freeze({
   "widget install chat": 9000,
   "widget natural pricing chat": 9000,
   "widget refusal chat": 9000,
+  "widget trust chat": 9000,
 });
 const requiredSecurityHeaders = Object.freeze({
   "strict-transport-security": /max-age=/i,
@@ -546,7 +547,7 @@ if (!healthOnly) {
         body: JSON.stringify({
           botId: monitorBotId,
           publicKey: monitorPublicKey,
-          question: "What does Site Rep cost?",
+          question: "What does it cost?",
           sessionId: `synthetic-cited-${syntheticRunId}`,
         }),
       },
@@ -574,7 +575,7 @@ if (!healthOnly) {
         body: JSON.stringify({
           botId: monitorBotId,
           publicKey: monitorPublicKey,
-          question: "How do I install the Site Rep widget on my website?",
+          question: "How do I install it?",
           sessionId: `synthetic-install-${syntheticRunId}`,
         }),
       },
@@ -597,17 +598,15 @@ if (!healthOnly) {
         body: JSON.stringify({
           botId: monitorBotId,
           publicKey: monitorPublicKey,
-          question: "how much is the starter plan",
+          question: "What does it cost?",
           sessionId: `synthetic-natural-${syntheticRunId}`,
         }),
       },
       ({ body }) => {
         const data = parseJson(body);
-        // Natural buyer phrasing of a covered topic must never be refused —
-        // the 2026-06-12 audit caught the relevance gate refusing exactly this.
+        // The exact public demo CTA for pricing must get a real cited answer
+        // and the live quote must not be paraphrased into an amount.
         assertHonestCitedAnswer("natural pricing demo", data);
-        // The named-Starter answer is a live-checkout quote too — it must not
-        // be paraphrased into an amount without the plan name.
         assertQuoteNotParaphrased("natural pricing demo", data);
       },
     );
@@ -623,7 +622,7 @@ if (!healthOnly) {
         body: JSON.stringify({
           botId: monitorBotId,
           publicKey: monitorPublicKey,
-          question: "Can Site Rep file my taxes?",
+          question: "Can it file my taxes?",
           sessionId: `synthetic-refusal-${syntheticRunId}`,
         }),
       },
@@ -632,6 +631,28 @@ if (!healthOnly) {
         if (!data.answer || !data.conversation?.id) throw new Error("refusal chat did not return an answer and conversation");
         if (!data.unknown) throw new Error("unsupported demo question was not refused");
         if (Array.isArray(data.sources) && data.sources.length > 0) throw new Error("unsupported demo refusal returned citations");
+      },
+    );
+    await probe(
+      "widget trust chat",
+      "/api/public/chat",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...widgetHeaders,
+        },
+        body: JSON.stringify({
+          botId: monitorBotId,
+          publicKey: monitorPublicKey,
+          question: "What trust controls are confirmed?",
+          sessionId: `synthetic-trust-${syntheticRunId}`,
+        }),
+      },
+      ({ body }) => {
+        const data = parseJson(body);
+        // Public demo CTA: the trust question must get an honest cited answer.
+        assertHonestCitedAnswer("trust demo", data);
       },
     );
   } else {
