@@ -89,7 +89,13 @@ test("plan-differentiator questions from the homepage are answered with a cited 
     assert.equal(result.unknown, false, `refused: ${question}`);
     assert.ok(result.sources.length > 0, `${question} returned no sources`);
     assert.equal(result.sources[0].id, "demo-plan-features", `${question} cited ${result.sources[0]?.id}, expected demo-plan-features`);
+    assert.match(result.sources[0].url, /^https:\/\/siterep\.net\/#public-pricing/);
   }
+  const removeBranding = answerFromSources("Can I remove the Site Rep branding?", DEMO_SOURCES);
+  assert.match(removeBranding.answer, /Growth/);
+  const starterBranding = answerFromSources("Does Starter show Site Rep branding?", DEMO_SOURCES);
+  assert.match(starterBranding.answer, /Starter/);
+  assert.match(starterBranding.answer, /branding/i);
 });
 
 const PUBLIC_DEMO_SUGGESTED_QUESTIONS = [
