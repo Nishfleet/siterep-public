@@ -92,5 +92,12 @@ test("real SPA surfaces and file requests still reach the SPA fallback", async (
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
   assert.match(worker, /const SPA_SURFACE_PATHS = new Set\(\["\/", "\/signin", "\/admin"\]\)/, "/, /signin and /admin must stay served by the SPA");
-  assert.match(worker, /lastSegment\.includes\("\."\)/, "file requests must stay on the ASSETS path");
+  // The over-permissive `lastSegment.includes(".")` rule is gone, replaced by
+  // a precise file-extension allow-list plus a static-prefix allow-list so
+  // dot-in-path guesses (/foo.com, /pricing.pdf) hit the 404 gate instead of
+  // leaking through to the SPA shell.
+  assert.doesNotMatch(worker, /lastSegment\.includes\("\."\)/, "the over-permissive dot rule must be removed");
+  assert.match(worker, /const WORKER_FILE_EXTENSIONS = new Set\(/, "a precise file-extension allow-list must exist");
+  assert.match(worker, /const WORKER_STATIC_PREFIXES = \[?["']\/assets\/["'].*["']\/widget-["'].*["']\/icons\/["']/, "the static-prefix allow-list must cover /assets/, /widget- and /icons/");
+  assert.match(worker, /function isAssetsSpaFallback\(url, response\)/, "the ASSETS SPA-fallback detector must exist so allowed-extension guesses still 404");
 });
