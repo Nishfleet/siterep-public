@@ -53,7 +53,7 @@ export function starterPricingSource(answerText) {
   return {
     id: "demo-starter-pricing",
     title: "Starter pricing",
-    url: `${PUBLIC_SITE_URL}/#invitation`,
+    url: `${PUBLIC_SITE_URL}/#public-pricing`,
     excerpt: String(answerText || ""),
     content: `Question: What does Starter cost?\nAnswer: ${String(answerText || "")}`,
     sourceType: "manual",

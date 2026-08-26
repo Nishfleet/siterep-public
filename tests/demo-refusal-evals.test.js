@@ -255,7 +255,7 @@ test("named Starter price questions return the live localized tax-inclusive amou
   assert.deepEqual(failures, [], `exact-price path failed: ${failures.join(" | ")}`);
   const result = answerFromSources("What does Starter cost?", sources);
   assert.equal(result.sources[0].id, "demo-starter-pricing", "exact-price answer must cite the Starter pricing source");
-  assert.match(result.sources[0].url, /siterep\.net\/#invitation/);
+  assert.match(result.sources[0].url, /siterep\.net\/#public-pricing/);
 });
 
 test("unavailable live price falls back honestly instead of inventing an amount", () => {
