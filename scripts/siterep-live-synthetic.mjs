@@ -33,6 +33,12 @@ const monitorAdminKey = process.env.SITEREP_MONITOR_ADMIN_KEY || process.env.CIT
 const healthOnly = process.argv.includes("--health") || process.env.SITEREP_MONITOR_SCOPE === "health";
 const strictMode = process.argv.includes("--strict") || process.env.SITEREP_MONITOR_STRICT === "true";
 const requestTimeoutMs = Number(process.env.SITEREP_MONITOR_TIMEOUT_MS || 10000);
+// Canary pin: when set, chat probes send `x-siterep-canary: pin` so the worker
+// ships the extractive answer WITHOUT the paid model call — exercising the
+// full stack (validation, rate limit, retrieval, recording) on every hourly
+// run while burning zero LLM answers. One daily run leaves this unset to prove
+// the real model path end-to-end. See worker/index.js handleComposedPublicChat.
+const canaryPinHeader = process.env.SITEREP_CANARY_PIN === "1" ? { "x-siterep-canary": "pin" } : {};
 const expectedReleaseMarker = process.env.SITEREP_EXPECTED_RELEASE_MARKER || readWorkerReleaseMarker();
 const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || "2026-08-11";
 // The sitemap is a static asset; nothing recomputes lastmod at runtime. If a
@@ -522,6 +528,7 @@ if (!healthOnly) {
         headers: {
           "content-type": "application/json",
           ...widgetHeaders,
+          ...canaryPinHeader,
         },
         body: JSON.stringify({
           botId: monitorBotId,
@@ -543,6 +550,7 @@ if (!healthOnly) {
         headers: {
           "content-type": "application/json",
           ...widgetHeaders,
+          ...canaryPinHeader,
         },
         body: JSON.stringify({
           botId: monitorBotId,
@@ -571,6 +579,7 @@ if (!healthOnly) {
         headers: {
           "content-type": "application/json",
           ...widgetHeaders,
+          ...canaryPinHeader,
         },
         body: JSON.stringify({
           botId: monitorBotId,
@@ -594,6 +603,7 @@ if (!healthOnly) {
         headers: {
           "content-type": "application/json",
           ...widgetHeaders,
+          ...canaryPinHeader,
         },
         body: JSON.stringify({
           botId: monitorBotId,
@@ -618,6 +628,7 @@ if (!healthOnly) {
         headers: {
           "content-type": "application/json",
           ...widgetHeaders,
+          ...canaryPinHeader,
         },
         body: JSON.stringify({
           botId: monitorBotId,
@@ -672,6 +683,7 @@ const summary = {
     botId: monitorBotId,
     origin: monitorOrigin,
     source: process.env.SITEREP_MONITOR_BOT_ID || process.env.SITEREP_MONITOR_PUBLIC_KEY ? "env" : "public-demo-default",
+    canaryPin: process.env.SITEREP_CANARY_PIN === "1",
   },
   generatedAt: new Date().toISOString(),
   expectedReleaseMarker,

@@ -94,6 +94,22 @@ const SOURCE_SNAPSHOT_LIMIT = 3;
 const SOURCE_SNAPSHOT_MAX_BYTES = 4_000_000;
 const PUBLIC_RATE_LIMIT_WINDOW_MS = 60_000;
 const PUBLIC_RATE_LIMIT_MAX = 45;
+// The longest window any rate-limit bucket uses today. The in-memory prune
+// must keep every entry younger than this so per-bucket windows shorter than
+// the prune horizon (e.g. a 24h daily window for the demo bot) do not silently
+// drop entries that are still within their own bucket's window.
+const PUBLIC_RATE_LIMIT_MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
+// The public demo bot (site-rep-demo) powers the live marketing demo on
+// siterep.net and is exempt from the Starter response cap (PR #35). With the
+// cap gone, the only abuse brake on this PUBLIC endpoint is the per-visitor
+// rate limit. Tighten it for the demo bot specifically: 20 questions/min and
+// 200/day per visitor IP — generous for a human, painful for a script burning
+// Workers AI Neurons or scraping. Customer bots keep the 45/min window.
+// Daily window is a second bucket keyed on the same IP+origin, counted over
+// 24h. Fail-open: a rate-limit error must never lock out a real visitor.
+const PUBLIC_DEMO_CHAT_RATE_LIMIT_MAX = 20;
+const PUBLIC_DEMO_CHAT_DAILY_RATE_LIMIT_MAX = 200;
+const PUBLIC_DEMO_CHAT_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PUBLIC_LEAD_RATE_LIMIT_MAX = 10;
 const PUBLIC_AUTH_RATE_LIMIT_MAX = 10;
 const PUBLIC_INSTALL_RATE_LIMIT_MAX = 120;
@@ -2284,8 +2300,18 @@ async function handleComposedPublicChat(request, env) {
   // checkout/email fallback) are exact live-checkout quotes built one sentence
   // at a time; a compose rewrite drops the plan names, so they ship verbatim
   // and are never handed to the model.
+  //
+  // Canary pin path: the synthetic monitor sends `x-siterep-canary: pin` to
+  // exercise the full stack (validation, rate limit, retrieval, recording,
+  // response shaping) WITHOUT the paid model call — it ships the extractive
+  // answer verbatim, the same fallback used when compose is unavailable. This
+  // stops the monitor from burning real LLM answers on every hourly run while
+  // still proving "a visitor gets an answer". Skipping compose is a degradation
+  // (a non-rewritten answer), never a privilege, so the header needs no secret.
+  // One daily canary run omits the header to prove the real model path too.
+  const canaryPin = String(request.headers.get("x-siterep-canary") || "").trim().toLowerCase() === "pin";
   let precomputedAnswer = prep.answer;
-  if (!isExactDemoPricingAnswer(prep.answer) && prep.eligible && Array.isArray(prep.excerpts) && prep.excerpts.length) {
+  if (!canaryPin && !isExactDemoPricingAnswer(prep.answer) && prep.eligible && Array.isArray(prep.excerpts) && prep.excerpts.length) {
     const composed = await composeGroundedAnswer(env, String(body.question || ""), prep.excerpts, prep.recentTurns || []);
     if (composed.status === "composed") {
       precomputedAnswer = { ...precomputedAnswer, answer: composed.text, composed: true };
@@ -8050,7 +8076,7 @@ async function handleApi(request, response, url) {
       sendJson(response, publicError.status, { error: publicError.message });
       return;
     }
-    const rateLimit = await checkPublicRateLimit(body.botId, publicRateLimitScope(request, requestOrigin), "chat", PUBLIC_RATE_LIMIT_MAX);
+    const rateLimit = await enforcePublicChatRateLimit(body.botId, request, requestOrigin);
     if (rateLimit.limited) {
       await recordEventIfBot(body.botId, "blocked", "Public chat rate limited", "A widget origin hit the public question limit.", { origin: requestOrigin || "unknown" });
       sendJson(response, 429, {
@@ -8119,7 +8145,7 @@ async function handleApi(request, response, url) {
       sendJson(response, publicError.status, { error: publicError.message });
       return;
     }
-    const rateLimit = await checkPublicRateLimit(body.botId, publicRateLimitScope(request, requestOrigin), "chat", PUBLIC_RATE_LIMIT_MAX);
+    const rateLimit = await enforcePublicChatRateLimit(body.botId, request, requestOrigin);
     if (rateLimit.limited) {
       await recordEventIfBot(body.botId, "blocked", "Public chat rate limited", "A widget origin hit the public question limit.", { origin: requestOrigin || "unknown" });
       sendJson(response, 429, {
@@ -14307,8 +14333,9 @@ function buildEmbedPreflight(bot) {
     limitStatus,
     brandingRequired: limits.brandingLocked,
     rateLimit: {
-      maxQuestions: PUBLIC_RATE_LIMIT_MAX,
+      maxQuestions: isPublicDemoBotId(bot?.botId) ? PUBLIC_DEMO_CHAT_RATE_LIMIT_MAX : PUBLIC_RATE_LIMIT_MAX,
       windowSeconds: Math.round(PUBLIC_RATE_LIMIT_WINDOW_MS / 1000),
+      dailyQuestions: isPublicDemoBotId(bot?.botId) ? PUBLIC_DEMO_CHAT_DAILY_RATE_LIMIT_MAX : 0,
     },
   };
 }
@@ -14606,15 +14633,16 @@ async function checkPublicRateLimit(botId, origin, action = "chat", maxHits = PU
 }
 
 function checkMemoryRateLimit(botId, origin, action = "chat", maxHits = PUBLIC_RATE_LIMIT_MAX, options = {}) {
+  const windowMs = options.windowMs || PUBLIC_RATE_LIMIT_WINDOW_MS;
   const now = Date.now();
   pruneMemoryRateLimitBuckets(now);
   const key = rateLimitBucketKey(botId, origin, action);
-  const current = (publicChatHits.get(key) || []).filter((timestamp) => now - timestamp < PUBLIC_RATE_LIMIT_WINDOW_MS);
+  const current = (publicChatHits.get(key) || []).filter((timestamp) => now - timestamp < windowMs);
   if (current.length >= maxHits) {
     const oldest = current[0] || now;
     return {
       limited: true,
-      retryAfterSeconds: Math.max(1, Math.ceil((PUBLIC_RATE_LIMIT_WINDOW_MS - (now - oldest)) / 1000)),
+      retryAfterSeconds: Math.max(1, Math.ceil((windowMs - (now - oldest)) / 1000)),
     };
   }
   if (options.record === false) return { limited: false, retryAfterSeconds: 0 };
@@ -14624,9 +14652,34 @@ function checkMemoryRateLimit(botId, origin, action = "chat", maxHits = PUBLIC_R
   return { limited: false, retryAfterSeconds: 0 };
 }
 
+// Per-visitor chat rate limit for the public chat path. The demo bot gets a
+// tighter per-minute cap AND a 24h daily cap (it is cap-exempt, so the rate
+// limit is the only abuse brake on that public endpoint). Customer bots keep
+// the standard 45/min window. Fail-open: any thrown error resolves to
+// "not limited" so a guard glitch never locks out a real visitor.
+async function enforcePublicChatRateLimit(botId, request, origin) {
+  try {
+    const scope = publicRateLimitScope(request, origin);
+    if (isPublicDemoBotId(botId)) {
+      const daily = await checkPublicRateLimit(botId, scope, "chat-daily", PUBLIC_DEMO_CHAT_DAILY_RATE_LIMIT_MAX, {
+        windowMs: PUBLIC_DEMO_CHAT_DAILY_WINDOW_MS,
+      });
+      if (daily.limited) return daily;
+      return await checkPublicRateLimit(botId, scope, "chat", PUBLIC_DEMO_CHAT_RATE_LIMIT_MAX);
+    }
+    return await checkPublicRateLimit(botId, scope, "chat", PUBLIC_RATE_LIMIT_MAX);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "public_chat_rate_limit_failed", message: error instanceof Error ? error.message : String(error) }));
+    return { limited: false, retryAfterSeconds: 0 };
+  }
+}
+
 function pruneMemoryRateLimitBuckets(now = Date.now()) {
+  // Prune horizon is the longest window any bucket uses. Filtering by the
+  // 60s chat window here would silently delete entries still inside the 24h
+  // chat-daily bucket after a minute, breaking the demo-bot daily cap.
   for (const [key, timestamps] of publicChatHits.entries()) {
-    const recent = timestamps.filter((timestamp) => now - timestamp < PUBLIC_RATE_LIMIT_WINDOW_MS);
+    const recent = timestamps.filter((timestamp) => now - timestamp < PUBLIC_RATE_LIMIT_MAX_WINDOW_MS);
     if (recent.length) {
       publicChatHits.set(key, recent);
     } else {
@@ -14649,7 +14702,13 @@ function publicRateLimitScope(request, origin) {
   // Origin/Referer are attacker-controlled on non-browser clients; binding the
   // bucket to the connecting IP stops Origin rotation from minting fresh
   // rate-limit buckets (owner-inbox spam vector).
-  const ip = String(request?.headers?.["cf-connecting-ip"] || "").trim() || "noip";
+  // Read via .get() — bracket access on a Headers object silently returns
+  // undefined, which previously collapsed every visitor into one "noip" bucket
+  // (a global-per-origin limit, not the intended per-visitor limit).
+  const ip =
+    requestHeaderValue(request, "cf-connecting-ip") ||
+    String(requestHeaderValue(request, "x-forwarded-for") || "").split(",")[0].trim() ||
+    "noip";
   return `${origin || "unknown"}|ip:${ip}`;
 }
 
