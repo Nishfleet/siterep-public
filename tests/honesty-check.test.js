@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
 import { answerFromSources } from "../server/search.js";
-import { PUBLIC_DEMO_SOURCES } from "../worker/demo-sources.js";
+import { PUBLIC_DEMO_SOURCES, applyLiveDemoPricingAnswer } from "../worker/demo-sources.js";
 import { runHonestyEvals, runPricingAccuracyEval, PRICING_QUESTIONS, citationUrlSupportsAnswer } from "../worker/honesty-evals.js";
 
 // The demo source shape the Worker's publicDemoSources() feeds the evals with:
@@ -320,18 +320,42 @@ test("citationUrlSupportsAnswer fails closed when the fragment is unknown", () =
   assert.equal(citationUrlSupportsAnswer(unknownFragment), false);
 });
 
+test("starter-plan honesty citation uses the live #public-pricing source", () => {
+  const result = applyLiveDemoPricingAnswer(
+    "how much is the starter plan",
+    answerFromSources("how much is the starter plan", DEMO_SOURCES),
+    LIVE_PRICING_CATALOG,
+  );
+  assert.equal(result.unknown, false);
+  assert.equal(result.sources[0].id, "demo-starter-pricing");
+  assert.match(result.sources[0].url, /#public-pricing$/);
+  assert.equal(citationUrlSupportsAnswer(result.sources[0]), true);
+  assert.match(result.answer, /€9\.25/);
+});
+
+test("buy-next honesty citation points at #how-it-works and backs the answer", () => {
+  const result = answerFromSources("I want to buy this for my bakery website, what do I do next?", DEMO_SOURCES);
+  assert.equal(result.unknown, false);
+  assert.equal(result.sources[0].id, "demo-buy-next");
+  assert.match(result.sources[0].url, /#how-it-works$/);
+  assert.equal(citationUrlSupportsAnswer(result.sources[0]), true);
+});
+
+test("runHonestyEvals citations all pass against the live demo sources", () => {
+  const evals = runHonestyEvals(answerFromSources, DEMO_SOURCES, LIVE_PRICING_CATALOG);
+  assert.equal(evals.citations.total, 9);
+  assert.equal(evals.citations.passed, evals.citations.total, "every citation must be backed by its URL");
+  assert.deepEqual(evals.citations.misCited, []);
+});
+
 test("runHonestyEvals citation count drops when a cited source's URL lacks the answer text", () => {
-  // Baseline: the real demo sources already report passed < total because two
-  // citations point demo-get-started at #invitation, which lacks the
-  // checkout/pricing/setup nouns the answer recites.
   const baseline = runHonestyEvals(answerFromSources, DEMO_SOURCES);
-  assert.ok(baseline.citations.passed < baseline.citations.total, "baseline citations must already drop below total");
   assert.equal(baseline.citations.total, 9);
-  assert.equal(baseline.citations.passed, 7);
+  assert.equal(baseline.citations.passed, baseline.citations.total, "baseline citations must all pass");
 
   // Inject a wrong URL into demo-cancel-refund (point it at #invitation). The
   // cancellation answer's key nouns are not on the start form, so that
-  // citation now also fails and the passed count drops further.
+  // citation now fails and the passed count drops.
   const tampered = DEMO_SOURCES.map((source) =>
     source.id === "demo-cancel-refund" ? { ...source, url: "https://siterep.net/#invitation" } : source,
   );
