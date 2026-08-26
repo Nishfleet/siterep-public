@@ -350,11 +350,12 @@ const RELEASE_STATUS_STAGE = "production_hardening";
 // Deploy identity: the commit and UTC deploy time of the code actually
 // serving production. `npm run deploy:cloudflare` stamps these as wrangler
 // vars at deploy time; these constants are the checked-in fallback that
-// local dev and unstamped deploys report. The release freshness test in
-// tests/launch-readiness.test.js fails CI when these go stale, so refresh
-// both whenever the release identity changes.
-const RELEASE_STATUS_COMMIT = "84bd47dc1da37a70d2214b5acac29c3aa546c665";
-const RELEASE_STATUS_DEPLOYED_AT = "2026-08-21T21:31:37Z";
+// local dev and unstamped deploys report. Keep them aligned with the last
+// stamped production identity. tests/launch-readiness.test.js fails CI when
+// RELEASE_STATUS_DEPLOYED_AT is older than 60 days, and pins
+// RELEASE_STATUS_COMMIT to a 40-hex SHA.
+const RELEASE_STATUS_COMMIT = "6fee55fa3cf1b5b6a7ec9ca3dea0cb279c313f4f";
+const RELEASE_STATUS_DEPLOYED_AT = "2026-08-26T21:36:19Z";
 const TRUST_STATUS_MARKDOWN = `---
 title: Site Rep Trust and Data Handling
 description: Site Rep security, privacy, reliability, and what is not included today.
