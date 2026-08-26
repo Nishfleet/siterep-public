@@ -24,4 +24,3 @@ jobs:
     uses: Nishfleet/fleet-ops/.github/workflows/reusable-review-gate.yml@b7da3b8e717386a08a1188d3c2bf77d4af1c8810
     with:
       monthly-cap: "20"
-    secrets: inherit
