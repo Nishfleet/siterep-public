@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
+import { skipReasonIfPackageMissing } from "./optional-dev-package.js";
+
 // These privacy facts were verified true in code before publishing:
 // the widget uses no cookies/localStorage (sessionStorage only), and visitor
 // IPs are used transiently for rate-limiting and never persisted. Promoting
@@ -47,7 +49,7 @@ function extractTrustPageStyle(worker) {
   return renderFn.slice(styleStart, styleEnd + "</style>".length);
 }
 
-test("trust page list items wrap at 320px instead of overflowing the article", async () => {
+test("trust page list items wrap at 320px instead of overflowing the article", { skip: skipReasonIfPackageMissing("playwright") }, async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const style = extractTrustPageStyle(worker);
 
