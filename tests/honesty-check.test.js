@@ -343,14 +343,14 @@ test("buy-next honesty citation points at #how-it-works and backs the answer", (
 
 test("runHonestyEvals citations all pass against the live demo sources", () => {
   const evals = runHonestyEvals(answerFromSources, DEMO_SOURCES, LIVE_PRICING_CATALOG);
-  assert.equal(evals.citations.total, 9);
+  assert.equal(evals.citations.total, 11);
   assert.equal(evals.citations.passed, evals.citations.total, "every citation must be backed by its URL");
   assert.deepEqual(evals.citations.misCited, []);
 });
 
 test("runHonestyEvals citation count drops when a cited source's URL lacks the answer text", () => {
   const baseline = runHonestyEvals(answerFromSources, DEMO_SOURCES);
-  assert.equal(baseline.citations.total, 9);
+  assert.equal(baseline.citations.total, 11);
   assert.equal(baseline.citations.passed, baseline.citations.total, "baseline citations must all pass");
 
   // Inject a wrong URL into demo-cancel-refund (point it at #invitation). The
