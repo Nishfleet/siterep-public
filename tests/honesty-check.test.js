@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import { answerFromSources } from "../server/search.js";
 import { PUBLIC_DEMO_SOURCES } from "../worker/demo-sources.js";
-import { runHonestyEvals, runPricingAccuracyEval, PRICING_QUESTIONS } from "../worker/honesty-evals.js";
+import { runHonestyEvals, runPricingAccuracyEval, PRICING_QUESTIONS, citationUrlSupportsAnswer } from "../worker/honesty-evals.js";
 
 // The demo source shape the Worker's publicDemoSources() feeds the evals with:
 // retrieval only reads content/excerpt/title/url/id, so this mirrors it (same
@@ -280,4 +280,63 @@ test("/api/public/honesty-check response always includes the pricingAccuracy fie
   assert.match(fn, /pricingAccuracy: \{[\s\S]*?total: evals\.pricingAccuracy\.total,[\s\S]*?passed: evals\.pricingAccuracy\.passed,[\s\S]*?skipped: evals\.pricingAccuracy\.skipped/);
   // The catalog fetch is wrapped so a checkout outage never breaks the endpoint.
   assert.match(fn, /try \{[\s\S]*?pricingCatalog = await publicPricingCatalog\(env, request\)[\s\S]*?\} catch \{[\s\S]*?pricingCatalog = null/);
+});
+
+// --- Citation URL backing dimension --------------------------------------------
+// The citation dimension must drop (passed < total) when a cited source's URL
+// points at a homepage section whose rendered text does not contain the
+// answer's key nouns. This is the detector that makes wrong-page citations
+// (#61 free-trial->#invitation, #65 lead-capture->#how-it-works,
+// #67 starter-price->#invitation) report as failed instead of passed.
+
+test("citationUrlSupportsAnswer passes when the cited URL has no homepage fragment (standalone pages are out of scope)", () => {
+  // /terms and /docs/install are standalone pages, not homepage sections — the
+  // detector does not verify their rendered text, so they pass on id alone.
+  assert.equal(citationUrlSupportsAnswer({ url: "https://siterep.net/terms", content: "cancel refund subscription billing" }), true);
+  assert.equal(citationUrlSupportsAnswer({ url: "https://siterep.net/docs/install", content: "paste snippet script wordpress" }), true);
+});
+
+test("citationUrlSupportsAnswer passes when the cited section contains the answer's key nouns", () => {
+  // demo-plan-features cites #public-pricing, whose rendered text contains the
+  // plan names and feature nouns the answer recites.
+  const planFeatures = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-plan-features");
+  assert.equal(citationUrlSupportsAnswer(planFeatures), true);
+});
+
+test("citationUrlSupportsAnswer fails when the cited section lacks the answer's key nouns", () => {
+  // Point the cancellation source at #invitation (the start form). The start
+  // form's rendered text contains none of the cancel/refund/subscription/
+  // billing nouns the answer recites, so the citation is not backed.
+  const cancelRefund = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-cancel-refund");
+  const wrongUrl = { ...cancelRefund, url: "https://siterep.net/#invitation" };
+  assert.equal(citationUrlSupportsAnswer(wrongUrl), false);
+});
+
+test("citationUrlSupportsAnswer fails closed when the fragment is unknown", () => {
+  // A fragment that does not map to a known homepage section cannot be
+  // verified, so the citation fails rather than silently passing.
+  const cancelRefund = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-cancel-refund");
+  const unknownFragment = { ...cancelRefund, url: "https://siterep.net/#no-such-section" };
+  assert.equal(citationUrlSupportsAnswer(unknownFragment), false);
+});
+
+test("runHonestyEvals citation count drops when a cited source's URL lacks the answer text", () => {
+  // Baseline: the real demo sources already report passed < total because two
+  // citations point demo-get-started at #invitation, which lacks the
+  // checkout/pricing/setup nouns the answer recites.
+  const baseline = runHonestyEvals(answerFromSources, DEMO_SOURCES);
+  assert.ok(baseline.citations.passed < baseline.citations.total, "baseline citations must already drop below total");
+  assert.equal(baseline.citations.total, 9);
+  assert.equal(baseline.citations.passed, 7);
+
+  // Inject a wrong URL into demo-cancel-refund (point it at #invitation). The
+  // cancellation answer's key nouns are not on the start form, so that
+  // citation now also fails and the passed count drops further.
+  const tampered = DEMO_SOURCES.map((source) =>
+    source.id === "demo-cancel-refund" ? { ...source, url: "https://siterep.net/#invitation" } : source,
+  );
+  const result = runHonestyEvals(answerFromSources, tampered);
+  assert.ok(result.citations.passed < result.citations.total, "passed must drop below total after the wrong-URL injection");
+  assert.ok(result.citations.passed < baseline.citations.passed, "passed must drop below the baseline after the injection");
+  assert.ok(result.citations.misCited.includes("ok how do i cancel if i dont like it"), "the cancel citation must be flagged as mis-cited");
 });
