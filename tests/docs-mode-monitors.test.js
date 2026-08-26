@@ -16,6 +16,22 @@ test("launch monitor checks Docs Mode install docs and citation metadata", async
   assert.match(monitor, /widget config abuse protection should be present and off by default/);
 });
 
+test("live canary fails when public honesty-check reports allPass false or citation misses", async () => {
+  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+
+  assert.match(monitor, /"honesty check": 3000/);
+  assert.match(monitor, /await probe\("honesty check", "\/api\/public\/honesty-check"/);
+  assert.match(monitor, /citations\.passed === citations\.total/);
+  assert.match(monitor, /data\.allPass/);
+
+  // monitor:live and monitor:launch must count this failure. --health must not
+  // be the only path: the probe sits inside `if (!healthOnly)`.
+  const healthOnlyBlock = monitor.indexOf("if (!healthOnly)");
+  const probe = monitor.indexOf('await probe("honesty check"');
+  assert.ok(healthOnlyBlock !== -1, "health-only skip is missing");
+  assert.ok(probe > healthOnlyBlock, "honesty-check probe must run outside --health");
+});
+
 test("launch monitor pins per-page sitemap lastmod floors so stale deploys fail loudly", async () => {
   const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
