@@ -102,13 +102,63 @@ test("short comparison guesses redirect to the real dated pages instead of soft-
 test("comparison page html titles come from front matter instead of duplicate route labels", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  assert.match(worker, /String\(page\.pathname \|\| ""\)\.startsWith\("\/vs\/"\) \? markdownFrontmatterValue\(page\.markdown, "title"\) : ""/);
   assert.match(worker, /const title = frontmatterTitle \|\| `Site Rep \| \$\{page\.title\}`/);
   assert.match(worker, /function markdownFrontmatterValue\(markdown, key\)/);
   assert.match(worker, /title: Site Rep vs CustomGPT \| Cited answers, local pricing/);
   assert.match(worker, /title: Site Rep vs Intercom Fin \| Local-price website answers/);
   assert.match(worker, /title: Site Rep vs WebSpeaker \| Local checkout, cited answers/);
   assert.match(worker, /title: Site Rep vs Chatling \| Local checkout, cited answers/);
+  assert.match(worker, /title: Site Rep comparisons \| Honest, dated alternatives/);
+  assert.match(worker, /"\/vs": \{\s*\n\s*title: "Site Rep comparisons",/, "the hub H1 source stays Site Rep comparisons");
+
+  const extractBlock = (startNeedle, endNeedles) => {
+    const start = worker.indexOf(startNeedle);
+    assert.ok(start >= 0, `${startNeedle} must exist`);
+    let end = worker.length;
+    for (const needle of endNeedles) {
+      const idx = worker.indexOf(needle, start + startNeedle.length);
+      if (idx >= 0 && idx < end) end = idx;
+    }
+    return worker.slice(start, end);
+  };
+  const prefix = "const VS_HUB_MARKDOWN = `";
+  const hubRaw = extractBlock(prefix, ["\n`;"]);
+  const hubMarkdown = hubRaw.slice(prefix.length);
+  const frontmatterTitle = hubMarkdown.match(/^title:\s*(.+)$/m)?.[1]?.trim();
+  assert.equal(frontmatterTitle, "Site Rep comparisons | Honest, dated alternatives");
+
+  const escapeHtmlFn = extractBlock("function escapeHtml", ["\nfunction withVaryAccept"]);
+  const renderInlineHtmlFn = extractBlock("function renderInlineHtml", ["\nfunction jsonLdScript"]);
+  const markdownBodyToHtmlFn = extractBlock("function markdownBodyToHtml", ["\nfunction renderInlineHtml"]);
+  const markdownFrontmatterValueFn = extractBlock("function markdownFrontmatterValue", ["\nfunction markdownBodyToHtml"]);
+  const jsonLdScriptFn = extractBlock("function jsonLdScript", ["\nfunction slugify"]);
+  const renderTrustPageHtmlFn = extractBlock("function renderTrustPageHtml", ["\nfunction canonicalUrlFor"]);
+  const { renderTrustPageHtml } = new Function(
+    `"use strict";
+const COMPARISON_LINKS = [{ path: "/vs", label: "All comparisons" }];
+const SOCIAL_IMAGE_URL = "https://siterep.net/social-card.png";
+const BUYER_INTENT_PATH = "/ai-website-chatbot-for-small-business";
+function canonicalUrlFor(pathname) { return "https://siterep.net" + pathname; }
+function docsInstallBody(markdown) { return markdown; }
+${escapeHtmlFn}
+${renderInlineHtmlFn}
+${markdownBodyToHtmlFn}
+${markdownFrontmatterValueFn}
+${jsonLdScriptFn}
+${renderTrustPageHtmlFn}
+return { renderTrustPageHtml };`,
+  )();
+
+  const html = renderTrustPageHtml({
+    pathname: "/vs",
+    title: "Site Rep comparisons",
+    description: "Honest, dated comparisons of Site Rep with CustomGPT, Chatbase, Intercom Fin, Tidio Lyro, WebSpeaker, and Chatling.",
+    markdown: hubMarkdown,
+  });
+  const renderedTitle = html.match(/<title>([^<]*)<\/title>/)?.[1];
+  assert.notEqual(renderedTitle, "Site Rep | Site Rep comparisons");
+  assert.equal(renderedTitle, frontmatterTitle);
+  assert.match(html, /<h1>Site Rep comparisons<\/h1>/);
 });
 
 test("comparison pages stay honest: dated claims, sourced pricing, and a fit caveat", async () => {
