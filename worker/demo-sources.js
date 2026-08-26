@@ -201,4 +201,11 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
     content:
       "Question: Can I remove the Site Rep branding?\nAnswer: Yes. The Starter plan keeps Site Rep branding on. Growth, Pro, and Agency let you remove Site Rep branding.\n\nQuestion: What plan lets me remove branding?\nAnswer: Growth, Pro, and Agency let you remove Site Rep branding. Starter keeps branding on.\n\nQuestion: Can I use Site Rep on multiple client sites?\nAnswer: Agency is for up to 50 client sites with the highest limits. Starter is for one site, Growth for up to three sites, and Pro for up to ten sites.\n\nQuestion: What is the difference between Growth and Pro?\nAnswer: Growth gives you 2 bots, 1000 pages, and 4000 source-backed replies each month. Pro gives you 5 bots, 5000 pages, and 12000 replies for busier sites. Both can remove Site Rep branding.\n\nQuestion: What are the plan limits?\nAnswer: Starter includes 1 bot, 100 pages, and 1000 source-backed replies. Growth adds 2 bots, 1000 pages, and 4000 replies plus removable branding. Pro adds 5 bots, 5000 pages, and 12000 replies. Agency adds 20 bots, 10000 pages, and 40000 replies for up to 50 client sites.",
   },
+  {
+    id: "demo-trust-controls",
+    title: "Confirmed trust controls",
+    url: `${PUBLIC_SITE_URL}/trust`,
+    content:
+      "Question: What trust controls are confirmed?\nAnswer: Confirmed trust controls are grounded answers, no tracking cookies, visitor data minimization, disclosed sub-processors, access control, and paid unlock. Answers are grounded only in the website sources you approve, with a citation to the exact page under every answer. The public demo and widget place no tracking cookies. Visitor data minimization keeps visitor IP addresses in memory for rate limiting only and never writes them to conversations or leads. Sub-processors are Cloudflare, Dodo Payments, and the configured email provider. Access control keeps admin routes behind server-side admin access. Paid unlock happens only after server-verified payment.",
+  },
 ]);
