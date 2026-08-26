@@ -1458,7 +1458,8 @@ function renderTrustPageHtml(page) {
   // every other trust page renders its markdown body unchanged.
   const body = page.pathname === "/docs/install" ? docsInstallBody(page.markdown) : markdownBodyToHtml(page.markdown);
   const canonicalUrl = canonicalUrlFor(page.pathname || "/");
-  const frontmatterTitle = String(page.pathname || "").startsWith("/vs/") ? markdownFrontmatterValue(page.markdown, "title") : "";
+  const pathname = String(page.pathname || "");
+  const frontmatterTitle = pathname === "/vs" || pathname.startsWith("/vs/") ? markdownFrontmatterValue(page.markdown, "title") : "";
   const title = frontmatterTitle || `Site Rep | ${page.title}`;
   const comparisonFooter = COMPARISON_LINKS.map((link) => `<a href="${link.path}">${escapeHtml(link.label)}</a>`).join(" · ");
   return `<!doctype html>
