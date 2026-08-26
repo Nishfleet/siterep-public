@@ -1278,6 +1278,17 @@ export default {
       }
 
       const response = await env.ASSETS.fetch(request);
+      // ASSETS is configured with not_found_handling: "single-page-application",
+      // so any missing file falls back to the homepage shell (200 text/html).
+      // A dot-in-path URL whose last segment looks like a file (allowed
+      // extension) but is not a real bundled asset would otherwise leak as a
+      // soft-200 thin-duplicate page — e.g. /pricing.pdf, /robots.json,
+      // /foo.test.png. Detect that SPA fallback (200 + text/html for a non-html
+      // file request) and convert it to a real 404 so guesses do not get
+      // indexed. Real files keep their original content type and status.
+      if (isAssetsSpaFallback(url, response)) {
+        return notFoundResponse(request);
+      }
       return withVaryAccept(response);
     } catch (error) {
       const fallback = new ApiResponse();
@@ -1350,14 +1361,51 @@ function highIntentAliasFor(url) {
 // (handled above), a guessed alias (handled above), or unknown (404).
 const SPA_SURFACE_PATHS = new Set(["/", "/signin", "/admin"]);
 
+// Precise file-detection rule. The previous "any dot in the last path
+// segment" check was over-permissive: any path token with a dot (e.g.
+// /foo.com, /pricing.pdf, /competitors.com) was routed to ASSETS, where the
+// single-page-application not-found fallback served the homepage shell with
+// HTTP 200 — leaking infinite thin-duplicate pages to search engines. Only
+// requests whose last segment carries a real static-file extension, or that
+// live under a known static prefix, reach ASSETS; everything else hits the
+// 404 gate above.
+const WORKER_FILE_EXTENSIONS = new Set([
+  "svg", "png", "jpg", "jpeg", "webp", "ico", "gif", "css", "js", "mjs",
+  "map", "json", "xml", "txt", "pdf", "webmanifest", "wasm", "html", "htm",
+]);
+const WORKER_STATIC_PREFIXES = ["/assets/", "/widget-", "/icons/"];
+
 function isSpaSurfaceRequest(url) {
   const pathname = url.pathname.replace(/\/+$/, "") || "/";
   if (SPA_SURFACE_PATHS.has(pathname)) return true;
+  if (WORKER_STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
   const lastSegment = pathname.split("/").filter(Boolean).pop() || "";
-  // File requests (/assets/*, /favicon.svg, /robots.txt, /llms.txt, ...) stay
-  // on the ASSETS path so real files are served and missing files keep the
-  // ASSETS 404 behavior.
-  return lastSegment.includes(".");
+  const dotIndex = lastSegment.lastIndexOf(".");
+  if (dotIndex < 0) return false;
+  const ext = lastSegment.slice(dotIndex + 1).toLowerCase();
+  return WORKER_FILE_EXTENSIONS.has(ext);
+}
+
+// ASSETS serves the homepage shell (200 text/html) for any missing file
+// because of not_found_handling: "single-page-application". A request for a
+// non-html file that comes back as text/html is that fallback, not a real
+// asset — /pricing.pdf, /robots.json, /foo.test.png all have allowed
+// extensions but no real bundled file, so without this check they would
+// leak as soft-200 thin-duplicate pages. SPA surfaces and static prefixes
+// legitimately serve the shell, and real .html files are text/html by
+// design, so those are excluded.
+function isAssetsSpaFallback(url, response) {
+  if (response.status !== 200) return false;
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("text/html")) return false;
+  const pathname = url.pathname.replace(/\/+$/, "") || "/";
+  if (SPA_SURFACE_PATHS.has(pathname)) return false;
+  if (WORKER_STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return false;
+  const lastSegment = pathname.split("/").filter(Boolean).pop() || "";
+  const dotIndex = lastSegment.lastIndexOf(".");
+  if (dotIndex < 0) return false;
+  const ext = lastSegment.slice(dotIndex + 1).toLowerCase();
+  return ext !== "html" && ext !== "htm";
 }
 
 function notFoundResponse(request) {
