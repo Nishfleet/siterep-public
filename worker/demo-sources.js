@@ -148,7 +148,7 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
   {
     id: "demo-pricing",
     title: "Pricing",
-    url: `${PUBLIC_SITE_URL}/#invitation`,
+    url: `${PUBLIC_SITE_URL}/`,
     content:
       "Question: How much does Site Rep cost?\nAnswer: Checkout shows the exact Site Rep total in your local currency, tax included, before you pay. Starter includes 1 bot, 100 pages, and 1,000 source-backed replies each month; Growth, Pro, and Agency add higher limits. If the live local total is not available for a plan, Site Rep asks you to email hello@siterep.net so the total can be confirmed before payment.\n\nQuestion: Is there a free trial?\nAnswer: Site Rep has a no-card Free start with 50 source-backed answers. When those answers are used up, the rep keeps capturing visitor emails, and you can upgrade from live checkout pricing to switch answering back on. There are no contracts — every paid plan is month to month and you can cancel anytime before the next renewal. If you see a billing error after signing up, email hello@siterep.net and we will make it right.",
   },

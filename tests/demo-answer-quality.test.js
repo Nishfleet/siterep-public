@@ -129,6 +129,29 @@ test("public demo what-is source cites the product definition page, not how-it-w
   assert.match(buyer, /source-backed answers/);
 });
 
+test("demo-pricing citation points at a page that contains the free-trial text", async () => {
+  const { PUBLIC_DEMO_SOURCES } = await import("../worker/demo-sources.js");
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+
+  const pricing = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-pricing");
+  assert.ok(pricing, "demo-pricing source missing");
+  assert.doesNotMatch(pricing.url, /#invitation/);
+
+  const cited = new URL(pricing.url);
+  assert.equal(cited.origin, "https://siterep.net");
+  const hash = cited.hash.replace(/^#/, "");
+  let surface = app;
+  if (hash) {
+    const section = app.match(new RegExp(`<section[^>]*\\bid="${hash}"[\\s\\S]*?</section>`));
+    assert.ok(section, `cited section #${hash} is missing from the homepage`);
+    surface = section[0];
+  } else {
+    assert.equal(cited.pathname, "/");
+  }
+  assert.match(surface, /50 source-backed answers/);
+  assert.match(surface, /no card/i);
+});
+
 test("widget first impression is honest and visitor-voiced", async () => {
   const widget = await readFile(new URL("../public/widget.js", import.meta.url), "utf8");
 
