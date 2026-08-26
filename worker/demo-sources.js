@@ -162,7 +162,7 @@ export const PUBLIC_DEMO_SOURCES = Object.freeze([
   {
     id: "demo-install",
     title: "Installing the widget",
-    url: `${PUBLIC_SITE_URL}/#how-it-works`,
+    url: `${PUBLIC_SITE_URL}/docs/install`,
     content:
       "Question: How do I install Site Rep on my website?\nAnswer: After your site is scanned, you copy one small script snippet and paste it into your site before the closing body tag. On WordPress use a header-footer or custom-HTML block, on Wix use Settings then Custom Code, on Squarespace use Settings, Advanced, Code Injection, and on Shopify edit the theme.liquid layout. The dashboard confirms when the widget is live on your domain.",
   },
