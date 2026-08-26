@@ -343,8 +343,8 @@ const TRUST_STATUS_UPDATED_AT = "2026-08-11";
 // derive it from this constant. Hardcoding a second copy (e.g. as a fallback
 // in the monitor script) silently desynchronizes the canary when the worker
 // moves to a new milestone; tests/launch-readiness.test.js pins this contract.
-const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-06-19";
-const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-06-19";
+const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-08-26";
+const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-08-26";
 const RELEASE_STATUS_BRANCH = "main";
 const RELEASE_STATUS_STAGE = "production_hardening";
 // Deploy identity: the commit and UTC deploy time of the code actually
