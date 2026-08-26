@@ -23,6 +23,7 @@ export const SHOULD_ANSWER = [
   "What plan lets me remove branding?",
   "Can I use Site Rep on multiple client sites?",
   "What is the difference between Growth and Pro?",
+  "What trust controls are confirmed?",
 ];
 
 // Off-topic or adjacent-but-unsupported — the bot must refuse rather than
@@ -47,6 +48,7 @@ export const CITATION_EXPECTATIONS = [
   ["What plan lets me remove branding?", ["demo-plan-features"]],
   ["Can I use Site Rep on multiple client sites?", ["demo-plan-features"]],
   ["What is the difference between Growth and Pro?", ["demo-plan-features"]],
+  ["What trust controls are confirmed?", ["demo-trust-controls"]],
 ];
 
 // Run every eval against the provided sources using the given retrieval fn
