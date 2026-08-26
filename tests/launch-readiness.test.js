@@ -26,6 +26,14 @@ function readReleaseMarkerConstants(worker) {
   return { markerDateString: dateMatch[1], marker: markerMatch[1] };
 }
 
+function readDeployIdentityConstants(worker) {
+  const commitMatch = worker.match(/const RELEASE_STATUS_COMMIT = "([0-9a-f]+)";/);
+  const deployedAtMatch = worker.match(/const RELEASE_STATUS_DEPLOYED_AT = "([^"]+)";/);
+  assert.ok(commitMatch, "worker/index.js must define RELEASE_STATUS_COMMIT");
+  assert.ok(deployedAtMatch, "worker/index.js must define RELEASE_STATUS_DEPLOYED_AT");
+  return { commit: commitMatch[1], deployedAt: deployedAtMatch[1] };
+}
+
 test("release status marker is no older than 60 days", async () => {
   const workerPath = new URL("../worker/index.js", import.meta.url);
   const worker = await readFile(workerPath, "utf8");
@@ -71,4 +79,41 @@ test("RELEASE_STATUS_MARKER is the single source of truth", async () => {
       `a second hardcoded copy of the release marker must not exist in ${path.pathname}`,
     );
   }
+});
+
+test("RELEASE_STATUS_DEPLOYED_AT is a valid UTC timestamp not older than 60 days", async () => {
+  const workerPath = new URL("../worker/index.js", import.meta.url);
+  const worker = await readFile(workerPath, "utf8");
+  const { deployedAt } = readDeployIdentityConstants(worker);
+
+  assert.match(
+    deployedAt,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+    `RELEASE_STATUS_DEPLOYED_AT ${JSON.stringify(deployedAt)} must be YYYY-MM-DDTHH:MM:SSZ`,
+  );
+
+  const deployedAtMs = Date.parse(deployedAt);
+  assert.ok(
+    Number.isFinite(deployedAtMs),
+    `RELEASE_STATUS_DEPLOYED_AT ${JSON.stringify(deployedAt)} must parse as a valid UTC timestamp`,
+  );
+
+  const ageMs = Date.now() - deployedAtMs;
+  assert.ok(ageMs >= 0, `RELEASE_STATUS_DEPLOYED_AT ${deployedAt} must not be in the future`);
+  assert.ok(
+    ageMs <= MAX_AGE_MS,
+    `RELEASE_STATUS_DEPLOYED_AT ${deployedAt} is older than 60 days; refresh the checked-in fallback to the last stamped production identity`,
+  );
+});
+
+test("RELEASE_STATUS_COMMIT is a 40-hex git SHA", async () => {
+  const workerPath = new URL("../worker/index.js", import.meta.url);
+  const worker = await readFile(workerPath, "utf8");
+  const { commit } = readDeployIdentityConstants(worker);
+
+  assert.match(
+    commit,
+    /^[0-9a-f]{40}$/,
+    `RELEASE_STATUS_COMMIT ${JSON.stringify(commit)} must be a 40-character lowercase hex git SHA`,
+  );
 });
