@@ -101,6 +101,7 @@ const responseBudgetsMs = Object.freeze({
   "vs chatling": 3000,
   "trust status": 3000,
   "release status": 3000,
+  "honesty check": 3000,
   "funnel event collection": 3000,
   "funnel instrumentation bundle": 5000,
   llms: 3000,
@@ -435,6 +436,23 @@ if (!healthOnly) {
     // "no real customer has ever paid" to buyers doing diligence.
     if (Array.isArray(data.productionProofRequired) || Array.isArray(data.notLaunchProof)) {
       throw new Error("release status leaks internal launch-gate checklists");
+    }
+  });
+
+  // Public honesty check: the live demo must answer and cite from real
+  // sources, and refuse unsupported questions. allPass is derived from the
+  // same shared evals the page and the trust material use, so a citation
+  // regression on the live demo now fails the canary the same way it fails
+  // the public endpoint.
+  await probe("honesty check", "/api/public/honesty-check", {}, ({ body }) => {
+    const data = parseJson(body);
+    if (data.product !== "Site Rep") throw new Error("honesty-check payload was not for Site Rep");
+    const citations = data.citations;
+    const citationsOk = citations.passed === citations.total;
+    if (!data.allPass || !citationsOk) {
+      throw new Error(
+        `honesty check failed: allPass=${data.allPass}, citations ${citations.passed}/${citations.total}`,
+      );
     }
   });
 
