@@ -1,0 +1,31 @@
+name: Auto-enqueue
+
+# Thin caller for the declarative merge-queue arm. Fires on PR ready-for-review
+# / reopen and on check_suite completion, re-arming green fleet PRs that the
+# open-time arm missed. The queue logic lives in fleet-ops, pinned by SHA.
+#
+# This is the event-driven half of the auto-enqueue standard (Nish, 2026-08-25):
+# green PRs enter the merge queue automatically, no orchestrator hand needed.
+# The weekly standards sweep in fleet-ops is the catch-all backstop. See
+# docs/new-repo-bootstrap.md in fleet-ops.
+#
+# Exceptions honored: draft PRs, [no-merge] titles, the no-auto-merge label,
+# and fork PRs are never queued (enforced in the reusable workflow).
+
+on:
+  pull_request:
+    types: [ready_for_review, reopened]
+  check_suite:
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-enqueue:
+    uses: Nishfleet/fleet-ops/.github/workflows/reusable-auto-enqueue.yml@b7da3b8e717386a08a1188d3c2bf77d4af1c8810
+    with:
+      fleet-only: false
+    secrets:
+      AUTO_REVERT_PAT: ${{ secrets.AUTO_REVERT_PAT }}
