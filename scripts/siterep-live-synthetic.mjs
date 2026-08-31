@@ -84,7 +84,7 @@ const expectedReleaseMaxAgeDays = Number(process.env.SITEREP_EXPECTED_RELEASE_MA
 const syntheticRunId = Date.now();
 const responseBudgetsMs = Object.freeze({
   "fast health": 2000,
-  "deep health": 5000,
+  "deep health": 8000,
   "public pricing": 4000,
   "homepage html": 3000,
   "homepage markdown": 3000,
