@@ -34,7 +34,12 @@ jobs:
         npm test
         npm run build
         npm run smoke:public-layout
+        # Hermetic: route-mocks the whole /api/public/** surface; keeps the
+        # Docs Mode install-flow gate from breaking while CI stays green.
         npm run smoke:widget-host
+        # Wrangler version comes from the committed lockfile (4.120.0 pinned in
+        # devDependencies), not npx's mutable cache: pulling the moving latest
+        # tag broke every CI run repo-wide on 2026-08-11 (upstream publish E404).
         npm run cf:check
       scan-secrets: false
       timeout-minutes: 5
