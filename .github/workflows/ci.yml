@@ -21,6 +21,10 @@ concurrency:
 
 jobs:
   verify:
+    # Observed verify duration on ubuntu-latest is ~1 minute with a warm npm
+    # cache, ~5 cold (run 32687009700, 2026-08-24: 61s end-to-end). 5 minutes
+    # keeps the ~2-3x ratio against a cold-cache run while bounding the stall
+    # class this repo hit before (queue-watchdog incident).
     uses: Nishfleet/fleet-ops/.github/workflows/reusable-pr-checks.yml@main
     with:
       node-version: "24"
