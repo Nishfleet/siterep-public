@@ -34,4 +34,3 @@ jobs:
         npm run cf:check
       scan-secrets: false
       timeout-minutes: 5
-    secrets: inherit
