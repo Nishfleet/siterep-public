@@ -56,3 +56,4 @@ scripts, and the wrangler dry-run on every pull request.
   and live MCP surface as plain text for agents and crawlers.
 - [public/robots.txt](public/robots.txt) and [public/sitemap.xml](public/sitemap.xml)
   — crawl surface for the live site.
+# Mon Sep  7 09:07:55 PM IST 2026
