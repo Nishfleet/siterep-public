@@ -14,7 +14,10 @@ name: Auto-merge arm
 # Arms with AUTO_REVERT_PAT, not GITHUB_TOKEN: a merge performed under
 # GITHUB_TOKEN would not trigger push workflows on main (deploy verification,
 # auto-revert), silently disarming the safety net. If the PAT is missing the
-# run fails LOUD and the PR waits for a human — the correct fallback.
+# run exits 0 with a notice: the PR's own opener already armed it
+# (worker/openers call `gh pr merge --auto --squash`), so failing loud here
+# would paint every PR red over a non-blocker (fleet-ops#1081). A human can
+# always arm or merge via the green button.
 
 on:
   pull_request:
@@ -41,7 +44,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::AUTO_REVERT_PAT is not configured — auto-merge not armed; this PR waits for a human"
-            exit 1
+            echo "::notice::AUTO_REVERT_PAT is not configured — auto-merge not armed by this check; the PR's opener arms it, or a human uses the green button"
+            exit 0
           fi
           gh pr merge "$PR" --auto --squash --repo "${{ github.repository }}"
