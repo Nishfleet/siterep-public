@@ -30,6 +30,8 @@ jobs:
       node-version: "24"
       install-command: npm ci
       verify-command: |
+        # No-glue regrowth gate (#109): zero helper scripts.
+        test -z "$(git ls-files scripts bin tools ops .specify "*.sh")"
         npx playwright install chromium
         npm test
         npm run build
