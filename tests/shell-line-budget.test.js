@@ -1,8 +1,9 @@
-// Shell-line ratchet, ported from the retired .semgrep/shell-line-count.py
-// helper into the runner this repo already uses (`npm test` -> node --test).
+// Shell-line ratchet, ported from the retired .semgrep Python count helper
+// into the runner this repo already uses (`npm test` -> node --test).
 // One test, no helper files: the counting logic lives here because the
 // orchestrator ratchet is a check, and the #109 series moves checks into the
-// existing test dir.
+// existing test dir. The retired helper filename is intentionally not
+// reproduced here so this repo keeps zero references to it.
 //
 // Definition (unchanged from the Python original):
 //   1. Every *.sh / *.bash / *.bats file anywhere in the repo (excluding
