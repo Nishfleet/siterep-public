@@ -63,9 +63,9 @@ test("launch monitor pins per-page sitemap lastmod floors so stale deploys fail 
 
 test("widget host smoke covers docs render, hotkey, citations, lead linkage, mobile, and overlays", async () => {
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const smoke = await readFile(new URL("../scripts/siterep-widget-host-smoke.mjs", import.meta.url), "utf8");
+  const smoke = await readFile(new URL("./siterep-widget-host-smoke.mjs", import.meta.url), "utf8");
 
-  assert.equal(pkg.scripts["smoke:widget-host"], "node scripts/siterep-widget-host-smoke.mjs");
+  assert.equal(pkg.scripts["smoke:widget-host"], "node tests/siterep-widget-host-smoke.mjs");
   assert.match(smoke, /Example Docs/);
   assert.match(smoke, /host-overlay/);
   assert.match(smoke, /access-control-allow-origin/);
