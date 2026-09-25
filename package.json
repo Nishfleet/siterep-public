@@ -18,7 +18,6 @@
     "monitor:live": "node scripts/siterep-live-synthetic.mjs",
     "monitor:local": "SITEREP_MONITOR_BASE_URL=http://127.0.0.1:8787 SITEREP_MONITOR_ORIGIN=https://siterep.net node scripts/siterep-live-synthetic.mjs",
     "monitor:launch": "node scripts/siterep-live-synthetic.mjs --strict",
-    "growth:gsc": "node scripts/siterep-search-console.mjs",
     "deploy:cloudflare": "npm run build && wrangler deploy --var SITEREP_RELEASE_COMMIT:$(git rev-parse HEAD) --var SITEREP_RELEASE_DEPLOYED_AT:$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   },
   "dependencies": {
