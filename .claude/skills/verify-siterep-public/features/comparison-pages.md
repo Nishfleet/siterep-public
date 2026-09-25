@@ -35,7 +35,7 @@ signup surface).
   `Compare Site Rep with`.
 - `public/sitemap.xml` advertises every `/vs/*` URL with a `lastmod` at or after
   the pinned floor (see `defaultSitemapLastmodFloors` in
-  `scripts/siterep-live-synthetic.mjs`).
+  `tests/siterep-live-synthetic.mjs`).
 - `npm run monitor:local` `vs hub`, `vs customgpt`, `vs chatbase`,
   `vs intercom-fin`, `vs tidio-lyro`, `vs webspeaker`, `vs chatling` probes all
   `ok:true`, and the `sitemap` probe confirms every pinned URL is present with a

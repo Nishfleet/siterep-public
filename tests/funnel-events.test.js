@@ -271,7 +271,7 @@ test("public site fires all twelve funnel events from public surfaces", async ()
 });
 
 test("live synthetic monitor pins the public funnel delivery contract on the live bundle", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
   // The scout re-files on 2026-08-09 and 2026-08-10 ("closed twin still missing
   // on the live bundle") searched the deployed JS for third-party analytics
   // tokens and missed the first-party allow-listed beacon. The monitor must pin

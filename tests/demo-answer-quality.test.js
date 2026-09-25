@@ -38,7 +38,7 @@ test("demo pricing answers are never handed to the compose model", async () => {
 });
 
 test("live monitor asserts the pricing quote keeps all four named plans verbatim", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   assert.match(monitor, /function assertQuoteNotParaphrased/);
   assert.match(monitor, /function assertPricingQuotesNamedPlans/);
@@ -49,7 +49,7 @@ test("live monitor asserts the pricing quote keeps all four named plans verbatim
 });
 
 test("live monitor asserts cited answers are honest and citations are unique", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   assert.match(monitor, /import \{ isNonAnswerText \} from "\.\.\/worker\/compose\.js"/);
   assert.match(monitor, /function assertHonestCitedAnswer/);
@@ -65,7 +65,7 @@ test("live monitor asserts cited answers are honest and citations are unique", a
 test("live monitor covers every public demo CTA question", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   const appMatch = app.match(/const\s+publicDemoQuestions\s*=\s*(\[[^\]]+\]);/);
   assert.ok(appMatch, "publicDemoQuestions array not found in src/App.tsx");

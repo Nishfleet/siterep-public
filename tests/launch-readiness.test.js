@@ -68,7 +68,7 @@ test("RELEASE_STATUS_MARKER is the single source of truth", async () => {
     `RELEASE_STATUS_MARKER must be hardcoded exactly once in worker/index.js (found ${workerOccurrences})`,
   );
 
-  const scriptPath = new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url);
+  const scriptPath = new URL("./siterep-live-synthetic.mjs", import.meta.url);
   const workflowPath = new URL("../.github/workflows/live-canary.yml", import.meta.url);
 
   for (const path of [scriptPath, workflowPath]) {

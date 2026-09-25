@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
 test("launch monitor checks Docs Mode install docs and citation metadata", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   assert.match(monitor, /"docs install": 3000/);
   assert.match(monitor, /"vs hub": 3000/);
@@ -17,7 +17,7 @@ test("launch monitor checks Docs Mode install docs and citation metadata", async
 });
 
 test("live canary fails when public honesty-check reports allPass false or citation misses", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   assert.match(monitor, /"honesty check": 3000/);
   assert.match(monitor, /await probe\("honesty check", "\/api\/public\/honesty-check"/);
@@ -33,7 +33,7 @@ test("live canary fails when public honesty-check reports allPass false or citat
 });
 
 test("launch monitor pins per-page sitemap lastmod floors so stale deploys fail loudly", async () => {
-  const monitor = await readFile(new URL("../scripts/siterep-live-synthetic.mjs", import.meta.url), "utf8");
+  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
   // The sitemap probe must exist and run against /sitemap.xml.
   assert.match(monitor, /await probe\("sitemap", "\/sitemap\.xml"/);

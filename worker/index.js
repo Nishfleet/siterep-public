@@ -339,7 +339,7 @@ Site Rep does not currently include SOC 2, GDPR, HIPAA, zero-retention, or no-tr
 const TRUST_STATUS_UPDATED_AT = "2026-08-11";
 // Release marker is a stable milestone name (RELEASE_STATUS_MARKER). It is the
 // single source of truth for the live canary's marker expectation: both
-// scripts/siterep-live-synthetic.mjs and .github/workflows/live-canary.yml
+// tests/siterep-live-synthetic.mjs and .github/workflows/live-canary.yml
 // derive it from this constant. Hardcoding a second copy (e.g. as a fallback
 // in the monitor script) silently desynchronizes the canary when the worker
 // moves to a new milestone; tests/launch-readiness.test.js pins this contract.
