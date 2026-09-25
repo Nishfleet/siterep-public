@@ -17,8 +17,9 @@
 #   Only shell-bearing locations: .github/workflows/** (run: | blocks) and
 #   **/*.sh / **/*.bash / **/*.bats (standalone shell files anywhere, including
 #   scripts/). A no-extension shell script dropped in scripts/ is not scanned
-#   here, but the .semgrep/shell-line-budget ratchet counts it (shebang-detected)
-#   and forces a baseline bump, so the gate still holds. Node/Python/PHP app
+#   here; scripts/ is gated by the #109 zero-scripts CI check, and the
+#   shell-line ratchet now lives in tests/shell-line-budget.test.js (run by
+#   `npm test`). Node/Python/PHP app
 #   code is NOT scanned, so JS retry counters or setInterval loops in app code
 #   are not flagged — the ban is on hand-built SHELL orchestration, not
 #   application logic.
