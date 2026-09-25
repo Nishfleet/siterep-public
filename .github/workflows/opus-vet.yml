@@ -14,4 +14,5 @@ jobs:
       id-token: write
     with:
       close_fleet_work: true
-    secrets: inherit
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
