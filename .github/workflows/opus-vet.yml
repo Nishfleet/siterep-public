@@ -1,0 +1,18 @@
+# Trigger stub. The vet and sizer live once in Nishfleet/fleet-ops.
+name: opus-vet
+on:
+  issues:
+    types: [labeled]
+jobs:
+  vet:
+    if: contains(fromJSON('["needs-orchestrator","needs-nish-decision","needs-split"]'), github.event.label.name)
+    uses: Nishfleet/fleet-ops/.github/workflows/opus-vet.yml@main
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+      id-token: write
+    with:
+      close_fleet_work: true
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

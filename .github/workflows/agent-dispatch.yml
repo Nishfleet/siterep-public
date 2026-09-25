@@ -1,0 +1,30 @@
+# Trigger stub. The dispatch logic lives once in Nishfleet/fleet-ops; a
+# workflow only fires on its own repo's events, so the triggers stay here.
+# opus-vet dispatches this file by name with issue=<N>.
+name: agent-dispatch
+on:
+  issues:
+    types: [labeled, closed]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Issue number to dispatch, overrides the sweep and its claim-PR append'
+        required: false
+        type: string
+  pull_request_target:
+    types: [dequeued, auto_merge_disabled]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  schedule:
+    - cron: '17 */6 * * *'
+jobs:
+  dispatch:
+    uses: Nishfleet/fleet-ops/.github/workflows/agent-dispatch.yml@main
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+    with:
+      issue: ${{ inputs.issue }}
+      agent_mode: ${{ vars.AGENT_MODE }}
