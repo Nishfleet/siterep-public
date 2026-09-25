@@ -124,7 +124,7 @@ curl -fsS http://127.0.0.1:8787/ | grep -c 'Site Rep'
 
 ## DRIVE
 
-The repo ships a canonical end-to-end drive: `scripts/siterep-live-synthetic.mjs`,
+The repo ships a canonical end-to-end drive: `tests/siterep-live-synthetic.mjs`,
 the same script the live monitor runs against `siterep.net`. Pointed at the local
 Worker it exercises every public path — health, pricing, homepage (HTML +
 markdown), legal pages, trust/honesty, docs install, comparison pages, release
@@ -192,7 +192,7 @@ nothing about a real user:
 - The `x-citerep-admin-key` header against `/api/health/deep` (unlocks owner-side
   counts; the public drive never sends it).
 - `/api/funnel/stats` and `/api/mcp/stats` (admin-gated owner reads).
-- `scripts/siterep-live-synthetic.mjs --strict` (production launch mode; demands
+- `tests/siterep-live-synthetic.mjs --strict` (production launch mode; demands
   live Dodo preview pricing and fresh deploy identity that local `cf:dev` does
   not have).
 
