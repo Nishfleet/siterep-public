@@ -1,0 +1,20 @@
+# Calls the fleet-ops grader (fleet-ops#8621). Grades pull requests opened
+# by nishfleet-worker[bot]; every other pull request reports success.
+# Ruleset context is the name GitHub reports: `opus-review / opus-review`.
+name: opus-review
+on:
+  pull_request:
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  opus-review:
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    uses: Nishfleet/fleet-ops/.github/workflows/opus-review.yml@main
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
