@@ -14,6 +14,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    uses: Nishfleet/fleet-ops/.github/workflows/opus-review.yml@f4fb1c75acaf4332eb345112c89f669a71217fbe
+    uses: Nishfleet/fleet-ops/.github/workflows/opus-review.yml@0e4c6b890cb082c6aed132068e7427633c8b253e
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
