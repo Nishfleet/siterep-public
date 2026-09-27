@@ -1,6 +1,6 @@
-# Calls the fleet-ops grader (fleet-ops#8621). Grades pull requests opened
+# Calls the fleet-ops grader (fleet-ops#8655). Grades pull requests opened
 # by nishfleet-worker[bot]; every other pull request reports success.
-# Ruleset context is the name GitHub reports: `opus-review / opus-review`.
+# Ruleset context is the name GitHub reports: `opus-review / grade`.
 name: opus-review
 on:
   pull_request:
