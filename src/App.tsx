@@ -60,6 +60,9 @@ import {
   toDateInputValue,
   trainingStatusLabel,
 } from "./format-labels";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 type Source = {
   id: string;
@@ -4635,9 +4638,9 @@ function App() {
             Sign in
           </a>
         ) : null}
-        <button className="ghost-button" onClick={() => (showLockedAdminSurface ? focusAdminAccess() : showSignInSurface ? focusCustomerAccess() : openCheckout())}>
+        <Button className="ghost-button" onClick={() => (showLockedAdminSurface ? focusAdminAccess() : showSignInSurface ? focusCustomerAccess() : openCheckout())}>
           {showLockedAdminSurface ? "Unlock" : showSignInSurface ? "Open dashboard" : showOperatorSurface ? "Get Site Rep" : "Start setup"}
-        </button>
+        </Button>
       </header>
 
       <section className={`hero ${showOperatorSurface ? "" : "mystery-hero"} ${showPublicMarketingSurface ? "public-hero" : ""}`} id="top">
@@ -4664,30 +4667,30 @@ function App() {
           )}
           <div className="hero-actions">
             {showLockedAdminSurface ? (
-              <button className="primary-button" onClick={focusAdminAccess}>
+              <Button className="primary-button" onClick={focusAdminAccess}>
                 Continue <ArrowRight size={18} />
-              </button>
+              </Button>
             ) : showOperatorSurface ? (
-              <button className="primary-button" onClick={() => openCheckout()}>
+              <Button className="primary-button" onClick={() => openCheckout()}>
                 Get Site Rep <ArrowRight size={18} />
-              </button>
+              </Button>
             ) : showSignInSurface ? (
-              <button className="primary-button" type="button" onClick={focusCustomerAccess}>
+              <Button className="primary-button" type="button" onClick={focusCustomerAccess}>
                 Open dashboard <ArrowRight size={18} />
-              </button>
+              </Button>
             ) : (
-              <button className="primary-button" type="button" onClick={() => setFreeStartOpen(true)}>
+              <Button className="primary-button" type="button" onClick={() => setFreeStartOpen(true)}>
                 Start free — no card <ArrowRight size={18} />
-              </button>
+              </Button>
             )}
             {showLockedAdminSurface ? null : showOperatorSurface ? (
               <a className="secondary-button" href="#demo">
                 Try the demo
               </a>
             ) : (
-              <button className="secondary-button" type="button" onClick={focusPublicPricing}>
+              <Button className="secondary-button" type="button" onClick={focusPublicPricing}>
                 See plans
-              </button>
+              </Button>
             )}
           </div>
           {showSignInSurface || showLockedAdminSurface ? null : (
@@ -4706,7 +4709,7 @@ function App() {
           <aside className="access-card login signin-card" id="access" aria-label="Restricted access">
                 <strong>Restricted access</strong>
                 <form onSubmit={unlockAdmin}>
-              <input
+              <Input
                 id="admin-key"
                 value={adminKeyDraft}
                 onChange={(event) => setAdminKeyDraft(event.target.value)}
@@ -4715,7 +4718,7 @@ function App() {
                 aria-label="Access key"
                 data-autofocus="true"
               />
-              <button type="submit">{hasValidAdminSession ? "Refresh session" : "Continue"}</button>
+              <Button type="submit">{hasValidAdminSession ? "Refresh session" : "Continue"}</Button>
             </form>
             {accessNotice ? <p className={accessNotice.includes("wrong") || accessNotice.includes("failed") ? "field-error" : "field-notice"}>{accessNotice}</p> : null}
           </aside>
@@ -4740,14 +4743,14 @@ function App() {
               Your Site ID and dashboard access key are in the email titled “Your Site Rep dashboard access”.
             </p>
             <form onSubmit={loginAsCustomer}>
-              <input
+              <Input
                 id="workspace-id"
                 value={customerLogin.botId}
                 onChange={(event) => setCustomerLogin({ ...customerLogin, botId: event.target.value })}
                 placeholder="Site ID"
                 aria-label="Site ID"
               />
-              <input
+              <Input
                 id="workspace-access-key"
                 value={customerLogin.accessKey}
                 onChange={(event) => setCustomerLogin({ ...customerLogin, accessKey: event.target.value })}
@@ -4755,12 +4758,12 @@ function App() {
                 type="password"
                 aria-label="Dashboard access key"
               />
-              <button type="submit">Open dashboard</button>
+              <Button type="submit">Open dashboard</Button>
             </form>
             <form className="access-email-form" onSubmit={requestCustomerAccessEmail}>
               <strong>Email me a sign-in link</strong>
               <p className="access-hint">The one-use view link is sent only to the account email on file. Use the dashboard access key for changes.</p>
-              <input
+              <Input
                 value={customerAccessEmail.email}
                 onChange={(event) => setCustomerAccessEmail({ ...customerAccessEmail, email: event.target.value })}
                 placeholder="Account email"
@@ -4768,15 +4771,15 @@ function App() {
                 autoComplete="email"
                 aria-label="Account email for sign-in link"
               />
-              <input
+              <Input
                 value={customerAccessEmail.botId}
                 onChange={(event) => setCustomerAccessEmail({ ...customerAccessEmail, botId: event.target.value })}
                 placeholder="Site ID (optional)"
                 aria-label="Site ID for sign-in link"
               />
-              <button type="submit" disabled={customerAccessEmailBusy}>
+              <Button type="submit" disabled={customerAccessEmailBusy}>
                 {customerAccessEmailBusy ? "Sending" : "Send sign-in link"}
-              </button>
+              </Button>
             </form>
             {accessNotice ? <p className={accessNotice.includes("wrong") || accessNotice.includes("failed") ? "field-error" : "field-notice"}>{accessNotice}</p> : null}
           </aside>
@@ -4990,9 +4993,9 @@ function App() {
                 </>
               )}
             </div>
-            <button className="primary-button" type="button" onClick={() => openCheckout()}>
+            <Button className="primary-button" type="button" onClick={() => openCheckout()}>
               Upgrade plan <ArrowRight size={16} />
-            </button>
+            </Button>
           </div>
         ) : null}
         {overage?.billingActive && overage?.eligible ? (
@@ -5008,14 +5011,14 @@ function App() {
                   : ""}
               </span>
             </div>
-            <button
+            <Button
               className={overage.enabled ? "secondary-button" : "primary-button"}
               type="button"
               disabled={overageSaving}
               onClick={() => setOverageEnabled(!overage.enabled)}
             >
               {overageSaving ? "Saving" : overage.enabled ? "Turn off overage" : "Turn on overage"}
-            </button>
+            </Button>
           </div>
         ) : null}
         <div className="builder-grid">
@@ -5052,7 +5055,7 @@ function App() {
             </div>
             <div className="workspace-lanes">
               {setupJourneyCards.map((card) => (
-                <button className={card.ready ? "ready" : "next"} type="button" onClick={() => focusBuilderTarget(card.target)} key={card.title}>
+                <Button className={card.ready ? "ready" : "next"} type="button" onClick={() => focusBuilderTarget(card.target)} key={card.title}>
                   <span>{card.title}</span>
                   <strong>{card.status}</strong>
                   <small>{card.detail}</small>
@@ -5060,7 +5063,7 @@ function App() {
                     {card.action}
                     <ArrowRight size={13} />
                   </em>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -5075,17 +5078,17 @@ function App() {
                 <strong>{activationDoneCount}/{activationSteps.length}</strong>
                 <span>{activationDoneCount === activationSteps.length ? "First customer can install now." : `Next: ${nextActivationStep.label}`}</span>
               </div>
-              <button type="button" onClick={() => focusBuilderTarget(nextActivationStep.target)}>
+              <Button type="button" onClick={() => focusBuilderTarget(nextActivationStep.target)}>
                 Continue <ArrowRight size={15} />
-              </button>
+              </Button>
             </div>
             <div className="activation-steps">
               {activationSteps.map((step) => (
-                <button className={step.done ? "done" : ""} type="button" onClick={() => focusBuilderTarget(step.target)} key={step.label}>
+                <Button className={step.done ? "done" : ""} type="button" onClick={() => focusBuilderTarget(step.target)} key={step.label}>
                   <span>{step.done ? <Check size={15} /> : <AlertTriangle size={15} />}</span>
                   <strong>{step.label}</strong>
                   <small>{step.detail}</small>
-                </button>
+                </Button>
               ))}
             </div>
             <div className={`blocker-strip ${launchBlockers.length ? "warn" : "ready"}`}>
@@ -5115,17 +5118,17 @@ function App() {
                     : `Next receipt item: ${nextFirstCustomerProofStep.label}`}
                 </span>
               </div>
-              <button type="button" onClick={() => focusBuilderTarget(nextFirstCustomerProofStep.target)}>
+              <Button type="button" onClick={() => focusBuilderTarget(nextFirstCustomerProofStep.target)}>
                 Open receipt item <ArrowRight size={15} />
-              </button>
+              </Button>
             </div>
             <div className="first-proof-grid">
               {firstCustomerProofSteps.map((step) => (
-                <button className={step.done ? "done" : ""} type="button" onClick={() => focusBuilderTarget(step.target)} key={step.label}>
+                <Button className={step.done ? "done" : ""} type="button" onClick={() => focusBuilderTarget(step.target)} key={step.label}>
                   <span>{step.done ? <Check size={14} /> : <AlertTriangle size={14} />}</span>
                   <strong>{step.label}</strong>
                   <small>{step.detail}</small>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -5283,15 +5286,15 @@ function App() {
                 <div className="access-actions">
                   {isCustomerMode ? (
                     <>
-                      <button type="button" onClick={returnToAdminMode}>Admin mode</button>
-                      <button type="button" onClick={clearCustomerAccess}>Clear customer login</button>
+                      <Button type="button" onClick={returnToAdminMode}>Admin mode</Button>
+                      <Button type="button" onClick={clearCustomerAccess}>Clear customer login</Button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => setAccessRole("customer")} disabled={!customerAccess.accessKey && !hasValidCustomerSession}>
+                      <Button type="button" onClick={() => setAccessRole("customer")} disabled={!customerAccess.accessKey && !hasValidCustomerSession}>
                         Customer mode
-                      </button>
-                      {adminKey || hasValidAdminSession ? <button type="button" onClick={lockAdmin}>Lock admin</button> : null}
+                      </Button>
+                      {adminKey || hasValidAdminSession ? <Button type="button" onClick={lockAdmin}>Lock admin</Button> : null}
                     </>
                   )}
                 </div>
@@ -5299,7 +5302,7 @@ function App() {
               {!isCustomerMode ? (
                 <form className="access-card login" onSubmit={unlockAdmin} hidden={!adminEntryRequested && signInRequested}>
                   <strong>Restricted access</strong>
-                  <input
+                  <Input
                     id="admin-key"
                     value={adminKeyDraft}
                     onChange={(event) => setAdminKeyDraft(event.target.value)}
@@ -5307,7 +5310,7 @@ function App() {
                     type="password"
                     aria-label="Access key"
                   />
-                  <button type="submit">{adminKey || hasValidAdminSession ? "Refresh session" : "Continue"}</button>
+                  <Button type="submit">{adminKey || hasValidAdminSession ? "Refresh session" : "Continue"}</Button>
                 </form>
               ) : null}
               <form className="access-card login" onSubmit={loginAsCustomer}>
@@ -5315,14 +5318,14 @@ function App() {
                 <p className="access-hint">
                   Your Site ID and dashboard access key are in the email titled “Your Site Rep dashboard access”.
                 </p>
-                <input
+                <Input
                   id="workspace-id"
                   value={customerLogin.botId}
                   onChange={(event) => setCustomerLogin({ ...customerLogin, botId: event.target.value })}
                   placeholder="Site ID"
                   aria-label="Site ID"
                 />
-                <input
+                <Input
                   id="workspace-access-key"
                   value={customerLogin.accessKey}
                   onChange={(event) => setCustomerLogin({ ...customerLogin, accessKey: event.target.value })}
@@ -5330,12 +5333,12 @@ function App() {
                   type="password"
                   aria-label="Dashboard access key"
                 />
-                <button type="submit">Open dashboard</button>
+                <Button type="submit">Open dashboard</Button>
               </form>
               <form className="access-card login access-email-form" onSubmit={requestCustomerAccessEmail}>
                 <strong>Email me a sign-in link</strong>
                 <p className="access-hint">The one-use view link is sent only to the account email on file. Use the dashboard access key for changes.</p>
-                <input
+                <Input
                   value={customerAccessEmail.email}
                   onChange={(event) => setCustomerAccessEmail({ ...customerAccessEmail, email: event.target.value })}
                   placeholder="Account email"
@@ -5343,15 +5346,15 @@ function App() {
                   autoComplete="email"
                   aria-label="Account email for sign-in link"
                 />
-                <input
+                <Input
                   value={customerAccessEmail.botId}
                   onChange={(event) => setCustomerAccessEmail({ ...customerAccessEmail, botId: event.target.value })}
                   placeholder="Site ID (optional)"
                   aria-label="Site ID for sign-in link"
                 />
-                <button type="submit" disabled={customerAccessEmailBusy}>
+                <Button type="submit" disabled={customerAccessEmailBusy}>
                   {customerAccessEmailBusy ? "Sending" : "Send sign-in link"}
-                </button>
+                </Button>
               </form>
             </div>
             {accessNotice ? <p className={accessNotice.includes("wrong") || accessNotice.includes("failed") ? "field-error" : "field-notice"}>{accessNotice}</p> : null}
@@ -5409,16 +5412,16 @@ function App() {
                     </span>
                   </div>
                   <div className="status-actions">
-                    <button type="button" onClick={() => updateBotStatus("live")} disabled={lifecycleStatus === "live" || activePublishBlockers.length > 0}>
+                    <Button type="button" onClick={() => updateBotStatus("live")} disabled={lifecycleStatus === "live" || activePublishBlockers.length > 0}>
                       {isCustomerMode ? "Publish widget" : "Publish live"}
-                    </button>
-                    <button type="button" onClick={() => updateBotStatus("paused")} disabled={lifecycleStatus === "paused"}>
+                    </Button>
+                    <Button type="button" onClick={() => updateBotStatus("paused")} disabled={lifecycleStatus === "paused"}>
                       {isCustomerMode ? "Pause widget" : "Pause"}
-                    </button>
+                    </Button>
                     {!isCustomerMode ? (
-                      <button type="button" onClick={() => updateBotStatus("draft")} disabled={lifecycleStatus === "draft"}>
+                      <Button type="button" onClick={() => updateBotStatus("draft")} disabled={lifecycleStatus === "draft"}>
                         Draft
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                   {activePublishBlockers.length > 0 && lifecycleStatus !== "live" ? (
@@ -5439,17 +5442,17 @@ function App() {
                       <span>{firstCustomerProofDoneCount}/{firstCustomerProofSteps.length} verified before this is ready for visitors.</span>
                     </div>
                     <div className="customer-proof-actions">
-                      <button type="button" onClick={() => focusBuilderTarget(nextFirstCustomerProofStep.target)}>
+                      <Button type="button" onClick={() => focusBuilderTarget(nextFirstCustomerProofStep.target)}>
                         {nextFirstCustomerProofStep.done ? "Review receipt" : "Next receipt"}
-                      </button>
-                      <button type="button" onClick={() => copyLaunchAsset("customer-dashboard-receipt", launchPacketCopy)}>
+                      </Button>
+                      <Button type="button" onClick={() => copyLaunchAsset("customer-dashboard-receipt", launchPacketCopy)}>
                         {assetCopyId === "customer-dashboard-receipt" ? <CopyCheck size={13} /> : <Clipboard size={13} />}
                         {assetCopyId === "customer-dashboard-receipt" ? "Copied" : "Copy setup summary"}
-                      </button>
-                      <button type="button" onClick={() => downloadExport(`/api/customer-receipt?botId=${encodeURIComponent(botId)}`, "siterep-customer-receipt.json")}>
+                      </Button>
+                      <Button type="button" onClick={() => downloadExport(`/api/customer-receipt?botId=${encodeURIComponent(botId)}`, "siterep-customer-receipt.json")}>
                         <Download size={13} />
                         Export receipt
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <div className="customer-proof-list">
@@ -5467,30 +5470,30 @@ function App() {
                     <strong>Customer handoff</strong>
                     <span>Send this to the customer so they can open only this bot.</span>
                     <code>{maskKey(ownerAccessKey)}</code>
-                    <button type="button" onClick={copyCustomerAccess}>
+                    <Button type="button" onClick={copyCustomerAccess}>
                       {ownerAccessCopyState === "copied" ? <CopyCheck size={14} /> : <Clipboard size={14} />}
                       {ownerAccessCopyState === "copied" ? "Copied access" : "Copy customer access"}
-                    </button>
+                    </Button>
                     {ownerAccessCopyState === "failed" ? <small>Copy failed. Select the key manually.</small> : null}
                   </div>
                 ) : null}
                 {!isCustomerMode ? (
                   <>
                     <div className="clone-row">
-                      <input
+                      <Input
                         value={cloneLabel}
                         onChange={(event) => setCloneLabel(event.target.value)}
                         placeholder="Clone label"
                         aria-label="Clone bot label"
                       />
-                      <button type="button" onClick={cloneCurrentBot}>
+                      <Button type="button" onClick={cloneCurrentBot}>
                         Clone bot
-                      </button>
+                      </Button>
                     </div>
-                    <button className="secondary-action compact" type="button" onClick={resetMonthlyUsage}>
+                    <Button className="secondary-action compact" type="button" onClick={resetMonthlyUsage}>
                       <RotateCcw size={15} />
                       Reset monthly usage
-                    </button>
+                    </Button>
                   </>
                 ) : (
                   <div className="owner-access-card customer">
@@ -5502,19 +5505,19 @@ function App() {
 
               {!isCustomerMode ? <form className="customer-box" onSubmit={createCustomerBot}>
                 <strong>Create customer bot</strong>
-                <input
+                <Input
                   value={botCreate.label}
                   onChange={(event) => setBotCreate({ ...botCreate, label: event.target.value })}
                   placeholder="Customer / site name"
                   aria-label="New bot label"
                 />
-                <input
+                <Input
                   value={botCreate.siteUrl}
                   onChange={(event) => setBotCreate({ ...botCreate, siteUrl: event.target.value })}
                   placeholder="https://customer-site.com"
                   aria-label="New bot website"
                 />
-                <input
+                <Input
                   value={botCreate.ownerEmail}
                   onChange={(event) => setBotCreate({ ...botCreate, ownerEmail: event.target.value })}
 		                  placeholder="Account email"
@@ -5528,9 +5531,9 @@ function App() {
                     </option>
                   ))}
                 </select>
-                <button type="submit" disabled={botCreateBusy}>
+                <Button type="submit" disabled={botCreateBusy}>
                   {botCreateBusy ? "Creating bot" : "Create bot"}
-                </button>
+                </Button>
               </form> : null}
 
               {!isCustomerMode ? <div className="customer-box queue-box">
@@ -5547,12 +5550,12 @@ function App() {
                           <span>{request.email} · {request.plan} · {request.status}</span>
                         </div>
                         <div className="row-actions">
-                          <button type="button" onClick={() => approveSignupRequest(request.id)} disabled={request.status === "approved"}>
+                          <Button type="button" onClick={() => approveSignupRequest(request.id)} disabled={request.status === "approved"}>
                             Approve
-                          </button>
-                          <button type="button" onClick={() => markSignupRequest(request.id, "waitlist")} disabled={request.status === "waitlist"}>
+                          </Button>
+                          <Button type="button" onClick={() => markSignupRequest(request.id, "waitlist")} disabled={request.status === "waitlist"}>
                             Waitlist
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -5567,10 +5570,10 @@ function App() {
                   <strong>Private interest</strong>
                   <span>{interestLeads.length} saved</span>
                 </div>
-                <button className="export-link" type="button" onClick={refreshInterestLeads}>
+                <Button className="export-link" type="button" onClick={refreshInterestLeads}>
                   <RefreshCw size={14} />
                   Refresh
-                </button>
+                </Button>
                 {interestLeads.length > 0 ? (
                   <div className="request-list">
                     {interestLeads.slice(0, 6).map((lead) => (
@@ -5585,10 +5588,10 @@ function App() {
                 ) : (
                   <div className="empty-state">Interest emails stay hidden until admin unlock.</div>
                 )}
-	                <button className="export-link" type="button" onClick={() => downloadExport("/api/export/interest.csv", "siterep-interest.csv")}>
+	                <Button className="export-link" type="button" onClick={() => downloadExport("/api/export/interest.csv", "siterep-interest.csv")}>
 	                  <Download size={14} />
 	                  Export private CSV
-	                </button>
+	                </Button>
 	              </div> : null}
 	            </div>
 	            <div className="onboarding-checklist">
@@ -5615,9 +5618,9 @@ function App() {
                 <div className="account-billing-actions">
                   <em>{accountSummary.status}</em>
                   {accountSummary.portalAvailable ? (
-                    <button className="secondary-action compact" type="button" onClick={openBillingPortal}>
+                    <Button className="secondary-action compact" type="button" onClick={openBillingPortal}>
                       Open billing portal <ExternalLink size={14} />
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </div>
@@ -5749,19 +5752,19 @@ function App() {
                         <option value={provider.value} key={provider.value}>{provider.label}</option>
                       ))}
                     </select>
-                    <input
+                    <Input
                       value={nativeIntegrationDraft.label}
                       onChange={(event) => setNativeIntegrationDraft({ ...nativeIntegrationDraft, label: event.target.value })}
                       placeholder="Adapter label"
                       aria-label="Outbound adapter label"
                     />
-                    <input
+                    <Input
                       value={nativeIntegrationDraft.endpointUrl}
                       onChange={(event) => setNativeIntegrationDraft({ ...nativeIntegrationDraft, endpointUrl: event.target.value })}
                       placeholder="https://provider-endpoint.example/..."
                       aria-label="Outbound adapter endpoint URL"
                     />
-                    <input
+                    <Input
                       value={nativeIntegrationDraft.authToken}
                       onChange={(event) => setNativeIntegrationDraft({ ...nativeIntegrationDraft, authToken: event.target.value })}
                       placeholder="Token, optional"
@@ -5769,20 +5772,20 @@ function App() {
                     />
                     <div className="native-event-list" aria-label="Outbound adapter events">
                       {NATIVE_INTEGRATION_EVENTS.map((event) => (
-                        <button
+                        <Button
                           className={nativeIntegrationDraft.events.includes(event.value) ? "selected" : ""}
                           key={event.value}
                           onClick={() => toggleNativeIntegrationEvent(event.value)}
                           type="button"
                         >
                           {event.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
-                    <button className="secondary-action" onClick={saveNativeIntegration} disabled={integrationBusy} type="button">
+                    <Button className="secondary-action" onClick={saveNativeIntegration} disabled={integrationBusy} type="button">
                       <Send size={14} />
                       Save adapter
-                    </button>
+                    </Button>
                   </div>
                   {integrationNotice ? <p className="field-notice">{integrationNotice}</p> : null}
                   {integrationError ? <p className="field-error">{integrationError}</p> : null}
@@ -5795,12 +5798,12 @@ function App() {
                             <span>{nativeIntegrationLabel(target.provider)} · {target.enabled ? "enabled" : "paused"} · {target.events.join(", ")}</span>
                           </div>
                           <div className="row-actions">
-                            <button onClick={() => toggleNativeIntegrationTarget(target)} type="button">
+                            <Button onClick={() => toggleNativeIntegrationTarget(target)} type="button">
                               {target.enabled ? "Pause" : "Enable"}
-                            </button>
-                            <button onClick={() => removeNativeIntegrationTarget(target)} type="button">
+                            </Button>
+                            <Button onClick={() => removeNativeIntegrationTarget(target)} type="button">
                               <Trash2 size={13} />
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -5815,10 +5818,10 @@ function App() {
                     </div>
                   ))}
                 </div>
-                <button className="export-link" type="button" onClick={() => downloadExport(`/api/export/follow-up-queue.csv?botId=${encodeURIComponent(botId)}`, "siterep-follow-up-queue.csv")}>
+                <Button className="export-link" type="button" onClick={() => downloadExport(`/api/export/follow-up-queue.csv?botId=${encodeURIComponent(botId)}`, "siterep-follow-up-queue.csv")}>
                   <Download size={14} />
                   Export follow-up queue
-                </button>
+                </Button>
               </div>
             </div>
           </div> : null}
@@ -5984,10 +5987,10 @@ function App() {
                         <span>{activeAgentBrief.answerQaGaps.length} answer QA gap{activeAgentBrief.answerQaGaps.length === 1 ? "" : "s"}</span>
                       ) : null}
                     </div>
-                    <button className="export-link" type="button" onClick={() => downloadExport(activeAgentBrief.exports.agentBriefJson, "siterep-agent-brief.json")}>
+                    <Button className="export-link" type="button" onClick={() => downloadExport(activeAgentBrief.exports.agentBriefJson, "siterep-agent-brief.json")}>
                       <Download size={14} />
                       Export handoff brief
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 <div className="next-actions">
@@ -5999,10 +6002,10 @@ function App() {
                     </span>
                   ))}
                 </div>
-                <button className="export-link" type="button" onClick={() => downloadExport(`/api/export/report.json?botId=${encodeURIComponent(botId)}`, "citerep-report.json")}>
+                <Button className="export-link" type="button" onClick={() => downloadExport(`/api/export/report.json?botId=${encodeURIComponent(botId)}`, "citerep-report.json")}>
                   <Download size={14} />
                   Export report
-                </button>
+                </Button>
               </>
             ) : (
               <div className="empty-state">Ask a question to generate the first profit report.</div>
@@ -6026,10 +6029,10 @@ function App() {
                       : `${activeQualityRun.delta.scoreChange >= 0 ? "+" : ""}${activeQualityRun.delta.scoreChange} pts · ${activeQualityRun.delta.fixed.length} fixed · ${activeQualityRun.delta.newFailures.length} new fails`}
                   </em>
                 ) : null}
-                <button className="secondary-action compact" type="button" onClick={runLaunchQa} disabled={qualityBusy}>
+                <Button className="secondary-action compact" type="button" onClick={runLaunchQa} disabled={qualityBusy}>
                   <Gauge size={15} />
                   {qualityBusy ? "Running QA" : "Run answer QA"}
-                </button>
+                </Button>
               </div>
               {!isCustomerMode ? (
                 <div className="qa-box">
@@ -6042,9 +6045,9 @@ function App() {
                       <option value="balanced">Balanced</option>
                       <option value="strict">Strict cited only</option>
                     </select>
-                    <button type="button" onClick={() => saveRoutingProfile()}>
+                    <Button type="button" onClick={() => saveRoutingProfile()}>
                       Save
-                    </button>
+                    </Button>
                   </div>
                   {routingNotice ? <p className={routingNotice.includes("saved") ? "field-notice" : "field-error"}>{routingNotice}</p> : null}
                 </div>
@@ -6057,10 +6060,10 @@ function App() {
                     ? `${activeEmbedPreflight.rateLimit.maxQuestions} public questions / ${activeEmbedPreflight.rateLimit.windowSeconds}s per origin`
                     : "Checks key, domains, copy, install ping, quota, and abuse guard."}
                 </small>
-                <button className="secondary-action compact" type="button" onClick={refreshEmbedPreflight}>
+                <Button className="secondary-action compact" type="button" onClick={refreshEmbedPreflight}>
                   <RefreshCw size={15} />
 	                  Refresh setup check
-                </button>
+                </Button>
               </div>
             </div>
             {activeQualityRun ? (
@@ -6087,10 +6090,10 @@ function App() {
                     <strong>{item.title}</strong>
                     <p>{item.why}</p>
                     <small>{item.nextStep}</small>
-                    <button className="secondary-action compact" type="button" onClick={() => startQualityRecommendationFix(item)}>
+                    <Button className="secondary-action compact" type="button" onClick={() => startQualityRecommendationFix(item)}>
                       <FilePlus2 size={14} />
                       Add source fix
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -6141,7 +6144,7 @@ function App() {
             </div>
             <label htmlFor="site-url">Website URL</label>
             <form className="url-row" onSubmit={startTraining}>
-              <input
+              <Input
                 id="site-url"
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
@@ -6154,10 +6157,10 @@ function App() {
                 placeholder="https://your-site.com"
                 aria-describedby="crawl-status"
               />
-              <button type="submit" disabled={training}>
+              <Button type="submit" disabled={training}>
                 {training ? <RefreshCw className="spin" size={17} /> : <Search size={17} />}
                 {training ? "Training" : "Train"}
-              </button>
+              </Button>
             </form>
             <div className="crawl-status" id="crawl-status" aria-live="polite">
               <div>
@@ -6276,31 +6279,31 @@ function App() {
             ) : null}
             <div className="train-actions">
               {activeCrawlJob && (activeCrawlJob.status === "queued" || activeCrawlJob.status === "running") ? (
-                <button className="secondary-action" onClick={cancelCrawl}>
+                <Button className="secondary-action" onClick={cancelCrawl}>
                   <X size={15} />
                   Cancel crawl
-                </button>
+                </Button>
               ) : null}
-              <button className="secondary-action" onClick={retrain} disabled={!trained || training}>
+              <Button className="secondary-action" onClick={retrain} disabled={!trained || training}>
                 <RotateCcw size={15} />
                 Manual retrain
-              </button>
-              <button className="secondary-action" onClick={() => refreshBot()} disabled={training}>
+              </Button>
+              <Button className="secondary-action" onClick={() => refreshBot()} disabled={training}>
                 <Database size={15} />
                 Refresh store
-              </button>
-              <button className="secondary-action" onClick={() => downloadExport(`/api/export/bot.json?botId=${encodeURIComponent(botId)}`, "citerep-bot-backup.json")}>
+              </Button>
+              <Button className="secondary-action" onClick={() => downloadExport(`/api/export/bot.json?botId=${encodeURIComponent(botId)}`, "citerep-bot-backup.json")}>
                 <Download size={15} />
                 Backup bot
-              </button>
-              <button className="secondary-action" onClick={requestDataDeletion} disabled={!botId || isPublicDemo} type="button">
+              </Button>
+              <Button className="secondary-action" onClick={requestDataDeletion} disabled={!botId || isPublicDemo} type="button">
                 <Trash2 size={15} />
                 Request deletion review
-              </button>
-              <button className="secondary-action" onClick={auditSources} disabled={!trained || sourceAuditBusy}>
+              </Button>
+              <Button className="secondary-action" onClick={auditSources} disabled={!trained || sourceAuditBusy}>
                 <ShieldCheck size={15} />
                 {sourceAuditBusy ? "Auditing sources" : "Audit sources"}
-              </button>
+              </Button>
             </div>
             <div className="source-sync-card">
               <div>
@@ -6315,7 +6318,7 @@ function App() {
                 {SOURCE_SYNC_OPTIONS.map((option) => {
                   const allowed = (sourceSync.allowedCadences || ["manual", "monthly"]).includes(option.value);
                   return (
-                    <button
+                    <Button
                       className={`${sourceSync.cadence === option.value ? "selected" : ""} ${allowed ? "" : "locked"}`}
                       disabled={sourceSyncBusy || !allowed}
                       key={option.value}
@@ -6323,7 +6326,7 @@ function App() {
                       type="button"
                     >
                       {option.label}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -6344,7 +6347,7 @@ function App() {
                 </div>
               </div>
               <div className="api-key-create">
-                <input
+                <Input
                   value={apiKeyLabel}
                   onChange={(event) => setApiKeyLabel(event.target.value)}
                   placeholder="Key label"
@@ -6352,20 +6355,20 @@ function App() {
                 />
                 <div className="api-scope-list" aria-label="API key scopes">
                   {DEVELOPER_API_SCOPES.map((scope) => (
-                    <button
+                    <Button
                       className={apiKeyScopes.includes(scope.value) ? "selected" : ""}
                       key={scope.value}
                       onClick={() => toggleApiKeyScope(scope.value)}
                       type="button"
                     >
                       {scope.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
-                <button className="secondary-action" onClick={createApiKey} disabled={apiKeyBusy || apiKeyScopes.length === 0} type="button">
+                <Button className="secondary-action" onClick={createApiKey} disabled={apiKeyBusy || apiKeyScopes.length === 0} type="button">
                   <KeyRound size={15} />
                   Create key
-                </button>
+                </Button>
               </div>
               {apiKeyNotice ? <p className="api-key-secret">{apiKeyNotice}</p> : null}
               {apiKeyError ? <p className="field-error">{apiKeyError}</p> : null}
@@ -6381,9 +6384,9 @@ function App() {
                       {key.revokedAt ? (
                         <em>revoked</em>
                       ) : (
-                        <button className="icon-action" onClick={() => revokeApiKey(key.id)} aria-label={`Revoke ${key.label}`} type="button">
+                        <Button className="icon-action" onClick={() => revokeApiKey(key.id)} aria-label={`Revoke ${key.label}`} type="button">
                           <Trash2 size={14} />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   ))}
@@ -6409,10 +6412,10 @@ function App() {
                         {snapshot.sourceCount} source{snapshot.sourceCount === 1 ? "" : "s"} · {formatShortDateTime(snapshot.createdAt)}
                       </span>
                     </div>
-                    <button className="secondary-action" onClick={() => rollbackSourceSnapshot(snapshot.id)} disabled={!snapshot.restorable || training}>
+                    <Button className="secondary-action" onClick={() => rollbackSourceSnapshot(snapshot.id)} disabled={!snapshot.restorable || training}>
                       <RotateCcw size={14} />
                       Restore
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -6436,9 +6439,9 @@ function App() {
                     <small className={source.status !== "indexed" ? source.status : source.sourceType === "url" ? "url" : source.sourceType || source.status}>
                       {source.status !== "indexed" ? source.status.replace("-", " ") : sourceTypeLabel(source)}
                     </small>
-                    <button className="icon-action" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.title}`}>
+                    <Button className="icon-action" onClick={() => removeSource(source.id)} aria-label={`Remove ${source.title}`}>
                       <Trash2 size={14} />
-                    </button>
+                    </Button>
                   </div>
                 ))
               ) : (
@@ -6462,7 +6465,7 @@ function App() {
                 testAnswer();
               }}
             >
-              <input
+              <Input
                 id="test-question"
                 value={testQuestion}
                 onChange={(event) => setTestQuestion(event.target.value)}
@@ -6475,16 +6478,16 @@ function App() {
                 placeholder="Ask a buyer question..."
                 aria-label="Test question"
               />
-              <button type="submit">
+              <Button type="submit">
                 Ask <Send size={15} />
-              </button>
+              </Button>
             </form>
             <div className="question-grid">
               {testExamples.map((example) => (
-                <button key={example} onClick={() => testAnswer(example)}>
+                <Button key={example} onClick={() => testAnswer(example)}>
                   {example}
                   <ChevronRight size={16} />
-                </button>
+                </Button>
               ))}
             </div>
             <div className="answer-card" aria-live="polite">
@@ -6520,9 +6523,9 @@ function App() {
                 </div>
               ) : null}
               {testReply?.leadPrompt ? (
-                <button className="lead-chip" onClick={focusLeadCapture}>
+                <Button className="lead-chip" onClick={focusLeadCapture}>
                   Collect lead details
-                </button>
+                </Button>
               ) : null}
             </div>
             <div className="economics-card">
@@ -6560,7 +6563,7 @@ function App() {
                 <p>
                   {leadSaved.name} asked about {leadSaved.need}.
                 </p>
-                <button
+                <Button
                   className="secondary-action"
                   onClick={() => {
                     setLead({ name: "", email: "", need: "" });
@@ -6568,11 +6571,11 @@ function App() {
                   }}
                 >
                   Add another lead
-                </button>
+                </Button>
               </div>
             ) : (
               <form onSubmit={saveLead} className="lead-form">
-                <input
+                <Input
                   id="lead-name"
                   value={lead.name}
                   onChange={(event) => setLead({ ...lead, name: event.target.value })}
@@ -6585,7 +6588,7 @@ function App() {
                   placeholder="Name"
                   aria-label="Lead name"
                 />
-                <input
+                <Input
                   id="lead-email"
                   value={lead.email}
                   onChange={(event) => setLead({ ...lead, email: event.target.value })}
@@ -6600,7 +6603,7 @@ function App() {
                   required
                   aria-label="Lead email"
                 />
-                <textarea
+                <Textarea
                   id="lead-need"
                   value={lead.need}
                   onChange={(event) => setLead({ ...lead, need: event.target.value })}
@@ -6615,9 +6618,9 @@ function App() {
                   aria-label="Buying need"
                 />
                 {leadError ? <p className="field-error">{leadError}</p> : null}
-                <button type="submit">
+                <Button type="submit">
                   Save lead <Send size={16} />
-                </button>
+                </Button>
               </form>
             )}
             <div className="lead-inbox">
@@ -6625,10 +6628,10 @@ function App() {
                 <Inbox size={16} />
                 <strong>Lead inbox · {leads.length} saved lead{leads.length === 1 ? "" : "s"}</strong>
               </div>
-              <button className="export-link" type="button" onClick={() => downloadExport(`/api/export/leads.csv?botId=${encodeURIComponent(botId)}`, "citerep-leads.csv")}>
+              <Button className="export-link" type="button" onClick={() => downloadExport(`/api/export/leads.csv?botId=${encodeURIComponent(botId)}`, "citerep-leads.csv")}>
                 <Download size={14} />
                 Export CSV
-              </button>
+              </Button>
               {leads.length > 0 ? (
                 <ul>
                   {leads.slice(0, 50).map((item) => (
@@ -6651,14 +6654,14 @@ function App() {
                         <div className="handoff-box">
                           <strong>{item.followUpSubject}</strong>
                           <span>{item.followUpBody}</span>
-                          <button type="button" onClick={() => copyLeadFollowUp(item)}>
+                          <Button type="button" onClick={() => copyLeadFollowUp(item)}>
                             {leadCopyId === item.id ? <CopyCheck size={14} /> : <Clipboard size={14} />}
                             {leadCopyId === item.id ? "Copied follow-up" : "Copy follow-up"}
-                          </button>
+                          </Button>
                         </div>
                       ) : null}
                       <div className="lead-note-box">
-                        <textarea
+                        <Textarea
                           value={leadNotes[item.id]?.note ?? item.note ?? ""}
                           onChange={(event) => updateLeadNoteDraft(item, { note: event.target.value })}
                           placeholder="Private note"
@@ -6666,22 +6669,22 @@ function App() {
                           aria-label={`Private note for ${item.email}`}
                         />
                         <div>
-                          <input
+                          <Input
                             type="date"
                             value={leadNotes[item.id]?.nextFollowUpAt ?? toDateInputValue(item.nextFollowUpAt)}
                             onChange={(event) => updateLeadNoteDraft(item, { nextFollowUpAt: event.target.value })}
                             aria-label={`Next follow-up for ${item.email}`}
                           />
-                          <button type="button" onClick={() => saveLeadNote(item)}>
+                          <Button type="button" onClick={() => saveLeadNote(item)}>
                             Save note
-                          </button>
+                          </Button>
                         </div>
                       </div>
                       <div className="lead-actions">
                         {(["contacted", "won", "lost"] as const).map((status) => (
-                          <button key={status} onClick={() => updateLeadStatus(item.id, status)} disabled={(item.status || "new") === status}>
+                          <Button key={status} onClick={() => updateLeadStatus(item.id, status)} disabled={(item.status || "new") === status}>
                             {status}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </li>
@@ -6744,7 +6747,7 @@ function App() {
               ))}
             </div>
             <div className="embed-actions">
-              <button
+              <Button
                 id="embed-copy"
                 className={`copy-button ${copyState}`}
                 onClick={copyEmbed}
@@ -6759,10 +6762,10 @@ function App() {
               >
                 {copyState === "copied" ? <CopyCheck size={16} /> : <Clipboard size={16} />}
                 {copyState === "copied" ? "Copied" : copyState === "failed" ? "Not ready" : "Copy snippet"}
-              </button>
-              <button className="secondary-action" onClick={() => setWidgetPreviewOpen((open) => !open)}>
+              </Button>
+              <Button className="secondary-action" onClick={() => setWidgetPreviewOpen((open) => !open)}>
                 {widgetPreviewOpen ? "Hide preview" : "Preview widget"}
-              </button>
+              </Button>
             </div>
             {copyState === "failed" ? (
               <p className="copy-help">Browser copy is blocked here. The snippet above is selectable.</p>
@@ -6772,10 +6775,10 @@ function App() {
                 <strong>Install handoff</strong>
                 <span>One clear note for the customer or developer, with the key, domain, snippet, and preview link.</span>
               </div>
-              <button type="button" onClick={() => copyLaunchAsset("install-handoff", installHandoffCopy)} disabled={!embedReady}>
+              <Button type="button" onClick={() => copyLaunchAsset("install-handoff", installHandoffCopy)} disabled={!embedReady}>
                 {assetCopyId === "install-handoff" ? <CopyCheck size={14} /> : <Clipboard size={14} />}
                 {assetCopyId === "install-handoff" ? "Copied handoff" : "Copy handoff"}
-              </button>
+              </Button>
             </div>
             <div className="widget-smoke-card" id="widget-smoke-test">
               <div className="widget-smoke-head">
@@ -6783,10 +6786,10 @@ function App() {
 	                  <strong>Widget install test</strong>
 	                  <span>Checks weight, config, public answer, feedback, uninstall cleanup, and dashboard sync. Real install proof must come from the customer domain.</span>
                 </div>
-                <button type="button" onClick={runWidgetSmokeTest} disabled={widgetSmokeTest.status === "running"}>
+                <Button type="button" onClick={runWidgetSmokeTest} disabled={widgetSmokeTest.status === "running"}>
                   <Gauge size={15} />
 	                  {widgetSmokeTest.status === "running" ? "Testing" : "Test widget"}
-                </button>
+                </Button>
               </div>
               <div className="smoke-checks">
                 {(widgetSmokeTest.checks.length
@@ -6819,9 +6822,9 @@ function App() {
                     <Link2 size={13} />
                     {origin}
                     {allowedOrigins.includes(origin) ? (
-                      <button type="button" onClick={() => removeAllowedOrigin(origin)} aria-label={`Remove ${origin}`}>
+                      <Button type="button" onClick={() => removeAllowedOrigin(origin)} aria-label={`Remove ${origin}`}>
                         <X size={12} />
-                      </button>
+                      </Button>
                     ) : (
                       <em>trained site</em>
                     )}
@@ -6829,13 +6832,13 @@ function App() {
                 ))}
               </div>
               <form className="domain-form" onSubmit={addAllowedOrigin}>
-                <input
+                <Input
                   value={domainDraft}
                   onChange={(event) => setDomainDraft(event.target.value)}
                   placeholder="https://customer-site.com"
                   aria-label="Allowed widget domain"
                 />
-                <button type="submit">Add domain</button>
+                <Button type="submit">Add domain</Button>
               </form>
               {domainError ? <p className="field-error">{domainError}</p> : null}
             </div>
@@ -6847,13 +6850,13 @@ function App() {
                   <span>Starter keeps branding, but the assistant should still feel native.</span>
                 </div>
               </div>
-              <input
+              <Input
                 value={widgetSettings.title}
                 onChange={(event) => { widgetSettingsDirtyRef.current = true; setWidgetSettings({ ...widgetSettings, title: event.target.value }); }}
                 placeholder="Assistant title"
                 aria-label="Widget title"
               />
-              <textarea
+              <Textarea
                 value={widgetSettings.welcomeMessage}
                 onChange={(event) => { widgetSettingsDirtyRef.current = true; setWidgetSettings({ ...widgetSettings, welcomeMessage: event.target.value }); }}
                 placeholder="Welcome message"
@@ -6861,13 +6864,13 @@ function App() {
                 aria-label="Widget welcome message"
               />
               <div className="theme-row">
-                <input
+                <Input
                   type="color"
                   value={widgetSettings.theme}
                   onChange={(event) => { widgetSettingsDirtyRef.current = true; setWidgetSettings({ ...widgetSettings, theme: event.target.value }); }}
                   aria-label="Widget theme color"
                 />
-                <input
+                <Input
                   value={widgetSettings.theme}
                   onChange={(event) => { widgetSettingsDirtyRef.current = true; setWidgetSettings({ ...widgetSettings, theme: event.target.value }); }}
                   placeholder="#1f8f5f"
@@ -6896,7 +6899,7 @@ function App() {
                 </label>
                 <label>
                   <span>Hotkey</span>
-                  <input
+                  <Input
                     value={widgetSettings.hotkey}
                     onChange={(event) => { widgetSettingsDirtyRef.current = true; setWidgetSettings({ ...widgetSettings, hotkey: event.target.value }); }}
                     placeholder={widgetSettings.mode === "docs" ? "mod+k" : "Off by default"}
@@ -6906,7 +6909,7 @@ function App() {
               </div>
               <div className="suggestion-list">
                 {widgetSettings.suggestedQuestions.map((question, index) => (
-                  <input
+                  <Input
                     key={index}
                     value={question}
                     onChange={(event) => updateSuggestedQuestion(index, event.target.value)}
@@ -6916,10 +6919,10 @@ function App() {
                 ))}
               </div>
               {widgetNotice ? <p className={widgetNotice.includes("saved") ? "field-notice" : "field-error"}>{widgetNotice}</p> : null}
-              <button type="submit" disabled={widgetSaving}>
+              <Button type="submit" disabled={widgetSaving}>
                 <Palette size={15} />
                 {widgetSaving ? "Saving widget" : "Save widget"}
-              </button>
+              </Button>
             </form>
             {widgetPreviewOpen && publicKey ? (
               <iframe
@@ -6945,10 +6948,10 @@ function App() {
                     <span>{asset.note}</span>
                   </div>
                   <pre>{asset.text}</pre>
-                  <button type="button" onClick={() => copyLaunchAsset(asset.id, asset.text)}>
+                  <Button type="button" onClick={() => copyLaunchAsset(asset.id, asset.text)}>
                     {assetCopyId === asset.id ? <CopyCheck size={14} /> : <Clipboard size={14} />}
                     {assetCopyId === asset.id ? "Copied" : "Copy"}
-                  </button>
+                  </Button>
                 </article>
               ))}
             </div>
@@ -6960,10 +6963,10 @@ function App() {
               <Database size={20} />
               <span>5. Review conversations</span>
             </div>
-            <button className="export-link" type="button" onClick={() => downloadExport(`/api/export/conversations.csv?botId=${encodeURIComponent(botId)}`, "citerep-conversations.csv")}>
+            <Button className="export-link" type="button" onClick={() => downloadExport(`/api/export/conversations.csv?botId=${encodeURIComponent(botId)}`, "citerep-conversations.csv")}>
               <Download size={14} />
               Export conversations
-            </button>
+            </Button>
             <p className="access-hint">The dashboard shows your most recent 100 conversations. The export always contains your full history.</p>
             <div className="ops-list">
               {conversations.length > 0 ? (
@@ -6996,15 +6999,15 @@ function App() {
 	                    ) : null}
 	                    {item.unknown || item.feedback?.rating === "down" || item.status === "needs_review" ? (
 	                      <div className="row-actions">
-	                        <button type="button" onClick={() => startConversationSourceFix(item)}>
+	                        <Button type="button" onClick={() => startConversationSourceFix(item)}>
 	                          <FilePlus2 size={14} />
 	                          Open source fix
-	                        </button>
+	                        </Button>
 	                        {!item.unknown && item.answer.trim().length >= 20 ? (
-	                          <button type="button" onClick={() => createConversationSourceFix(item)}>
+	                          <Button type="button" onClick={() => createConversationSourceFix(item)}>
 	                            <Check size={14} />
 	                            Save answer as source
-	                          </button>
+	                          </Button>
 	                        ) : null}
 	                      </div>
 	                    ) : null}
@@ -7032,14 +7035,14 @@ function App() {
                       <span>{item.suggestedSourceTitle}</span>
                     </div>
                     <div className="row-actions">
-                      <button onClick={() => updateEscalationStatus(item.id, "contacted")}>
+                      <Button onClick={() => updateEscalationStatus(item.id, "contacted")}>
                         <Send size={14} />
                         Contacted
-                      </button>
-                      <button onClick={() => updateEscalationStatus(item.id, "resolved")}>
+                      </Button>
+                      <Button onClick={() => updateEscalationStatus(item.id, "resolved")}>
                         <Check size={14} />
                         Resolved
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -7065,22 +7068,22 @@ function App() {
                       <span>{item.count || 1} ask{(item.count || 1) === 1 ? "" : "s"} · {item.suggestedSourceTitle || "FAQ source for this exact question"}</span>
                     </div>
                     <div className="row-actions">
-                      <button onClick={() => startSourceFix(item)}>
+                      <Button onClick={() => startSourceFix(item)}>
                         <FilePlus2 size={14} />
                         Add source
-                      </button>
-                      <button onClick={() => draftSourceForGap(item)}>
+                      </Button>
+                      <Button onClick={() => draftSourceForGap(item)}>
                         <Sparkles size={14} />
                         Draft source
-                      </button>
-                      <button onClick={() => retestUnknown(item.id)}>
+                      </Button>
+                      <Button onClick={() => retestUnknown(item.id)}>
                         <RefreshCw size={14} />
                         Retest
-                      </button>
-                      <button onClick={() => resolveUnknown(item.id)}>
+                      </Button>
+                      <Button onClick={() => resolveUnknown(item.id)}>
                         <Check size={14} />
                         Resolve
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -7103,41 +7106,41 @@ function App() {
                   ))}
                 </div>
               ) : null}
-              <input
+              <Input
                 value={sourceDraft.title}
                 onChange={(event) => setSourceDraft({ ...sourceDraft, title: event.target.value })}
                 placeholder="Source title, e.g. Refund policy"
                 aria-label="Manual source title"
               />
-              <input
+              <Input
                 value={sourceDraft.url}
                 onChange={(event) => setSourceDraft({ ...sourceDraft, url: event.target.value })}
                 placeholder="Source URL, optional"
                 aria-label="Manual source URL"
               />
-              <button className="secondary-source-action" type="button" onClick={importSourceUrl} disabled={sourceUrlBusy}>
+              <Button className="secondary-source-action" type="button" onClick={importSourceUrl} disabled={sourceUrlBusy}>
                 <FileSearch size={15} />
                 {sourceUrlBusy ? "Importing URL" : "Import URL as source"}
-              </button>
-              <button className="secondary-source-action" type="button" onClick={importSourceUrlList} disabled={sourceUrlListBusy}>
+              </Button>
+              <Button className="secondary-source-action" type="button" onClick={importSourceUrlList} disabled={sourceUrlListBusy}>
                 <Link2 size={15} />
                 {sourceUrlListBusy ? "Importing list" : "Import URL list"}
-              </button>
-              <button className="secondary-source-action" type="button" onClick={importSourceFeed} disabled={sourceFeedBusy}>
+              </Button>
+              <Button className="secondary-source-action" type="button" onClick={importSourceFeed} disabled={sourceFeedBusy}>
                 <Rss size={15} />
                 {sourceFeedBusy ? "Importing feed" : "Import RSS/Atom feed"}
-              </button>
-              <button className="secondary-source-action" type="button" onClick={importSourceCloud} disabled={sourceCloudBusy}>
+              </Button>
+              <Button className="secondary-source-action" type="button" onClick={importSourceCloud} disabled={sourceCloudBusy}>
                 <Database size={15} />
                 {sourceCloudBusy ? "Importing cloud link" : "Import public cloud link"}
-              </button>
+              </Button>
               <label className={`secondary-source-action source-file-action ${sourceFileBusy ? "disabled" : ""}`}>
                 <FilePlus2 size={15} />
                 {sourceFileBusy ? "Importing file" : "Import source file"}
-                <input type="file" accept={SOURCE_FILE_ACCEPT} onChange={importSourceFile} disabled={sourceFileBusy} aria-label="Import source file" />
+                <Input type="file" accept={SOURCE_FILE_ACCEPT} onChange={importSourceFile} disabled={sourceFileBusy} aria-label="Import source file" />
               </label>
               <small className="source-file-help">TXT, MD, CSV, TSV, JSON, HTML, RTF, PDF, DOCX, PPTX, and XLSX up to 5 MB. Paste one source URL per line in the text box to import a URL list. Public cloud links can import readable Google Docs, Sheets, Slides, YouTube transcripts, Notion, GitBook, Confluence, Microsoft, Dropbox, or Box pages when the link is public. RSS/Atom feeds import recent public items. CSV, TSV, JSON, and XLSX FAQ exports with question and answer columns are cleaned for migration. Scanned image-only documents need readable text first.</small>
-              <textarea
+              <Textarea
                 id="manual-source-content"
                 value={sourceDraft.content}
                 onChange={(event) => setSourceDraft({ ...sourceDraft, content: event.target.value })}
@@ -7147,10 +7150,10 @@ function App() {
               />
               {sourceError ? <p className="field-error">{sourceError}</p> : null}
               {sourceNotice ? <p className="field-notice">{sourceNotice}</p> : null}
-              <button type="submit" disabled={sourceBusy}>
+              <Button type="submit" disabled={sourceBusy}>
                 <FilePlus2 size={15} />
                 {sourceBusy ? "Saving source" : "Add source"}
-              </button>
+              </Button>
             </form>
           </div>
         </div>
@@ -7183,9 +7186,9 @@ function App() {
                     </li>
                   ))}
                 </ul>
-                <button onClick={() => openCheckout(plan)} aria-label={`Start ${plan.name} setup`} disabled={pricingUnavailable}>
+                <Button onClick={() => openCheckout(plan)} aria-label={`Start ${plan.name} setup`} disabled={pricingUnavailable}>
                   Start {plan.name}
-                </button>
+                </Button>
               </article>
             );
           })}
@@ -7198,7 +7201,7 @@ function App() {
             </div>
             <strong>{fastModelShare}% fast / {smartModelShare}% smart</strong>
           </div>
-          <input
+          <Input
             type="range"
             min="0"
             max="100"
@@ -7541,9 +7544,9 @@ function PublicTeaser({
           </p>
           <div className="public-demo-prompts" aria-label="Demo questions">
             {publicDemoQuestions.map((question) => (
-              <button type="button" key={question} onClick={() => onAskDemo(question)} disabled={demoBusy}>
+              <Button type="button" key={question} onClick={() => onAskDemo(question)} disabled={demoBusy}>
                 {question}
-              </button>
+              </Button>
             ))}
           </div>
           {demoError ? <p className="field-error">{demoError}</p> : null}
@@ -7588,9 +7591,9 @@ function PublicTeaser({
                     </li>
                   ))}
                 </ul>
-                <button onClick={() => openCheckout(plan)} aria-label={`Start ${plan.name} setup`} disabled={pricingUnavailable}>
+                <Button onClick={() => openCheckout(plan)} aria-label={`Start ${plan.name} setup`} disabled={pricingUnavailable}>
                   Start {plan.name}
-                </button>
+                </Button>
               </article>
             );
           })}
@@ -7783,15 +7786,15 @@ function PublicTeaser({
           <p>Start free or choose a paid plan, train from your site, and install only after one cited answer looks right.</p>
         </div>
         <form className="interest-form" onSubmit={onSubmit}>
-          <button className="primary-interest-action" type="button" onClick={handleStart}>
+          <Button className="primary-interest-action" type="button" onClick={handleStart}>
             Open self-serve setup <ArrowRight size={17} />
-          </button>
+          </Button>
           {checkoutUnavailableNotice ? (
             <p className="field-notice" role="status">
               {checkoutUnavailableText}
             </p>
           ) : null}
-          <input
+          <Input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@company.com"
@@ -7801,9 +7804,9 @@ function PublicTeaser({
             aria-label="Interest email"
             required
           />
-	          <button type="submit" disabled={busy}>
+	          <Button type="submit" disabled={busy}>
 		            {busy ? "Sending" : "Request setup help"} <ArrowRight size={17} />
-          </button>
+          </Button>
           {notice ? <p className="field-notice">{notice}</p> : null}
           {error ? <p className="field-error">{error}</p> : null}
         </form>
@@ -7926,15 +7929,15 @@ function ChatPreview({
             ) : null}
             {message.refused ? <span className="refusal-chip">Needs team follow-up</span> : null}
             {message.leadPrompt ? (
-              <button className="lead-chip" onClick={focusLeadCapture}>
+              <Button className="lead-chip" onClick={focusLeadCapture}>
                 {leadActionLabel}
-              </button>
+              </Button>
             ) : null}
           </div>
         ))}
       </div>
       <div className="chat-input">
-        <input
+        <Input
           value={chatInput}
           onChange={(event) => setChatInput(event.target.value)}
           onKeyDown={(event) => {
@@ -7943,9 +7946,9 @@ function ChatPreview({
           placeholder="Ask about pricing, setup, or security..."
           disabled={disabled}
         />
-        <button onClick={() => sendQuestion()} aria-label="Send question" disabled={disabled}>
+        <Button onClick={() => sendQuestion()} aria-label="Send question" disabled={disabled}>
           <Send size={17} />
-        </button>
+        </Button>
       </div>
       <div className="powered">Powered by Site Rep</div>
     </aside>
@@ -8027,9 +8030,9 @@ function SiteRepConsolePreview({
       <div className="console-trial-strip">
         <span>Site Rep dashboard</span>
 	        <strong>{launchPercent}% visitor ready</strong>
-        <button type="button" onClick={onAskDemo}>
+        <Button type="button" onClick={onAskDemo}>
           Ask demo
-        </button>
+        </Button>
       </div>
       <div className="console-body">
         <nav className="console-icon-rail" aria-label="Dashboard tools">
@@ -8045,32 +8048,32 @@ function SiteRepConsolePreview({
             <Search size={16} />
           </div>
           <div className="console-nav-group">
-            <button className="selected" type="button">
+            <Button className="selected" type="button">
               <Inbox size={15} />
               Open work
               <em>{openWork}</em>
-            </button>
-            <button type="button">
+            </Button>
+            <Button type="button">
               <Sparkles size={15} />
               Sales intent
               <em>{leads.length}</em>
-            </button>
-            <button type="button">
+            </Button>
+            <Button type="button">
               <AlertTriangle size={15} />
               Source gaps
               <em>{unknowns.length + escalations.length}</em>
-            </button>
-            <button type="button">
+            </Button>
+            <Button type="button">
               <Check size={15} />
               Ready to answer
               <em>{sourceCount}</em>
-            </button>
+            </Button>
           </div>
           <div className="console-team-group">
             <span>Teams</span>
-            <button type="button">Sales handoff <em>{leads.filter((lead) => lead.heat === "hot").length}</em></button>
-            <button type="button">Support queue <em>{tickets.length}</em></button>
-            <button type="button">Source ops <em>{unknowns.length}</em></button>
+            <Button type="button">Sales handoff <em>{leads.filter((lead) => lead.heat === "hot").length}</em></Button>
+            <Button type="button">Support queue <em>{tickets.length}</em></Button>
+            <Button type="button">Source ops <em>{unknowns.length}</em></Button>
           </div>
         </div>
         <div className="console-list" aria-label="Conversations">
@@ -8079,19 +8082,19 @@ function SiteRepConsolePreview({
               <strong>{threads.length} open</strong>
               <span>Newest first</span>
             </div>
-            <button type="button">
+            <Button type="button">
               <RefreshCw size={14} />
-            </button>
+            </Button>
           </div>
           {threads.map((thread, index) => (
-            <button className={`console-thread ${index === 0 ? "selected" : ""} ${thread.tone}`} key={thread.id} type="button">
+            <Button className={`console-thread ${index === 0 ? "selected" : ""} ${thread.tone}`} key={thread.id} type="button">
               <span>{thread.name.slice(0, 1).toUpperCase()}</span>
               <div>
                 <strong>{thread.subject}</strong>
                 <small>{thread.preview}</small>
               </div>
               <em>{thread.time}</em>
-            </button>
+            </Button>
           ))}
         </div>
         <div className="console-detail" aria-label="Selected conversation">
@@ -8101,8 +8104,8 @@ function SiteRepConsolePreview({
               <span>{activeThread.name} · {activeThread.status}</span>
             </div>
             <div className="console-actions">
-              <button type="button">Snooze</button>
-              <button type="button">Close</button>
+              <Button type="button">Snooze</Button>
+              <Button type="button">Close</Button>
             </div>
           </div>
           <div className="conversation-card inbound">
@@ -8131,10 +8134,10 @@ function SiteRepConsolePreview({
           </div>
           <div className="console-composer">
             <span>Reply</span>
-            <input readOnly value="Use approved sources, then collect the next step..." aria-label="Reply draft" />
-            <button type="button" onClick={onCaptureLead}>
+            <Input readOnly value="Use approved sources, then collect the next step..." aria-label="Reply draft" />
+            <Button type="button" onClick={onCaptureLead}>
               Capture lead
-            </button>
+            </Button>
           </div>
         </div>
         <aside className="console-inspector" aria-label="Conversation details">
@@ -8155,9 +8158,9 @@ function SiteRepConsolePreview({
           </div>
           <div className="inspector-links">
             <strong>Linked work</strong>
-            <button type="button">Source gap <em>{unknowns.length}</em></button>
-            <button type="button">Lead follow-up <em>{leads.length}</em></button>
-            <button type="button">Widget install <em>{tickets.length + escalations.length}</em></button>
+            <Button type="button">Source gap <em>{unknowns.length}</em></Button>
+            <Button type="button">Lead follow-up <em>{leads.length}</em></Button>
+            <Button type="button">Widget install <em>{tickets.length + escalations.length}</em></Button>
           </div>
           <div className="inspector-block muted">
             <span>Boundary</span>
@@ -8230,24 +8233,24 @@ function FreeStartModal({
   return (
     <div className="modal-backdrop">
       <div className="checkout-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="free-start-title" tabIndex={-1}>
-        <button className="close-button" onClick={onClose} aria-label="Close free start signup">
+        <Button className="close-button" onClick={onClose} aria-label="Close free start signup">
           <X size={18} />
-        </button>
+        </Button>
         <h2 id="free-start-title">Start free — no card</h2>
         <p>Enter your website and we'll prepare a rep from your pages. You get 50 source-backed answers free; install only after you review a cited answer and add the widget snippet.</p>
         <p className="checkout-fineprint">
           No credit card. No time limit. When the 50 free answers are used up your rep keeps collecting visitor emails, and you can upgrade anytime from live checkout pricing to switch answering back on.
         </p>
         <form className="checkout-form" onSubmit={submit}>
-          <input className="bot-field" name="botField" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-          <input className="bot-field" name="companyWebsite" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-          <input type="hidden" name="startedAt" value={startedAt} />
-          <input name="siteUrl" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Website domain" required aria-label="Website domain" data-autofocus="true" />
-          <input name="email" placeholder="Email" type="text" inputMode="email" autoComplete="email" pattern=".+@.+[.].+" required aria-label="Email" />
+          <Input className="bot-field" name="botField" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+          <Input className="bot-field" name="companyWebsite" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+          <Input type="hidden" name="startedAt" value={startedAt} />
+          <Input name="siteUrl" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Website domain" required aria-label="Website domain" data-autofocus="true" />
+          <Input name="email" placeholder="Email" type="text" inputMode="email" autoComplete="email" pattern=".+@.+[.].+" required aria-label="Email" />
           {error ? <p className="field-error">{error}</p> : null}
-          <button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving}>
             {saving ? "Setting up your rep" : "Start free"} <ArrowRight size={17} />
-          </button>
+          </Button>
         </form>
       </div>
     </div>
@@ -8321,15 +8324,15 @@ function CheckoutModal({
   return (
     <div className="modal-backdrop">
       <div className="checkout-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="checkout-title" tabIndex={-1}>
-        <button className="close-button" onClick={onClose} aria-label="Close checkout">
+        <Button className="close-button" onClick={onClose} aria-label="Close checkout">
           <X size={18} />
-        </button>
+        </Button>
 	        {submitted ? (
 	          <div className="checkout-success">
 	            <Sparkles size={36} />
 		            <h2 id="checkout-title">Opening secure checkout.</h2>
 	            <p>After payment, Site Rep verifies it on the server and unlocks your private dashboard.</p>
-	            <button onClick={openSetup}>Back to Site Rep</button>
+	            <Button onClick={openSetup}>Back to Site Rep</Button>
 	          </div>
 	        ) : (
 	          <>
@@ -8343,16 +8346,16 @@ function CheckoutModal({
               className="checkout-form"
               onSubmit={submitRequest}
             >
-              <input className="bot-field" name="botField" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <input className="bot-field" name="companyWebsite" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <input type="hidden" name="startedAt" value={startedAt} />
-              <input name="siteUrl" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Website domain" required aria-label="Website domain" data-autofocus="true" />
-              <input name="installDomain" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Install domain, if different" aria-label="Install domain" />
-              <input name="email" placeholder="Work email" type="text" inputMode="email" autoComplete="email" pattern=".+@.+[.].+" required aria-label="Work email" />
+              <Input className="bot-field" name="botField" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              <Input className="bot-field" name="companyWebsite" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              <Input type="hidden" name="startedAt" value={startedAt} />
+              <Input name="siteUrl" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Website domain" required aria-label="Website domain" data-autofocus="true" />
+              <Input name="installDomain" defaultValue={siteHost === "your-site.com" ? "" : siteHost} placeholder="Install domain, if different" aria-label="Install domain" />
+              <Input name="email" placeholder="Work email" type="text" inputMode="email" autoComplete="email" pattern=".+@.+[.].+" required aria-label="Work email" />
               {error ? <p className="field-error">{error}</p> : null}
-              <button type="submit" disabled={saving}>
+              <Button type="submit" disabled={saving}>
 	                {saving ? "Opening checkout" : `Pay and start ${plan.name}`} <ArrowRight size={17} />
-              </button>
+              </Button>
             </form>
           </>
         )}

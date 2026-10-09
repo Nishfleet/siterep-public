@@ -7,15 +7,25 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --ink: #111614;
+  --ink-soft: #26312d;
   --muted: #5c665f;
   --soft: #eef2f4;
   --surface: #ffffff;
   --surface-strong: #f8fafc;
   --line: #dde3e8;
+  --page: #f6f7f9;
   --green: #1f8f5f;
   --green-dark: #126342;
+  --green-wash: #f2fbf5;
+  --green-mid: #b7ebcf;
   --blue: #315ff4;
+  --blue-ink: #2448ba;
+  --blue-wash: #eef4ff;
   --amber: #e7a62f;
+  --amber-wash: #fff9e8;
+  --amber-ink: #7b5314;
+  --red-ink: #8a2f22;
+  --red-wash: #f7e3df;
   --shadow: 0 24px 70px rgba(24, 37, 31, 0.12);
 }
 
@@ -784,6 +794,46 @@
 
 html {
   scroll-behavior: smooth;
+  /* Tailwind preflight sets line-height 1.5 here; the app's body copy relies
+     on the browser default ("normal"). Unlayered, so it beats preflight. */
+  line-height: normal;
+}
+
+/* Tailwind preflight sets border: 0 solid on every element; restore the
+   browser's border-style none so zero-width borders stay invisible and
+   element-default borders behave as before the Tailwind import. */
+*,
+::before,
+::after {
+  border-style: none;
+}
+
+/* Tailwind preflight makes h1-h6 inherit font-size and weight; restore the
+   browser defaults that the app's headings rely on. App rules below override
+   these where the design sets them. */
+h1 { font-size: 2em; font-weight: bold; }
+h2 { font-size: 1.5em; font-weight: bold; }
+h3 { font-size: 1.17em; font-weight: bold; }
+h4 { font-size: 1em; font-weight: bold; }
+h5 { font-size: 0.83em; font-weight: bold; }
+h6 { font-size: 0.67em; font-weight: bold; }
+
+/* Tailwind preflight zeroes button padding and rescales <small>; restore
+   the browser defaults the app's unclassed controls and captions rely on. */
+button {
+  padding-block: 1px;
+  padding-inline: 6px;
+}
+
+small {
+  font-size: smaller;
+}
+
+/* Tailwind preflight recolors placeholders; restore the browser default
+   (rgb(117, 117, 117) in Chromium) that the app's inputs have always shown. */
+::placeholder {
+  color: rgb(117, 117, 117);
+  opacity: 1;
 }
 
 body {
@@ -1445,7 +1495,9 @@ button.lead-chip {
 }
 
 .interest-form .primary-interest-action {
-  background: var(--accent);
+  /* Was var(--accent) while no --accent existed, so it rendered transparent;
+     keep that exact look now that the shadcn theme defines --accent. */
+  background: transparent;
   color: white;
 }
 
@@ -7442,7 +7494,9 @@ h1 {
 }
 
 .hero-live-proof-links svg {
-  color: var(--accent);
+  /* Was var(--accent) while no --accent existed, so icons inherited the
+     panel's cream; keep that exact look now that the theme defines --accent. */
+  color: inherit;
   flex: 0 0 auto;
   margin-top: 1px;
 }
