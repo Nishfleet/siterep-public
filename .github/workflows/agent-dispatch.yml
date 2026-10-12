@@ -11,8 +11,11 @@
 # comment starts a miss review (park:/opus-vet:) AND its author is
 # OWNER/MEMBER/COLLABORATOR, and a closed pull_request_target only when the
 # callee's miss-review-pr job can act on it (same-repo head; a claim/issue-*
-# close, or a Revert merge). Any stranger's comment or a fork's PR close
-# starts nothing.
+# close, or a merge of a GitHub-generated revert, whose title always starts
+# Revert "). Any stranger's comment or a fork's PR close starts nothing.
+# issues: reopened dispatches the callee's miss-review for the issue; the
+# callee's MISS_REVIEW variable and its Gate's one-review-per-issue dedupe
+# own that decision.
 name: agent-dispatch
 on:
   issues:
@@ -54,7 +57,7 @@ jobs:
       (github.event_name != 'pull_request_target' || github.event.action != 'closed' ||
         (github.event.pull_request.head.repo.full_name == github.repository &&
           ((github.event.pull_request.merged == false && startsWith(github.event.pull_request.head.ref, 'claim/issue-')) ||
-           (github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Revert')))))
+           (github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Revert "')))))
     uses: Nishfleet/fleet-ops/.github/workflows/agent-dispatch.yml@main
     permissions:
       issues: write
