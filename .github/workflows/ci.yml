@@ -1,3 +1,6 @@
+# The shared reusable-pr-checks workflow was deleted in fleet-ops #8954,
+# so the verify steps live here now. Job id `verify` is the required check
+# context in ruleset main-required-checks.
 name: CI
 
 on:
@@ -7,41 +10,33 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
-# Thin caller onto the fleet-ops reusable PR checks (fleet-ops#68). The
-# reusable runs install + verify + secret scan in one batched job with a
-# timeout, dependency caching and concurrency baked in. scan-secrets is off
-# because this repo already runs its own required Gitleaks job
-# (secret-scan.yml); turning it on would require branch protection to adopt
-# the nested check name.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   verify:
-    # Observed verify duration on ubuntu-latest is ~1 minute with a warm npm
-    # cache, ~5 cold (run 32687009700, 2026-08-24: 61s end-to-end). 5 minutes
-    # keeps the ~2-3x ratio against a cold-cache run while bounding the stall
-    # class this repo hit before (queue-watchdog incident).
-    uses: Nishfleet/fleet-ops/.github/workflows/reusable-pr-checks.yml@main
-    with:
-      node-version: "24"
-      install-command: npm ci
-      verify-command: |
-        # No-glue regrowth gate (#109): zero helper scripts.
-        test -z "$(git ls-files scripts bin tools ops .specify "*.sh")"
-        npx playwright install chromium
-        npm test
-        npm run build
-        npm run smoke:public-layout
-        # Hermetic: route-mocks the whole /api/public/** surface; keeps the
-        # Docs Mode install-flow gate from breaking while CI stays green.
-        npm run smoke:widget-host
-        # Wrangler version comes from the committed lockfile (4.120.0 pinned in
-        # devDependencies), not npx's mutable cache: pulling the moving latest
-        # tag broke every CI run repo-wide on 2026-08-11 (upstream publish E404).
-        npm run cf:check
-      scan-secrets: false
-      timeout-minutes: 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: |
+          # No-glue regrowth gate (#109): zero helper scripts.
+          test -z "$(git ls-files scripts bin tools ops .specify "*.sh")"
+          npx playwright install chromium
+          npm test
+          npm run build
+          npm run smoke:public-layout
+          # Hermetic: route-mocks the whole /api/public/** surface; keeps the
+          # Docs Mode install-flow gate from breaking while CI stays green.
+          npm run smoke:widget-host
+          # Wrangler version comes from the committed lockfile (4.120.0 pinned in
+          # devDependencies), not npx's mutable cache: pulling the moving latest
+          # tag broke every CI run repo-wide on 2026-08-11 (upstream publish E404).
+          npm run cf:check
