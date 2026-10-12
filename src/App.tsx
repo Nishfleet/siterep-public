@@ -8233,7 +8233,7 @@ function FreeStartModal({
   return (
     <div className="modal-backdrop">
       <div className="checkout-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="free-start-title" tabIndex={-1}>
-        <Button className="close-button" onClick={onClose} aria-label="Close free start signup">
+        <Button className="close-button" type="button" onClick={onClose} aria-label="Close free start signup">
           <X size={18} />
         </Button>
         <h2 id="free-start-title">Start free — no card</h2>
@@ -8324,7 +8324,7 @@ function CheckoutModal({
   return (
     <div className="modal-backdrop">
       <div className="checkout-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="checkout-title" tabIndex={-1}>
-        <Button className="close-button" onClick={onClose} aria-label="Close checkout">
+        <Button className="close-button" type="button" onClick={onClose} aria-label="Close checkout">
           <X size={18} />
         </Button>
 	        {submitted ? (
