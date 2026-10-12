@@ -499,7 +499,7 @@ Both Site Rep and CustomGPT answer visitors using only your own content and show
 
 ## How Site Rep is different
 
-- Local checkout pricing: Site Rep shows the exact buyer-local total, tax included, before payment. CustomGPT's Standard self-serve plan is $99/month monthly and Premium is $499/month monthly (as of August 2026 — see customgpt.ai/pricing).
+- Local checkout pricing: Site Rep shows the exact buyer-local total, tax included, before payment. CustomGPT's Standard self-serve plan is $99/month monthly and Premium is $499/month monthly (as of October 2026 — see customgpt.ai/pricing).
 - A real free start with no card: Site Rep gives you 50 source-backed answers free, with no time limit, and the rep keeps capturing visitor emails after that. CustomGPT's free trial is 7 days.
 - Every unanswered question becomes a private follow-up item, and it can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust) list confirmed behavior and what is not included today.
@@ -511,7 +511,7 @@ Both Site Rep and CustomGPT answer visitors using only your own content and show
 
 ## Pricing note
 
-Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in August 2026. Confirm current numbers on each vendor's pricing page before deciding.
+Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in October 2026. Confirm current numbers on each vendor's pricing page before deciding.
 
 ## Try Site Rep free
 
@@ -548,8 +548,8 @@ Site Rep and Chatbase both train a chatbot on your content and embed it on your 
 
 ## How Site Rep is different
 
-- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total before payment and Starter includes 1,000 source-backed replies. Chatbase bills by message credits, and auto-recharge adds paid credits when your threshold is reached (as of August 2026 — see chatbase.co/pricing).
-- A free trial that stays put: Site Rep's 50 free answers have no time limit, and unanswered handoffs never count against them. Chatbase's free plan includes 50 message credits per month and deletes inactive agents after 14 days (as of August 2026 — see chatbase.co/pricing).
+- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total before payment and Starter includes 1,000 source-backed replies. Chatbase bills by message credits, and auto-recharge adds paid credits when your threshold is reached (as of October 2026 — see chatbase.co/pricing).
+- A free start that stays put: Site Rep's 50 free answers have no time limit, and unanswered handoffs never count against them. Chatbase's pricing page now lists paid plans only, from Hobby at $40/month with 700 message credits and a 7-day trial, and no longer lists a free plan (as of October 2026 — see chatbase.co/pricing).
 - Source-backed handoff: every Site Rep answer shows its source, and a question your pages don't cover becomes private follow-up instead of a guess. It can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust) separate confirmed controls from what is not included today.
 
@@ -560,7 +560,7 @@ Site Rep and Chatbase both train a chatbot on your content and embed it on your 
 
 ## Pricing note
 
-Prices and credit allowances change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in August 2026. Confirm current numbers on each vendor's pricing page before deciding.
+Prices and credit allowances change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in October 2026. Confirm current numbers on each vendor's pricing page before deciding.
 
 ## Try Site Rep free
 
@@ -597,7 +597,7 @@ Intercom is a full customer-service platform and Fin is its AI agent. Site Rep i
 
 ## How Site Rep is different
 
-- Local checkout pricing: Site Rep shows the exact buyer-local total before payment. Intercom lists Fin from $0.99 per outcome, with Intercom seat plans shown at $29, $85, and $132 per seat per month (as of August 2026 — see intercom.com/pricing). With outcome billing your cost rises as volume rises.
+- Local checkout pricing: Site Rep shows the exact buyer-local total before payment. Intercom lists Fin from $0.99 per outcome, with Intercom seat plans shown at $29, $85, and $132 per seat per month (as of October 2026 — see intercom.com/pricing). With outcome billing your cost rises as volume rises.
 - A free start with no card: 50 source-backed answers, no time limit.
 - Source-backed handoff: Site Rep answers only from your approved pages, shows the source, and turns a missing answer into private follow-up. It can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust).
@@ -609,7 +609,7 @@ Intercom is a full customer-service platform and Fin is its AI agent. Site Rep i
 
 ## Pricing note
 
-Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in August 2026. Confirm current numbers on each vendor's pricing page before deciding.
+Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in October 2026. Confirm current numbers on each vendor's pricing page before deciding.
 
 ## Try Site Rep free
 
@@ -646,7 +646,7 @@ Tidio is a live-chat and automation suite, and Lyro is its AI agent add-on. Site
 
 ## How Site Rep is different
 
-- Local checkout pricing with no per-conversation meter: Site Rep shows the exact buyer-local total before payment. Tidio's pricing page lists support plans from Free and Starter through Growth, Plus, and Premium, with Lyro AI Agent conversations managed by monthly conversation limits (as of August 2026 — see tidio.com/pricing).
+- Local checkout pricing with no per-conversation meter: Site Rep shows the exact buyer-local total before payment. Tidio's pricing page lists support plans from Free and Starter through Growth, Plus, and Premium, with Lyro AI Agent conversations managed by monthly conversation limits (as of October 2026 — see tidio.com/pricing).
 - When Site Rep's free answers run out, the rep keeps capturing visitor emails instead of going quiet, so you never lose a lead during a busy stretch. Tidio lists the first 50 Lyro AI Agent conversations as free for life, then paid quota upgrades from 50 to 1,000 conversations.
 - Source-backed handoff: every answer shows its source, and a missing answer becomes private follow-up. It can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust) separate confirmed controls from what is not included today.
@@ -658,7 +658,7 @@ Tidio is a live-chat and automation suite, and Lyro is its AI agent add-on. Site
 
 ## Pricing note
 
-Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in August 2026. Confirm current numbers on each vendor's pricing page before deciding.
+Prices change. Site Rep shows its live checkout total in the buyer's local currency; competitor figures above were checked in October 2026. Confirm current numbers on each vendor's pricing page before deciding.
 
 ## Try Site Rep free
 
@@ -697,8 +697,8 @@ WebSpeaker positions itself as an AI answer layer for B2B SaaS teams with docs a
 
 ## How Site Rep is different
 
-- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total, tax included, before payment. WebSpeaker bills in EUR by AI-message tiers: Free includes 100 AI messages, Starter is 15 EUR/month for 2,500 AI messages, Growth is 79 EUR/month for 12,000, and Scale is 279 EUR/month for 50,000, with yearly billing around 20% cheaper (as of August 2026 — see webspeaker.pro/pricing).
-- A free start that stays put: Site Rep's 50 free answers have no time limit, and the rep keeps capturing visitor emails after they run out. WebSpeaker's Free plan includes 100 AI messages, 1 project, and 1 seat, and sample indexed content is kept for 30 days unless the widget is installed on a project (as of August 2026 — see webspeaker.pro/pricing).
+- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total, tax included, before payment. WebSpeaker bills in EUR by AI-message tiers: Free includes 100 AI messages, Starter is 15 EUR/month for 2,500 AI messages, Growth is 79 EUR/month for 12,000, and Scale is 279 EUR/month for 50,000, with yearly billing around 20% cheaper (as of October 2026 — see webspeaker.pro/pricing).
+- A free start that stays put: Site Rep's 50 free answers have no time limit, and the rep keeps capturing visitor emails after they run out. WebSpeaker's Free plan includes 100 AI messages, 1 project, and 1 seat, and sample indexed content is kept for 30 days unless the widget is installed on a project (as of October 2026 — see webspeaker.pro/pricing).
 - Source-backed handoff: every Site Rep answer shows its source, and a question your pages do not cover becomes private follow-up instead of a guess. It can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust) separate confirmed controls from what is not included today.
 
@@ -709,7 +709,7 @@ WebSpeaker positions itself as an AI answer layer for B2B SaaS teams with docs a
 
 ## Pricing note
 
-Prices and allowances change. Site Rep shows its live checkout total in the buyer's local currency; WebSpeaker figures above were checked in August 2026 against webspeaker.pro/pricing. Confirm current numbers on WebSpeaker's pricing page before deciding.
+Prices and allowances change. Site Rep shows its live checkout total in the buyer's local currency; WebSpeaker figures above were checked in October 2026 against webspeaker.pro/pricing. Confirm current numbers on WebSpeaker's pricing page before deciding.
 
 ## Try Site Rep free
 
@@ -746,8 +746,8 @@ Site Rep and Chatling both train a chatbot on your content and embed it on your 
 
 ## How Site Rep is different
 
-- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total, tax included, before payment. Chatling bills by monthly AI-credit plans: Free includes 200 AI credits, Starter is $25/month for 1,750 AI credits, Growth is $75/month for 6,000, and Scale is $295/month for 35,000, with annual billing from $250/year (as of August 2026 — see chatling.ai/pricing).
-- A free start that stays put: Site Rep's 50 free answers have no time limit, and the rep keeps capturing visitor emails after they run out. Chatling's Free plan includes 200 AI credits per month, 1 AI agent, 1 seat, and a 500,000-character knowledge base, with credits consumed per AI message depending on the model (as of August 2026 — see chatling.ai/pricing).
+- Local checkout pricing with no credit math: Site Rep shows the exact buyer-local total, tax included, before payment. Chatling bills by monthly AI-credit plans: Free includes 200 AI credits, Starter is $25/month for 1,750 AI credits, Growth is $75/month for 6,000, and Scale is $295/month for 35,000, with annual billing from $250/year (as of October 2026 — see chatling.ai/pricing).
+- A free start that stays put: Site Rep's 50 free answers have no time limit, and the rep keeps capturing visitor emails after they run out. Chatling's Free plan includes 200 AI credits per month, 1 AI agent, 1 seat, and a 500,000-character knowledge base, with credits consumed per AI message depending on the model (as of October 2026 — see chatling.ai/pricing).
 - Source-backed handoff: every Site Rep answer shows its source, and a question your pages do not cover becomes private follow-up instead of a guess. It can become a lead when the visitor leaves contact details.
 - Public trust notes on the [trust page](/trust) separate confirmed controls from what is not included today.
 
@@ -758,7 +758,7 @@ Site Rep and Chatling both train a chatbot on your content and embed it on your 
 
 ## Pricing note
 
-Prices and credit allowances change. Site Rep shows its live checkout total in the buyer's local currency; Chatling figures above were checked in August 2026 against chatling.ai/pricing. Confirm current numbers on Chatling's pricing page before deciding.
+Prices and credit allowances change. Site Rep shows its live checkout total in the buyer's local currency; Chatling figures above were checked in October 2026 against chatling.ai/pricing. Confirm current numbers on Chatling's pricing page before deciding.
 
 ## Try Site Rep free
 
