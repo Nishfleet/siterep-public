@@ -1,33 +1,76 @@
 # Trigger stub. The dispatch logic lives once in Nishfleet/fleet-ops; a
 # workflow only fires on its own repo's events, so the triggers stay here.
-# opus-vet dispatches this file by name with issue=<N>.
+# opus-vet dispatches this file by name with issue=<N>. The task input is
+# workflow_dispatch-only, so only a login with write access can set it:
+# task=miss-review replays a miss review on one issue, task=orchestrate hands
+# a parked issue to the orchestrator hand-off, empty is a normal sweep. The
+# callee declares the same two inputs on its workflow_call (verified on
+# fleet-ops main), so a dispatch with task never fails at startup.
+# The job's if: mirrors the callee's own job conditions, because this file
+# cannot see a moving @main: a comment event is dispatched only when the
+# comment starts a miss review (park:/opus-vet:) AND its author is
+# OWNER/MEMBER/COLLABORATOR, and a closed pull_request_target only when the
+# callee's miss-review-pr job can act on it (same-repo head; a claim/issue-*
+# close, or a merge of a GitHub-generated revert, whose title always starts
+# Revert "). Any stranger's comment or a fork's PR close starts nothing.
+# issues: reopened dispatches the callee's miss-review for the issue; the
+# callee's MISS_REVIEW variable and its Gate's one-review-per-issue dedupe
+# own that decision.
 name: agent-dispatch
 on:
   issues:
-    types: [labeled, closed]
+    types: [labeled, closed, reopened]
+  # A park: comment starts a miss review (fleet-ops#9211).
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       issue:
         description: 'Issue number to dispatch, overrides the sweep and its claim-PR append'
         required: false
         type: string
+      task:
+        description: 'miss-review to replay a miss on issue, orchestrate to hand a parked issue to the orchestrator, empty for a normal sweep'
+        required: false
+        type: string
   pull_request_target:
-    types: [dequeued, auto_merge_disabled]
+    types: [dequeued, auto_merge_disabled, closed]
   workflow_run:
     workflows: [CI]
     types: [completed]
   schedule:
     - cron: '17 */6 * * *'
+# One running and one pending run per commented issue; GitHub replaces the
+# pending run, so a burst of comments cannot fan out. Every other event gets
+# its own group and never queues (the callee owns the sweep's own group).
+concurrency:
+  group: ${{ github.event_name == 'issue_comment' && format('agent-dispatch-comment-{0}-{1}', github.repository, github.event.issue.number) || format('agent-dispatch-{0}', github.run_id) }}
+  cancel-in-progress: false
 jobs:
   dispatch:
+    if: >-
+      (github.event_name != 'issue_comment' ||
+        ((startsWith(github.event.comment.body, 'park:') || startsWith(github.event.comment.body, 'opus-vet:')) &&
+         (github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'))) &&
+      (github.event_name != 'pull_request_target' || github.event.action != 'closed' ||
+        (github.event.pull_request.head.repo.full_name == github.repository &&
+          ((github.event.pull_request.merged == false && startsWith(github.event.pull_request.head.ref, 'claim/issue-')) ||
+           (github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Revert "')))))
     uses: Nishfleet/fleet-ops/.github/workflows/agent-dispatch.yml@main
     permissions:
       issues: write
       pull-requests: write
       contents: write
+      # The three read grants cap what the callee's jobs ask for: the sweep's
+      # run liveness (`gh run view`) and the head's statusCheckRollup
+      # (fleet-ops#8777), stuck-prs' head checks, hold-risky's statuses: read,
+      # and orchestrate's actions: read daily-cap listing.
       actions: read
       checks: read
       statuses: read
     with:
       issue: ${{ inputs.issue }}
       agent_mode: ${{ vars.AGENT_MODE }}
+      task: ${{ inputs.task }}
