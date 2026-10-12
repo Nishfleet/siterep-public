@@ -25,6 +25,9 @@ jobs:
       issues: write
       pull-requests: write
       contents: write
+      actions: read
+      checks: read
+      statuses: read
     with:
       issue: ${{ inputs.issue }}
       agent_mode: ${{ vars.AGENT_MODE }}
