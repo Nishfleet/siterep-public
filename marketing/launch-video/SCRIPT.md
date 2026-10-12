@@ -6,8 +6,8 @@
 | 14-30 s | "A private rep for the people your site almost loses." / "It refuses to guess, and collects the visitor's details for your private follow-up queue." | siterep.net hero text (screenshot `assets/siterep-home.png`) |
 | 30-46 s | "It says when it does not know." / "When your pages do not cover a question, Site Rep says so and asks for follow-up." Over siterep.net/honesty. | siterep.net/honesty "The operating rule" |
 | 46-54 s | "What it does today, stated plainly." Over siterep.net/trust. | siterep.net/trust "What is working now" |
-| 54-62 s | "siterep.net" / "Start free — 50 answers, no card". The one next action. | siterep.net hero button and badge |
+| 54-62 s | "siterep.net" / "Start free — no card". The one next action. | public/llms.txt ("no-card free trial"); siterep.net hero button |
 
-Source caveat: "50 answers, no card" comes only from the live hero, not from README.md or public/llms.txt; re-check it against the live site before posting. The home, honesty and trust captures show public pages only: no signed-in banner, dashboard or chat transcript.
+The home, honesty and trust captures show public pages only: no signed-in banner, dashboard or chat transcript.
 
-Every screen is a real 1920x1080 capture of the live site taken 2026-10-12. No numbers beyond "50 answers, no card", which the live hero states.
+Every screen is a real 1920x1080 capture of the live site taken 2026-10-12. No numbers appear in the video.
