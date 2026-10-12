@@ -8,4 +8,6 @@
 | 46-54 s | "What it does today, stated plainly." Over siterep.net/trust. | siterep.net/trust "What is working now" |
 | 54-62 s | "siterep.net" / "Start free — 50 answers, no card". The one next action. | siterep.net hero button and badge |
 
+Source caveat: "50 answers, no card" comes only from the live hero, not from README.md or public/llms.txt; re-check it against the live site before posting. The home, honesty and trust captures show public pages only: no signed-in banner, dashboard or chat transcript.
+
 Every screen is a real 1920x1080 capture of the live site taken 2026-10-12. No numbers beyond "50 answers, no card", which the live hero states.
