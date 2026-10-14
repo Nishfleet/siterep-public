@@ -7,13 +7,6 @@ import {
   SITE_REP_MCP_TOOLS,
 } from "../worker/site-rep-mcp.js";
 
-// The live read-only MCP server at /api/mcp is Site Rep's most differentiated
-// machine-readable surface, but crawlers and AI agents can only discover it
-// through llms.txt. These tests pin the discovery copy to the actual server
-// contract so the public description cannot drift from the implementation
-// (endpoint, transport, protocol version, bearer auth, GET discovery, the
-// three read-only tools, the read-scope boundary, and the explicit
-// no-write/no-outbound/no-external-execution boundary).
 const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
 
 const sectionStart = llms.indexOf("Machine-readable MCP surface for agents:");

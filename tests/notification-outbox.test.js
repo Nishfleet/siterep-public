@@ -1,36 +1,8 @@
-// Behavioral coverage for the owner-notification outbox (worker/index.js
-// processNotificationOutbox), driven through the REAL internal notification
-// processing route — POST /api/internal/notifications/process →
-// processInternalQueues → processNotificationOutbox — on a real
-// CiteRepCoordinator over seeded Durable-Object storage, with the email
-// provider stubbed exactly at the send boundary (cloudflare EMAIL binding or
-// the Plunk API).
-//
-// This proves the retry-safety contract that source-text assertions cannot
-// see:
-//   - provider failure (thrown error or HTTP error) leaves the event FAILED
-//     with the attempt counted and a backoff scheduled — never sent, never
-//     dropped;
-//   - backoff is honored: a failed event is not re-delivered before its
-//     nextAttemptAt, and is re-delivered once that time has passed;
-//   - attempts exhaust at MAX_NOTIFICATION_ATTEMPTS: the event stays failed
-//     (max_attempts_reached) and the provider is never called again;
-//   - a claim stuck in "sending" past the stuck window is recovered and
-//     re-delivered, while a fresh in-flight claim is left alone;
-//   - "sent" is reachable ONLY through provider success in the same run, and
-//     a disabled provider leaves the event pending, never sent.
-//
-// Regression surface: sol-sweep product-tests finding
-// `siterep-notification-provider-failure-drop-survives` — a mutation that
-// records failed deliveries as sent (or drops failed events) must turn this
-// suite red.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 
-// The worker bundle imports "cloudflare:workers" for its Durable Object base
-// class; the Node test runner has no Workers runtime, so supply the minimal
-// shim. Must be registered before the worker module is loaded.
+// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -146,7 +118,7 @@ function makeNotification(overrides = {}) {
   };
 }
 
-const RETRY_WINDOW_MS = 120 * 1000; // first backoff is 2 minutes; assert within a generous ±1 min band
+const RETRY_WINDOW_MS = 120 * 1000;
 
 function assertBackoffAround(expectedMs, actualIso, message) {
   const delta = Date.parse(actualIso) - Date.now();
@@ -160,10 +132,6 @@ function isoMinutesAgo(minutes) {
   return new Date(Date.now() - minutes * 60 * 1000).toISOString();
 }
 
-// Drive the real route once. `emailSend` is the cloudflare EMAIL binding stub
-// (receives the send payload, returns or throws); `fetchImpl` is the Plunk API
-// stub. Returns the HTTP status, parsed body, EMAIL.send call count, and a
-// per-bot read-back of the notifications persisted in Durable-Object storage.
 async function driveOutbox({ bots, env = baseEnv(), emailSend = null, fetchImpl = null }) {
   const storage = fakeStorage({ store: { bots } });
   const coordinator = new CiteRepCoordinator({ storage }, env);
@@ -204,7 +172,6 @@ test("provider throw keeps the notification failed — never sent, never dropped
   assert.match(record.lastError, /provider temporarily unavailable/);
   assert.notEqual(record.sentAt, undefined);
   assert.equal(record.sentAt, "");
-  // A retry is scheduled (2-minute first backoff), so the next run can retry.
   assertBackoffAround(2 * 60 * 1000, record.nextAttemptAt, "first backoff");
 });
 
@@ -254,7 +221,6 @@ test("failed notification is not re-delivered before its backoff time", async ()
     },
   });
 
-  // Nothing claimed, nothing sent, provider untouched.
   assert.deepEqual(body.notifications, { sent: 0, skipped: 0, failed: 0, checked: 0 });
   assert.equal(emailCalls.length, 0);
   const [record] = notificationsOf("bot1");
@@ -265,7 +231,6 @@ test("failed notification is not re-delivered before its backoff time", async ()
 });
 
 test("failed notification retries after the backoff window and still never sends without provider success", async () => {
-  // Due for retry: attempts 1 of 5, backoff long past.
   const seeded = makeNotification({ deliveryStatus: "failed", attempts: 1, lastError: "boom", nextAttemptAt: isoMinutesAgo(60) });
   const { body, emailCalls, notificationsOf } = await driveOutbox({
     bots: { bot1: { ...makeBot("bot1"), notifications: [seeded] } },
@@ -280,12 +245,10 @@ test("failed notification retries after the backoff window and still never sends
   assert.equal(record.deliveryStatus, "failed");
   assert.equal(record.attempts, 2);
   assert.equal(record.sentAt, "");
-  // Second failure schedules the 10-minute backoff.
   assertBackoffAround(10 * 60 * 1000, record.nextAttemptAt, "second backoff");
 });
 
 test("attempt exhaustion stops provider calls and keeps the event failed", async () => {
-  // Attempts 4 of 5 and due for retry: this run takes it to the ceiling.
   const seeded = makeNotification({ deliveryStatus: "failed", attempts: 4, lastError: "boom", nextAttemptAt: isoMinutesAgo(5) });
   const first = await driveOutbox({
     bots: { bot1: { ...makeBot("bot1"), notifications: [seeded] } },
@@ -298,11 +261,9 @@ test("attempt exhaustion stops provider calls and keeps the event failed", async
   const [afterFirst] = first.notificationsOf("bot1");
   assert.equal(afterFirst.deliveryStatus, "failed");
   assert.equal(afterFirst.attempts, 5);
-  assert.equal(afterFirst.nextAttemptAt, ""); // exhausted: no further retry scheduled
+  assert.equal(afterFirst.nextAttemptAt, "");
   assert.equal(afterFirst.sentAt, "");
 
-  // A further run must not touch the provider or the record: the event stays
-  // failed forever, never sent.
   const second = await driveOutbox({
     bots: { bot1: { ...makeBot("bot1"), notifications: [afterFirst] } },
     emailSend: async () => {
@@ -318,8 +279,6 @@ test("attempt exhaustion stops provider calls and keeps the event failed", async
 });
 
 test("pending event past the attempt ceiling is marked failed without any provider call", async () => {
-  // A queued-but-unclaimed event that somehow carries the max attempt count
-  // must be parked as failed, not delivered.
   const seeded = makeNotification({ deliveryStatus: "pending", attempts: 5, nextAttemptAt: "" });
   const { body, emailCalls, notificationsOf } = await driveOutbox({
     bots: { bot1: { ...makeBot("bot1"), notifications: [seeded] } },
@@ -338,7 +297,6 @@ test("pending event past the attempt ceiling is marked failed without any provid
 });
 
 test("stuck sending claim older than the stuck window is recovered and delivers", async () => {
-  // A crash between claim and receipt left this mid-flight 11 minutes ago.
   const seeded = makeNotification({
     deliveryStatus: "sending",
     attempts: 0,

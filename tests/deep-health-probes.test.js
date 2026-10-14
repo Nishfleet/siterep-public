@@ -2,18 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// Regression for sol-sweep product-deploy/siterep-deep-health-blesses-unready-storage
-// (2026-08-13): deep health used to return ok:true and selfServe.ready while
-// recordLedger.ready, sourceContent.ready and accountRbac.ready were all
-// false, so the release controller's exact {"ok":true,"mode":"deep"}
-// predicate blessed deploys with unproved durable storage/RBAC as the
-// rollback baseline.
-//
-// The worker is a workerd module (imports "cloudflare:workers"), so like the
-// rest of this repo's belt these are hermetic source-contract assertions:
-// every pattern below only exists because the fix added active storage
-// proofs, derived ready flags, and derived deep-mode ok. Each test fails
-// against the pre-fix worker and passes against the fixed worker.
 const workerPath = new URL("../worker/index.js", import.meta.url);
 
 test("deep health actively probes the D1 ledger schema and read path", async () => {

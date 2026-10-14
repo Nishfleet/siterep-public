@@ -240,9 +240,6 @@ test("worker serves the funnel event route before the coordinator queue and alwa
 
   const handler = worker.slice(worker.indexOf("async function handlePublicFunnelEvent"), worker.indexOf("async function handleApi"));
   assert.match(handler, /writeHead\(204\)/, "collection must answer 204 no matter what");
-  // The fire-and-forget contract itself (the waitUntil promise never rejects
-  // and is never awaited) is behavior-tested above via collectFunnelEvent;
-  // only the deferral wiring is asserted at the source level here.
   assert.match(handler, /ctx\.waitUntil\(/, "collection must be deferred to the event loop as fire-and-forget");
   assert.doesNotMatch(handler, /cookie/i, "collection must never read cookies");
   assert.doesNotMatch(handler, /cf-connecting-ip/i, "collection must never read the visitor IP");
@@ -272,12 +269,6 @@ test("public site fires all twelve funnel events from public surfaces", async ()
 
 test("live synthetic monitor pins the public funnel delivery contract on the live bundle", async () => {
   const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
-  // The scout re-files on 2026-08-09 and 2026-08-10 ("closed twin still missing
-  // on the live bundle") searched the deployed JS for third-party analytics
-  // tokens and missed the first-party allow-listed beacon. The monitor must pin
-  // the real contract instead: the collection endpoint stays 204 for invalid
-  // payloads (dropped by design, never recorded) and the SPA bundle keeps the
-  // collection path plus every allow-listed event name.
   assert.match(monitor, /import \{ FUNNEL_EVENT_NAMES \} from "\.\.\/worker\/funnel-events\.js"/);
   assert.match(monitor, /"funnel event collection"/);
   assert.match(monitor, /funnel collection must answer 204 no matter what/);

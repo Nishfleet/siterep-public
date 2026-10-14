@@ -1,30 +1,8 @@
-// Behavioral coverage for the overage billing flush (worker/index.js
-// flushOverageUsage), driven through the REAL internal notification
-// processing route — POST /api/internal/notifications/process →
-// processInternalQueues → flushOverageUsage — on a real CiteRepCoordinator
-// over seeded Durable-Object storage with a stubbed Dodo events/ingest
-// endpoint.
-//
-// This proves the retry-safety contract that the source-text assertions in
-// overage.test.js cannot see:
-//   - failed Dodo ingest NEVER removes queued events (network error or HTTP
-//     error) — billable events stay queued for the next flush;
-//   - successful ingest removes EXACTLY the delivered ids and nothing else;
-//   - mixed outcomes keep only the failed bot's events;
-//   - missing billing configuration (flag off, or no Dodo API key) leaves
-//     every queue untouched and never calls Dodo.
-//
-// Regression surface: sol-sweep product-tests finding
-// `siterep-overage-failed-ingest-event-loss-survives` — a mutation that
-// records failed ingests as delivered (dropping billable events) must turn
-// this suite red.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 
-// The worker bundle imports "cloudflare:workers" for its Durable Object base
-// class; the Node test runner has no Workers runtime, so supply the minimal
-// shim. Must be registered before the worker module is loaded.
+// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -123,9 +101,6 @@ function makeBot(botId, { customerId = "cus_test_1", pendingIds = ["ov_1", "ov_2
   };
 }
 
-// Drive the real route once. Returns the HTTP status, parsed body, number of
-// Dodo calls made, the ingest payloads sent, and the surviving pending ids
-// per bot read back from the Durable-Object storage after the flush.
 async function driveFlush({ bots = { bot1: makeBot("bot1") }, env = baseEnv(), fetchImpl }) {
   const storage = fakeStorage({ store: { bots } });
   const coordinator = new CiteRepCoordinator({ storage }, env);
@@ -159,7 +134,6 @@ test("ingest network failure keeps every queued overage event for retry", async 
   assert.equal(http, 200);
   assert.deepEqual(body.overage, { skipped: false, sent: 0, failed: 2 });
   assert.equal(fetchCalls, 1);
-  // Billable events survive the outage: still queued, in order, for the next flush.
   assert.deepEqual(pendingById("bot1"), ["ov_1", "ov_2"]);
 });
 
@@ -182,7 +156,6 @@ test("successful ingest sends every queued event and removes exactly the deliver
 
   assert.equal(fetchCalls, 1);
   assert.deepEqual(body.overage, { skipped: false, sent: 3, failed: 0 });
-  // The ingest payload carries exactly the queued ids with the Dodo billing shape.
   const payload = capture[0];
   assert.deepEqual(
     payload.events.map((event) => event.event_id),
@@ -193,7 +166,6 @@ test("successful ingest sends every queued event and removes exactly the deliver
     assert.equal(event.customer_id, "cus_test_1");
     assert.equal(event.metadata.bot_id, "bot1");
   }
-  // Queue drained: no delivered id may survive, and nothing extra was removed.
   assert.deepEqual(pendingById("bot1"), []);
 });
 
@@ -210,10 +182,8 @@ test("mixed ingest results remove only the delivered bot's events; failures stay
   });
 
   assert.deepEqual(body.overage, { skipped: false, sent: 2, failed: 2 });
-  // Only the delivered bot is drained; the failed bot's events survive intact.
   assert.deepEqual(pendingById("bot1"), []);
   assert.deepEqual(pendingById("bot2"), ["ov_3", "ov_4"]);
-  // Both bots were offered up once, with exactly their own queued ids.
   assert.deepEqual(
     capture.map((payload) => payload.events.map((event) => event.event_id)),
     [

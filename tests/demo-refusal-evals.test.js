@@ -15,14 +15,6 @@ import {
 } from "../worker/demo-sources.js";
 import { SHOULD_ANSWER, SHOULD_REFUSE, CITATION_EXPECTATIONS, runHonestyEvals } from "../worker/honesty-evals.js";
 
-// Retrieval evals against the REAL public demo sources. The 2026-06-12 audit
-// found ~47% of natural should-answer phrasings were falsely refused by an
-// over-strict relevance gate (including "how much is the starter plan" and
-// both buying-intent questions). These evals pin both directions: covered
-// topics must answer, off-topic and adjacent-but-unsupported must refuse.
-// The question sets are shared with the public /api/public/honesty-check
-// endpoint so the live proof runs exactly what CI runs.
-
 const DEMO_SOURCES = PUBLIC_DEMO_SOURCES.map((source) => ({
   ...source,
   excerpt: source.content.slice(0, 240),
@@ -35,9 +27,6 @@ test("the shared honesty evals all pass against the real demo sources", () => {
   assert.deepEqual(result.shouldRefuse.wronglyAnswered, [], "wrongly answered unsupported questions");
   assert.equal(result.shouldAnswer.passed, result.shouldAnswer.total);
   assert.equal(result.shouldRefuse.passed, result.shouldRefuse.total);
-  // Citations must all pass: starter-plan uses the same live #public-pricing
-  // source as public chat, and the buy-next answer cites #how-it-works, whose
-  // rendered text contains the answer's key nouns.
   assert.deepEqual(result.citations.misCited, [], "mis-cited answered questions");
   assert.equal(result.citations.total, 11);
   assert.equal(result.citations.passed, result.citations.total);
@@ -203,12 +192,6 @@ test("demo-plan-features source matches PLAN_LIMITS for every named plan", async
   }
 });
 
-// Named-plan exact-price path: the live demo worker answers named Starter
-// price-intent questions from a dedicated "Starter pricing" source built from
-// the country-aware Dodo checkout preview amount the public pricing/checkout
-// surface already renders. These tests pin that path (and the honest
-// fallback) at the retrieval level with the real demo sources.
-
 function demoSourcesWithStarterAnswer(answerText) {
   return [starterPricingSource(answerText), ...DEMO_SOURCES];
 }
@@ -241,10 +224,6 @@ test("only named Starter price-intent questions trigger the exact-price path", (
 });
 
 test("named Starter price questions return the live localized tax-inclusive amount", () => {
-  // The exact shape publicPricingCatalog returns for a live Dodo checkout
-  // preview — localized to the buyer and tax-inclusive. The amount below is a
-  // fixture, not a hardcoded product price: the answer must echo exactly what
-  // the pricing surface renders for the same request.
   const liveStarterPlan = {
     name: "Starter",
     currency: "USD",
@@ -272,8 +251,6 @@ test("named Starter price questions return the live localized tax-inclusive amou
 });
 
 test("unavailable live price falls back honestly instead of inventing an amount", () => {
-  // The static USD plan anchor (plan-fallback), static env amounts, and empty
-  // plans are never the buyer's truth — all must produce the honest fallback.
   const fallbackAnswers = [
     starterPriceAnswerFor({ name: "Starter", source: "plan-fallback", currency: "USD", amountSubunits: 900, displayPrice: "$9.00" }),
     starterPriceAnswerFor({ name: "Starter", source: "razorpay-env", currency: "USD", amountSubunits: 900, displayPrice: "$9.00" }),
@@ -309,16 +286,10 @@ test("unavailable live price falls back honestly instead of inventing an amount"
 test("static demo sources never hardcode a currency amount", () => {
   const pricingContent = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-pricing").content;
   assert.doesNotMatch(pricingContent, /[$€£₹]\s?\d|\d+\s?(?:\/|per)\s?month/i);
-  // Every demo source stays free of stated currency amounts too.
   for (const source of PUBLIC_DEMO_SOURCES) {
     assert.doesNotMatch(source.content, /[$€£₹]\s?\d/, `${source.id} hardcodes a currency amount`);
   }
 });
-
-// Generic pricing questions ("What does it cost?") quote the four named-plan
-// prices the live #public-pricing section renders on the same page. These
-// tests pin the detection, the live-price answer, and the honest fallback at
-// the retrieval level with the real demo sources.
 
 function demoSourcesWithPlanPrices(answerText) {
   return [planPricingSource(answerText), ...DEMO_SOURCES];
@@ -354,10 +325,6 @@ test("only generic pricing questions trigger the four-plan-price path", () => {
 });
 
 test("generic pricing questions quote the four live named-plan prices", () => {
-  // The exact shape publicPricingCatalog returns for live Dodo checkout
-  // previews — localized to the buyer and tax-inclusive. The amounts below are
-  // fixtures, not hardcoded product prices: the answer must echo exactly what
-  // the #public-pricing surface renders for the same request.
   const livePlans = [
     { name: "Starter", currency: "EUR", amountSubunits: 925, displayPrice: "€9.25", source: "dodo_checkout_preview" },
     { name: "Growth", currency: "EUR", amountSubunits: 2980, displayPrice: "€29.80", source: "dodo_checkout_preview" },
@@ -387,8 +354,6 @@ test("generic pricing questions quote the four live named-plan prices", () => {
 });
 
 test("unavailable live plan prices fall back honestly instead of inventing amounts", () => {
-  // A single unset plan, the static USD plan anchor, or empty plans are never
-  // the buyer's truth — all must produce the honest fallback.
   const fallbackAnswers = [
     planPricesAnswerFor([
       { name: "Starter", currency: "EUR", amountSubunits: 925, displayPrice: "€9.25", source: "dodo_checkout_preview" },
@@ -431,17 +396,12 @@ test("unavailable live plan prices fall back honestly instead of inventing amoun
   assert.equal(result.sources[0].id, "demo-plan-pricing");
 });
 
-// The demo pricing answers are final copy: the compose step must never
-// paraphrase them, because a warm rewrite drops the plan names the live quote
-// guarantees. The guard keys on the dedicated pricing source the answer cites.
-
 test("pricing answers built from the dedicated pricing sources are flagged exact", () => {
   const asAnswer = (source) => ({ sources: [publicSource(source)] });
   assert.equal(isExactDemoPricingAnswer(asAnswer(planPricingSource(planPricesAnswerFor([])))), true);
   assert.equal(isExactDemoPricingAnswer(asAnswer(starterPricingSource(starterPriceAnswerFor({})))), true);
   assert.equal(isExactDemoPricingAnswer(asAnswer(planPricingSource("x"))), true);
   assert.equal(isExactDemoPricingAnswer(asAnswer(starterPricingSource("x"))), true);
-  // The dedicated source objects themselves are not answer shapes.
   assert.equal(isExactDemoPricingAnswer(planPricingSource("x")), false);
 });
 

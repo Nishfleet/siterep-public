@@ -24,7 +24,7 @@ test("conversion nudges fire at half, almost-out, and used-up — once each", ()
   assert.equal(freeTrialNudge(0), null);
   assert.equal(freeTrialNudge(24), null);
   assert.deepEqual(freeTrialNudge(25), { threshold: 25, kind: "half" });
-  assert.deepEqual(freeTrialNudge(44), { threshold: 25, kind: "half" }); // still in the half band
+  assert.deepEqual(freeTrialNudge(44), { threshold: 25, kind: "half" });
   assert.deepEqual(freeTrialNudge(45), { threshold: 45, kind: "almost" });
   assert.deepEqual(freeTrialNudge(49), { threshold: 45, kind: "almost" });
   assert.deepEqual(freeTrialNudge(50), { threshold: 50, kind: "used_up" });
@@ -32,11 +32,9 @@ test("conversion nudges fire at half, almost-out, and used-up — once each", ()
 });
 
 test("nudge thresholds derive from the cap so they hold if the cap changes", () => {
-  // cap 100 → half 50, almost 95.
   assert.deepEqual(freeTrialNudge(50, 100), { threshold: 50, kind: "half" });
   assert.deepEqual(freeTrialNudge(95, 100), { threshold: 95, kind: "almost" });
   assert.deepEqual(freeTrialNudge(100, 100), { threshold: 100, kind: "used_up" });
-  // Tiny cap stays monotonic (almost is always past half).
   assert.equal(freeTrialNudge(2, 4).threshold >= freeTrialNudge(2, 4).threshold, true);
 });
 
@@ -56,17 +54,14 @@ test("worker wires the free tier through provisioning, counting, and go-live", a
     worker.indexOf("function buildLaunchReport"),
   );
 
-  // Plan plumbing: Free resolves to FREE_PLAN_LIMITS and is a known plan.
   assert.match(worker, /if \(plan === "Free"\) return "Free"/);
   assert.match(worker, /if \(plan === "Free"\) return FREE_PLAN_LIMITS/);
 
-  // Lifetime, cited-only usage that drives the existing usage-locked auto-pause.
   assert.match(worker, /if \(isFreePlan\(bot\)\) \{[\s\S]*?bot\.freeTrial\?\.citedAnswersUsed \|\| 0, FREE_ANSWER_CAP/);
   assert.match(worker, /if \(!answer\.unknown && isFreePlan\(bot\)\)/);
   assert.match(worker, /bot\.freeTrial\.citedAnswersUsed = \(bot\.freeTrial\.citedAnswersUsed \|\| 0\) \+ 1/);
   assert.match(worker, /maybeQueueFreeTrialNudge\(bot\)/);
 
-  // Provisioning endpoint, public-routed, abuse-bounded, auto-trained.
   assert.match(worker, /url\.pathname === "\/api\/free\/start"/);
   assert.match(worker, /if \(method === "POST" && pathname === "\/api\/free\/start"\) return true/);
   assert.match(worker, /function freeTrialClaim/);
@@ -80,14 +75,12 @@ test("worker wires the free tier through provisioning, counting, and go-live", a
   assert.doesNotMatch(nudgeBlock, /\$9\/month/);
   assert.doesNotMatch(nudgeBlock, /Add a plan from/);
 
-  // Go-live without payment for free bots, while paid bots still need verified billing.
   assert.match(worker, /if \(bot\.lifecycleStatus === "approved" && !publicLaunchBlockers\(bot\)\.length\)/);
   assert.match(worker, /Rep ready for review/);
   assert.match(worker, /Review cited answers, then install the widget when it is ready/);
   assert.doesNotMatch(worker, /went live automatically after the first successful training/);
   assert.match(worker, /!isFreePlan\(bot\) && !billingHasActiveAccess\(bot\.billing\)/);
 
-  // Free usage surfaced to the dashboard.
   assert.match(worker, /freeTrial: isFreePlan\(bot\)/);
   assert.match(worker, /startedAt: bot\.freeTrial\?\.startedAt \|\| ""/);
 });
@@ -96,21 +89,16 @@ test("the SPA and prerendered homepage expose the no-card free trial", async () 
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
-  // Free-start modal posts to the endpoint and lands the visitor in their
-  // workspace via the same flow as paid signup.
   assert.match(app, /function FreeStartModal/);
   assert.match(app, /api<SelfServeSignupResponse>\("\/api\/free\/start"/);
   assert.match(app, /freeStartOpen \? \(/);
-  // Hero leads with the free CTA for public visitors.
   assert.match(app, /Start free — no card/);
   assert.match(app, /install only after you review a cited answer and add the widget snippet/);
   assert.match(app, /function planPriceSuffix/);
   assert.match(app, /per month, tax included/);
   assert.doesNotMatch(app, /goes live on your site automatically/);
   assert.doesNotMatch(app, /from \$9\/month/);
-  // Dashboard upgrade banner reads the freeTrial state.
   assert.match(app, /free-trial-banner/);
   assert.match(app, /setFreeTrial\(bot\.freeTrial \|\| null\)/);
-  // Prerendered shell offers the free trial to crawlers/no-JS.
   assert.match(index, /Start free — 50 answers, no card/);
 });

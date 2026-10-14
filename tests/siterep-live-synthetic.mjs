@@ -2,14 +2,6 @@ import { readFileSync } from "node:fs";
 import { isNonAnswerText } from "../worker/compose.js";
 import { FUNNEL_EVENT_NAMES } from "../worker/funnel-events.js";
 
-// Release marker source of truth: the worker. The marker is a stable milestone
-// name (RELEASE_STATUS_MARKER in worker/index.js), so the canary must
-// not hardcode a copy — drift between worker code and canary expectation
-// silently turns into a red build. Scout 2026-08-20: the canary's hardcoded
-// fallback for expectedReleaseMarker disagreed with the worker's marker and
-// stayed red across the live==main restore. Read the constant from the worker
-// at startup; let SITEREP_EXPECTED_RELEASE_MARKER override it (escape hatch
-// when the worker is intentionally staging a new marker).
 function readWorkerReleaseMarker() {
   const workerPath = new URL("../worker/index.js", import.meta.url);
   const source = readFileSync(workerPath, "utf8");
@@ -35,17 +27,6 @@ const strictMode = process.argv.includes("--strict") || process.env.SITEREP_MONI
 const requestTimeoutMs = Number(process.env.SITEREP_MONITOR_TIMEOUT_MS || 10000);
 const expectedReleaseMarker = process.env.SITEREP_EXPECTED_RELEASE_MARKER || readWorkerReleaseMarker();
 const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || "2026-08-11";
-// The sitemap is a static asset; nothing recomputes lastmod at runtime. If a
-// deploy lags behind a content change, stale dates silently persist — the
-// defect behind scout 2026-08-09 "every URL still advertises 2026-06-02".
-// lastmod tracks the last real content change of each page (not deploy time),
-// so privacy/terms legitimately stay at 2026-08-03 while the marketing pages
-// moved to 2026-08-11. Pin a minimum floor per URL; bump a floor whenever the
-// corresponding sitemap date changes so the live monitor fails loudly until
-// the refreshed sitemap is actually deployed. SITEREP_EXPECTED_SITEMAP_LASTMOD
-// still raises the floor for every URL (deploy-window override), and
-// SITEREP_EXPECTED_SITEMAP_LASTMOD_OVERRIDES replaces individual entries as
-// {"/": "2026-08-11"} JSON.
 const defaultSitemapLastmodFloors = Object.freeze({
   "/": "2026-08-09",
   "/ai-website-chatbot-for-small-business": "2026-08-09",
@@ -78,8 +59,6 @@ try {
 } catch (error) {
   throw new Error(`SITEREP_EXPECTED_SITEMAP_LASTMOD_OVERRIDES was not valid JSON: ${error.message}`);
 }
-// Deploy identity must stay fresh: the payload's deployedAt cannot be older
-// than this window, so a stale release stamp fails the live monitor loudly.
 const expectedReleaseMaxAgeDays = Number(process.env.SITEREP_EXPECTED_RELEASE_MAX_AGE_DAYS || 31);
 const syntheticRunId = Date.now();
 const responseBudgetsMs = Object.freeze({
@@ -178,9 +157,6 @@ function parseJson(body) {
   }
 }
 
-// A cited answer must be a real answer: not refused, citing at least one
-// source, never the same source twice, and never narrated non-answer text
-// ("the excerpts do not mention...") dressed up with citations.
 function assertHonestCitedAnswer(label, data) {
   if (!data.answer || !data.conversation?.id) throw new Error(`${label} chat did not return an answer and conversation`);
   if (data.unknown || data.refused || data.conversation?.refused) throw new Error(`${label} answer was refused`);
@@ -199,11 +175,6 @@ function assertHonestCitedAnswer(label, data) {
   }
 }
 
-// Demo pricing answers are exact live-checkout quotes the retrieval layer
-// built ("Starter €X, Growth €Y, Pro €Z, Agency €W per month, tax included —"
-// or the honest checkout/email fallback). They must reach the visitor verbatim
-// — the answer starts with the cited excerpt, never a model paraphrase that
-// drops plan names.
 function assertQuoteNotParaphrased(label, data) {
   const excerpt = String(data.sources?.[0]?.excerpt || "");
   if (!excerpt) throw new Error(`${label} pricing answer had no citation excerpt`);
@@ -212,10 +183,6 @@ function assertQuoteNotParaphrased(label, data) {
   }
 }
 
-// The generic pricing answer must quote the four NAMED-plan prices the live
-// #public-pricing section renders — "Starter €X, Growth €Y, Pro €Z, Agency €W
-// per month, tax included — ...". When the live checkout quoted real amounts,
-// every plan name the quote guarantees must appear in the shipped answer.
 function assertPricingQuotesNamedPlans(label, data) {
   assertQuoteNotParaphrased(label, data);
   const excerpt = String(data.sources?.[0]?.excerpt || "");
@@ -239,8 +206,6 @@ function assertReleaseFreshness(label, release) {
   if (release.stage !== expectedStage) {
     throw new Error(`${label} unexpected release stage: expected ${expectedStage}, got ${release.stage || "missing"}`);
   }
-  // The payload must identify the actually deployed release: a verifiable
-  // commit and a current deploy timestamp, not a stale hardcoded date.
   if (!/^[0-9a-f]{7,40}$/.test(String(release.commit || ""))) {
     throw new Error(`${label} missing verifiable deploy commit: ${release.commit || "missing"}`);
   }
@@ -281,11 +246,6 @@ function assertNoPublicHealthCounts(label, data = {}) {
   }
 }
 
-// Every sitemap URL must advertise a lastmod at or after the per-page floor,
-// so a stale deploy cannot silently keep serving the previous cycle's dates
-// to search engines. Per-page floors exist because lastmod tracks real
-// content change, not deploy time: privacy/terms last changed 2026-08-03
-// while the marketing pages moved to 2026-08-09/2026-08-11.
 function assertSitemapFreshness(label, body) {
   if (!body.includes("<urlset")) throw new Error(`${label} did not look like a sitemap urlset`);
   const entries = [...body.matchAll(/<loc>([^<]+)<\/loc>\s*<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>/g)]
@@ -325,8 +285,6 @@ if (!healthOnly) {
     }
     if (!data.billing?.ready) warnings.push(`billing not ready: ${data.billing?.reason || "unknown"}`);
     if (!data.notifications?.ready) warnings.push(`email notifications not ready: ${data.notifications?.reason || "unknown"}`);
-    // One enforced readiness invariant (scout 2026-08-09): required storage
-    // components cannot report not-ready while the aggregate is green.
     const requiredNotReady = ["recordLedger", "sourceContent", "accountRbac"].filter((name) => !data[name]?.ready);
     if (requiredNotReady.length && data.selfServe?.ready) {
       throw new Error(`deep health contradicts itself: ${requiredNotReady.join(", ")} not ready while selfServe is green`);
@@ -379,10 +337,6 @@ if (!healthOnly) {
       throw new Error("docs install page missing requested recipes");
     }
     if (!body.includes("not directly installable")) throw new Error("docs install page must not overclaim hosted GitBook install");
-    // The install guide must never be an activation dead-end: a visitor who
-    // lands on the recipes page has to reach the free-start signup and the
-    // customer sign-in to get the bot id, widget key, and allowed-domain lock
-    // the snippets require. Render both anchors in Worker HTML, no JS needed.
     if (!body.includes('href="/?surface=free-start"')) {
       throw new Error("docs install page missing activation CTA to the free-start signup surface");
     }
@@ -391,12 +345,6 @@ if (!healthOnly) {
     }
   });
 
-  // Comparison pages must keep delivering the durable free-start entry: the
-  // live-delivery defect behind scout 2026-08-08 05:34 IST was a comparison
-  // CTA that looked right but never reached the signup surface. Every /vs/*
-  // page must render the real /?surface=free-start anchor (Worker-rendered
-  // HTML, no JS needed); the SPA handoff of that entry is pinned by the
-  // public-layout smoke (incl. the live canary click-through).
   const comparisonPages = Object.freeze([
     { label: "vs hub", path: "/vs" },
     { label: "vs customgpt", path: "/vs/customgpt" },
@@ -432,18 +380,11 @@ if (!healthOnly) {
     if (!data.ok || data.product !== "Site Rep") throw new Error("release status payload was not for Site Rep");
     assertReleaseFreshness("release status", data.release);
     if (data.launchReady !== false) throw new Error("release status must not imply launch readiness");
-    // Internal launch-gate checklists must NOT be public — they read as
-    // "no real customer has ever paid" to buyers doing diligence.
     if (Array.isArray(data.productionProofRequired) || Array.isArray(data.notLaunchProof)) {
       throw new Error("release status leaks internal launch-gate checklists");
     }
   });
 
-  // Public honesty check: the live demo must answer and cite from real
-  // sources, and refuse unsupported questions. allPass is derived from the
-  // same shared evals the page and the trust material use, so a citation
-  // regression on the live demo now fails the canary the same way it fails
-  // the public endpoint.
   await probe("honesty check", "/api/public/honesty-check", {}, ({ body }) => {
     const data = parseJson(body);
     if (data.product !== "Site Rep") throw new Error("honesty-check payload was not for Site Rep");
@@ -456,16 +397,6 @@ if (!healthOnly) {
     }
   });
 
-  // Privacy-safe public funnel instrumentation must stay on the live bundle.
-  // The scout re-files on 2026-08-09 and 2026-08-10 ("closed twin still missing
-  // on the live bundle") were false positives: the scout searched the deployed
-  // JS for third-party analytics tokens (plausible/posthog/gtag/funnel_event/
-  // trackEvent), which the first-party allow-listed beacon never used. Pin the
-  // real delivery contract from docs/funnel-instrumentation.md instead: the
-  // SPA bundle must contain the collection path and every allow-listed event
-  // name, and the collection endpoint must keep answering 204 even for an
-  // invalid payload — the collector drops invalid payloads by design and never
-  // records them, so this probe cannot pollute the aggregate counters.
   await probe(
     "funnel event collection",
     "/api/public/funnel-event",
@@ -509,12 +440,7 @@ if (!healthOnly) {
     assertSitemapFreshness("sitemap", body);
   });
 
-  // The dashboard install-preview iframe loads /widget-test.html with a query
-  // string. Cloudflare's default html_handling 307-redirects the .html file
-  // to its dot-less twin, which the worker's unknown dot-less 404 gate then
-  // rejects — so a regression makes the preview (and the Google
-  // site-verification file) 404 in production. html_handling: "none" serves
-  // the file as-is; this probe fails loudly if that regresses.
+  // Cloudflare default html_handling 307-redirects a .html file to its dot-less twin, which the worker's unknown dot-less 404 gate rejects; html_handling: "none" serves the file as-is.
   await probe("widget preview html", "/widget-test.html", {}, ({ response, body }) => {
     if (response.status !== 200) throw new Error("widget-test.html must be served directly with HTTP 200");
     if (!body.includes("Site Rep Install Preview")) throw new Error("widget-test.html served the wrong document");
@@ -572,10 +498,7 @@ if (!healthOnly) {
       ({ body }) => {
         const data = parseJson(body);
         assertHonestCitedAnswer("pricing demo", data);
-        // The generic pricing question must quote the four named-plan prices
-        // the live #public-pricing section renders — never a paraphrase.
         assertPricingQuotesNamedPlans("pricing demo", data);
-        // The public payload is visitor-safe: conversation carries only an id.
         if (Object.keys(data.conversation || {}).some((key) => !["id"].includes(key))) {
           throw new Error("public chat response leaks owner-side conversation fields");
         }
@@ -599,8 +522,6 @@ if (!healthOnly) {
       },
       ({ body }) => {
         const data = parseJson(body);
-        // This is a suggested demo question; it must get a real cited answer,
-        // never a refusal and never a narrated non-answer.
         assertHonestCitedAnswer("install demo", data);
       },
     );
@@ -622,8 +543,6 @@ if (!healthOnly) {
       },
       ({ body }) => {
         const data = parseJson(body);
-        // The exact public demo CTA for pricing must get a real cited answer
-        // and the live quote must not be paraphrased into an amount.
         assertHonestCitedAnswer("natural pricing demo", data);
         assertQuoteNotParaphrased("natural pricing demo", data);
       },
@@ -669,7 +588,6 @@ if (!healthOnly) {
       },
       ({ body }) => {
         const data = parseJson(body);
-        // Public demo CTA: the trust question must get an honest cited answer.
         assertHonestCitedAnswer("trust demo", data);
       },
     );

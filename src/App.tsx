@@ -2803,7 +2803,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Guest surfaces skip the owner deep-health probe.
     if (forcePublicSurface) {
       setApiError("");
       setBotRegistry([]);
