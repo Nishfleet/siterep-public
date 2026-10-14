@@ -66,11 +66,6 @@ const PLAN_LIMITS = Object.freeze({
     brandingLocked: false,
   },
 });
-// Free trial constants (FREE_ANSWER_CAP, FREE_PLAN_LIMITS) and the
-// conversion-nudge thresholds live in ./free-trial.js so they're unit-testable
-// in Node. The cap is a LIFETIME count of cited answers; refusals never count.
-// Free is kept out of PLAN_LIMITS so paid-plan iteration (pricing grid, Dodo
-// product mapping) is unaffected; planLimitsFor/normalizePlan special-case it.
 const SOURCE_AUDIT_TIMEOUT_MS = 6000;
 const SOURCE_CONTENT_PREVIEW_LIMIT = 4000;
 const MAX_MANUAL_SOURCE_CONTENT_LENGTH = 200_000;
@@ -142,22 +137,10 @@ const COMPARISON_LINKS = Object.freeze([
   { path: "/vs/webspeaker", label: "WebSpeaker" },
   { path: "/vs/chatling", label: "Chatling" },
 ]);
-// Short visitor guesses for the comparison pages redirect (301) to the real
-// dated pages below instead of soft-falling back to the homepage SPA. The
-// canonical pages keep one URL each so link equity is not split.
 const COMPARISON_PATH_ALIASES = Object.freeze({
   "/vs/intercom": "/vs/intercom-fin",
   "/vs/tidio": "/vs/tidio-lyro",
 });
-// High-intent guessed URLs (/signup, /register, /login, /pricing, /docs, ...)
-// redirect (301) to the real product surfaces below instead of soft-falling
-// back to the homepage SPA. Each guess maps to one canonical surface so link
-// equity is not split and every typed or directory-followed URL still reaches
-// a working page: the free-start signup flow, the sign-in form, the customer
-// surface, the live pricing section, the live demo, and the install docs.
-// Paths with no mapping are not guesses at all — they 404 loudly instead of
-// serving the homepage shell (see the unknown-path gate before the ASSETS
-// fallback).
 const HIGH_INTENT_PATH_ALIASES = Object.freeze({
   "/signup": "/?surface=free-start",
   "/register": "/?surface=free-start",
@@ -337,23 +320,10 @@ The chat widget sets no cookies and no persistent local storage. It uses session
 Site Rep does not currently include SOC 2, GDPR, HIPAA, zero-retention, or no-training-on-data certification. Customers who need those commitments should request a written review before buying.
 `;
 const TRUST_STATUS_UPDATED_AT = "2026-08-11";
-// Release marker is a stable milestone name (RELEASE_STATUS_MARKER). It is the
-// single source of truth for the live canary's marker expectation: both
-// tests/siterep-live-synthetic.mjs and .github/workflows/live-canary.yml
-// derive it from this constant. Hardcoding a second copy (e.g. as a fallback
-// in the monitor script) silently desynchronizes the canary when the worker
-// moves to a new milestone; tests/launch-readiness.test.js pins this contract.
 const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-08-26";
 const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-08-26";
 const RELEASE_STATUS_BRANCH = "main";
 const RELEASE_STATUS_STAGE = "production_hardening";
-// Deploy identity: the commit and UTC deploy time of the code actually
-// serving production. `npm run deploy:cloudflare` stamps these as wrangler
-// vars at deploy time; these constants are the checked-in fallback that
-// local dev and unstamped deploys report. Keep them aligned with the last
-// stamped production identity. tests/launch-readiness.test.js fails CI when
-// RELEASE_STATUS_DEPLOYED_AT is older than 60 days, and pins
-// RELEASE_STATUS_COMMIT to a 40-hex SHA.
 const RELEASE_STATUS_COMMIT = "6fee55fa3cf1b5b6a7ec9ca3dea0cb279c313f4f";
 const RELEASE_STATUS_DEPLOYED_AT = "2026-08-26T21:36:19Z";
 const TRUST_STATUS_MARKDOWN = `---
@@ -478,10 +448,6 @@ Automated account management expands only after the billing and support controls
 
 Questions: hello@siterep.net
 `;
-// Honest, dated competitor comparisons. Every competitor claim is a durable
-// structural fact checked against the vendor's own pricing page in August 2026,
-// date-stamped, and paired with a candid "where they fit better" section so
-// the pages never overclaim — the same proof-or-refuse discipline as the bot.
 const VS_CUSTOMGPT_MARKDOWN = `---
 title: Site Rep vs CustomGPT | Cited answers, local pricing
 description: An honest comparison of Site Rep and CustomGPT for website owners who want cited answers — pricing, free trial, and where each one fits.
@@ -779,15 +745,6 @@ Prices and credit allowances change. Site Rep shows its live checkout total in t
 - [Homepage and live demo](/)
 - [Trust and data handling](/trust)
 `;
-// The /honesty page renders per request so its pass counts always match what
-// /api/public/honesty-check reports: the same shared evals, the same demo
-// sources. The renderer is pure, so the test suite can prove the page numbers
-// come from eval results and not literals.
-//
-// `pricingEvals` is OPTIONAL. When skipped (catalog unavailable), the page
-// renders the existing two counts only — no pricing mention. When not skipped,
-// the page appends the pricing-accuracy count and the new pricing-accuracy
-// section that cites the market evidence.
 function renderHonestyMarkdown(
   evals = runHonestyEvals(answerFromSources, publicDemoSources()),
   pricingEvals = { total: 0, passed: 0, skipped: true },
@@ -1037,10 +994,8 @@ const TICKET_LIMIT = 250;
 const NOTIFICATION_LIMIT = 250;
 const MAX_NOTIFICATION_ATTEMPTS = 5;
 const MAX_INTEGRATION_ACTION_ATTEMPTS = 5;
-// Bound each cron sweep so slow recipients can't stretch one run for minutes.
 const NOTIFICATION_BATCH_LIMIT = 25;
 const INTEGRATION_ACTION_BATCH_LIMIT = 25;
-// "sending" claims older than this are crash leftovers and retry.
 const NOTIFICATION_SENDING_STUCK_MS = 10 * 60 * 1000;
 const WEBHOOK_DELIVERY_TIMEOUT_MS = 8000;
 const NOTIFICATION_DELIVERY_TIMEOUT_MS = 8000;
@@ -1220,9 +1175,6 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/public/funnel-event") {
-        // Privacy-safe funnel counters: public callback/surface instrumentation
-        // only. Best-effort by design — always answers 204, never blocks or
-        // affects the visitor journey, never reads cookies or identifiers.
         return await handlePublicFunnelEvent(request, env, ctx);
       }
 
@@ -1231,9 +1183,6 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/public/chat" && aiComposeEnabled(env) && env.CITEREP_ADMIN_KEY) {
-        // The model call must run here in the Worker, NOT inside the
-        // coordinator's serialized queue — otherwise one slow composition
-        // stalls every customer's chat globally.
         return await handleComposedPublicChat(request, env);
       }
 
@@ -1270,23 +1219,11 @@ export default {
         return markdownResponse(request, SITEREP_MARKDOWN);
       }
 
-      // Unknown dot-less paths must 404 loudly instead of silently serving
-      // the SPA shell: a soft-200 homepage for a URL that does not exist
-      // reads as a real page to search engines and directory crawlers. Only
-      // the real SPA surfaces and file requests reach the ASSETS fallback.
       if ((request.method === "GET" || request.method === "HEAD") && !isSpaSurfaceRequest(url)) {
         return notFoundResponse(request);
       }
 
       const response = await env.ASSETS.fetch(request);
-      // ASSETS is configured with not_found_handling: "single-page-application",
-      // so any missing file falls back to the homepage shell (200 text/html).
-      // A dot-in-path URL whose last segment looks like a file (allowed
-      // extension) but is not a real bundled asset would otherwise leak as a
-      // soft-200 thin-duplicate page — e.g. /pricing.pdf, /robots.json,
-      // /foo.test.png. Detect that SPA fallback (200 + text/html for a non-html
-      // file request) and convert it to a real 404 so guesses do not get
-      // indexed. Real files keep their original content type and status.
       if (isAssetsSpaFallback(url, response)) {
         return notFoundResponse(request);
       }
@@ -1318,8 +1255,6 @@ function isMarketingPageRequest(url) {
 async function honestyTrustPageFor(url, env, request) {
   const pathname = url.pathname.replace(/\/+$/, "") || "/";
   if (pathname !== "/honesty") return null;
-  // Same live catalog as publicHonestyCheckResponse so the HTML counts match
-  // /api/public/honesty-check. Catalog failure keeps pricingAccuracy.skipped.
   let liveCatalog = null;
   try {
     liveCatalog = await publicPricingCatalog(env, request);
@@ -1341,8 +1276,6 @@ function trustPageFor(url) {
   return {
     ...page,
     pathname,
-    // Live pages (e.g. /honesty) render their markdown per request so the
-    // served copy carries the current eval counts, not a load-time snapshot.
     markdown: typeof page.markdown === "function" ? page.markdown() : page.markdown,
   };
 }
@@ -1357,19 +1290,8 @@ function highIntentAliasFor(url) {
   return HIGH_INTENT_PATH_ALIASES[pathname] || null;
 }
 
-// The SPA shell exists for exactly two deep surfaces — /signin and /admin —
-// plus the homepage. Every other dot-less path is either a registered page
-// (handled above), a guessed alias (handled above), or unknown (404).
 const SPA_SURFACE_PATHS = new Set(["/", "/signin", "/admin"]);
 
-// Precise file-detection rule. The previous "any dot in the last path
-// segment" check was over-permissive: any path token with a dot (e.g.
-// /foo.com, /pricing.pdf, /competitors.com) was routed to ASSETS, where the
-// single-page-application not-found fallback served the homepage shell with
-// HTTP 200 — leaking infinite thin-duplicate pages to search engines. Only
-// requests whose last segment carries a real static-file extension, or that
-// live under a known static prefix, reach ASSETS; everything else hits the
-// 404 gate above.
 const WORKER_FILE_EXTENSIONS = new Set([
   "svg", "png", "jpg", "jpeg", "webp", "ico", "gif", "css", "js", "mjs",
   "map", "json", "xml", "txt", "pdf", "webmanifest", "wasm", "html", "htm",
@@ -1387,14 +1309,6 @@ function isSpaSurfaceRequest(url) {
   return WORKER_FILE_EXTENSIONS.has(ext);
 }
 
-// ASSETS serves the homepage shell (200 text/html) for any missing file
-// because of not_found_handling: "single-page-application". A request for a
-// non-html file that comes back as text/html is that fallback, not a real
-// asset — /pricing.pdf, /robots.json, /foo.test.png all have allowed
-// extensions but no real bundled file, so without this check they would
-// leak as soft-200 thin-duplicate pages. SPA surfaces and static prefixes
-// legitimately serve the shell, and real .html files are text/html by
-// design, so those are excluded.
 function isAssetsSpaFallback(url, response) {
   if (response.status !== 200) return false;
   const contentType = response.headers.get("content-type") || "";
@@ -1455,8 +1369,6 @@ function trustPageHtmlResponse(request, page) {
 }
 
 function renderTrustPageHtml(page) {
-  // The Docs Mode install guide gets anchored host sections plus a jump nav;
-  // every other trust page renders its markdown body unchanged.
   const body = page.pathname === "/docs/install" ? docsInstallBody(page.markdown) : markdownBodyToHtml(page.markdown);
   const canonicalUrl = canonicalUrlFor(page.pathname || "/");
   const pathname = String(page.pathname || "");
@@ -1614,11 +1526,6 @@ function markdownBodyToHtml(markdown) {
 
 function renderInlineHtml(value) {
   const escaped = escapeHtml(value);
-  // [label](/internal-path) markdown links: same internal-path allowlist as
-  // the bare-path rule, so CTAs can carry a human label (never the raw URL as
-  // link text) while keeping the exact internal href. The path group is
-  // optional like the bare-path rule's, so a labeled link to the bare root
-  // ([Homepage and live demo](/) -> href="/") stays allowed too.
   return escaped
     .replace(
       /\[([^\]]+)\]\((\/(?:ai-website-chatbot-for-small-business|docs\/install|vs\/customgpt|vs\/chatbase|vs\/intercom-fin|vs\/tidio-lyro|vs\/webspeaker|vs\/chatling|vs|api\/public\/trust-status|api\/public\/release-status|api\/public\/honesty-check|trust|privacy|terms|honesty|llms\.txt|#public-pricing|#demo|\?surface=customer|#free-start|\?surface=free-start)?)\)/g,
@@ -1638,10 +1545,7 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
 }
 
-// The Docs Mode install guide is a long stacked set of per-host sections.
-// Anchoring each h2 and emitting a jump nav turns the scroll-to-find grind
-// into one click per host, on desktop and mobile alike. Only /docs/install
-// gets the nav; other trust pages keep their current body markup exactly.
+// The Docs Mode install guide gets anchored host sections plus a jump nav.
 function docsInstallBody(markdown) {
   const html = markdownBodyToHtml(markdown);
   const headings = [];
@@ -1704,8 +1608,6 @@ export class CiteRepCoordinator extends DurableObject {
     try {
       await this.processCrawlQueue();
     } finally {
-      // Crash net: if anything above threw after claiming work, make sure a
-      // future alarm still fires so queued/running jobs are never stranded.
       const hasMore = await this.enqueue(() => this.hasPendingCrawlJobs()).catch(() => false);
       if (hasMore) {
         const currentAlarm = await this.ctx.storage.getAlarm().catch(() => null);
@@ -1848,8 +1750,6 @@ export class CiteRepCoordinator extends DurableObject {
         for (const [key, value] of perBot) bots[key.slice(STORE_BOT_PREFIX.length)] = value;
         return normalizeStore({ ...root, bots });
       }
-      // Legacy layout: all bots in one value. Migrated to per-bot keys on the
-      // next write.
       const legacyBots = (await this.ctx.storage.get(STORE_BOTS_KEY)) || {};
       return normalizeStore({ ...root, bots: legacyBots });
     }
@@ -1860,8 +1760,6 @@ export class CiteRepCoordinator extends DurableObject {
     const normalized = normalizeStore(store);
     const { bots, ...root } = normalized;
     this.botSnapshots ||= new Map();
-    // Dirty tracking: only rewrite keys whose serialized form changed, so a
-    // one-bot mutation does not rewrite every workspace.
     const rootJson = JSON.stringify(root);
     if (this.rootSnapshot !== rootJson) {
       await this.ctx.storage.put(STORE_ROOT_KEY, root);
@@ -1934,8 +1832,6 @@ export class CiteRepCoordinator extends DurableObject {
       await this.env.CITEREP_STORE.put(STORE_KEY, JSON.stringify(store), { expirationTtl: STORE_BACKUP_TTL_SECONDS });
       this.lastKvMirrorAt = now;
     } catch (error) {
-      // Durable Object storage is primary; KV is a best-effort recovery mirror —
-      // but a silently stale mirror is a trap, so log and alert (throttled).
       console.warn(JSON.stringify({ event: "kv_mirror_failed", message: error instanceof Error ? error.message : String(error) }));
       if (now - (this.lastKvMirrorAlertAt || 0) > STORE_KV_MIRROR_ALERT_INTERVAL_MS) {
         this.lastKvMirrorAlertAt = now;
@@ -1949,9 +1845,6 @@ export class CiteRepCoordinator extends DurableObject {
   }
 
   async writeDailyStoreBackup() {
-    // Point-in-time recovery: a dated copy each day (30-day TTL rolling
-    // window), unlike the live mirror which is overwritten on every write and
-    // would be destroyed by the same bad deploy that corrupts the store.
     if (!this.env?.CITEREP_STORE) return { skipped: true, reason: "kv_not_configured" };
     const day = new Date().toISOString().slice(0, 10);
     const key = `${STORE_BACKUP_KEY_PREFIX}${day}`;
@@ -1977,9 +1870,6 @@ export class CiteRepCoordinator extends DurableObject {
       const chunkPages = sourceContentBucket(this.env) ? CRAWL_CHUNK_PAGES : Infinity;
       const crawl = await crawlSite(claimed.siteUrl, claimed.maxPages, { resume, chunkPages });
       if (!crawl.done) {
-        // Offload this chunk's page bodies to R2 now: keeps the resume state
-        // small and spreads R2 writes across invocations instead of bursting
-        // them all in the final one.
         crawl.state.sources = await offloadSourceContents(claimed.botId, crawl.state.sources, this.env);
         await this.saveCrawlResumeState(claimed, crawl.state);
         await this.enqueue(() => this.touchCrawlJobProgress(claimed, crawl.state));
@@ -2035,8 +1925,6 @@ export class CiteRepCoordinator extends DurableObject {
     if (job.status === "cancelled") return false;
     const now = new Date().toISOString();
     job.status = "running";
-    // Refresh the watchdog window each chunk so a long multi-chunk crawl is
-    // not mistaken for a stale one.
     job.startedAt = now;
     job.updatedAt = now;
     job.meta = { ...(job.meta && typeof job.meta === "object" ? job.meta : {}), hasResumeState: true, progressPages: (state.sources || []).length };
@@ -2059,7 +1947,6 @@ export class CiteRepCoordinator extends DurableObject {
         const startedAt = Date.parse(job.startedAt || "");
         if (job.status === "running") {
           if (job.meta?.hasResumeState) {
-            // Chunked crawl waiting for its next alarm — continue it first.
             if (!continuation) continuation = { bot, job };
             continue;
           }
@@ -2166,9 +2053,6 @@ export class CiteRepCoordinator extends DurableObject {
     };
     if (bot.lifecycleStatus === "paused") bot.lifecycleStatus = "draft";
     if (bot.lifecycleStatus === "approved" && !publicLaunchBlockers(bot).length) {
-      // Self-serve paid AND free customers should see setup progress without a
-      // hidden publish step, but public copy still asks them to review citations
-      // and install the widget snippet before sending traffic.
       bot.lifecycleStatus = "live";
       pushEvent(bot, "status", "Rep ready for review", "Training finished. Review cited answers, then install the widget when it is ready. Pause answers anytime from the dashboard.");
     }
@@ -2274,35 +2158,21 @@ async function handleComposedPublicChat(request, env) {
     return coordinator.fetch(new Request(new URL(path, request.url).toString(), { method: "POST", headers, body: JSON.stringify(payload) }));
   };
 
-  // Step 1 (fast, in the coordinator): validate, rate-limit, retrieve, and
-  // build the extractive answer + supporting excerpts.
   const prepareResponse = await forward("/api/public/chat/prepare", body);
   if (!prepareResponse.ok) return prepareResponse;
   const prep = await prepareResponse.json().catch(() => null);
   if (!prep || !prep.answer) return forward("/api/public/chat/record", { ...body, precomputedAnswer: null }, { "x-citerep-admin-key": env.CITEREP_ADMIN_KEY });
 
-  // Step 2 (here, unserialized): compose a grounded answer from the excerpts.
-  // Demo pricing answers ("Starter €9.25, Growth €29.80, ..." or the honest
-  // checkout/email fallback) are exact live-checkout quotes built one sentence
-  // at a time; a compose rewrite drops the plan names, so they ship verbatim
-  // and are never handed to the model.
   let precomputedAnswer = prep.answer;
   if (!isExactDemoPricingAnswer(prep.answer) && prep.eligible && Array.isArray(prep.excerpts) && prep.excerpts.length) {
     const composed = await composeGroundedAnswer(env, String(body.question || ""), prep.excerpts, prep.recentTurns || []);
     if (composed.status === "composed") {
       precomputedAnswer = { ...precomputedAnswer, answer: composed.text, composed: true };
     } else if (composed.status === "unsupported") {
-      // The model affirmatively judged the retrieved excerpts don't answer
-      // this specific question. Refuse honestly (and offer lead capture)
-      // instead of shipping a non-answer dressed up as a cited answer.
       precomputedAnswer = unknownAnswer({ score: prep.answer.score || 0, matchedTerms: prep.answer.matchedTerms || [] });
     }
-    // "unavailable" (timeout/error/disabled) keeps the extractive answer —
-    // an infrastructure hiccup must never silence a supportable answer.
   }
 
-  // Step 3 (fast, in the coordinator): record the conversation and return the
-  // visitor-safe payload.
   return forward("/api/public/chat/record", { ...body, precomputedAnswer }, { "x-citerep-admin-key": env.CITEREP_ADMIN_KEY });
 }
 
@@ -2504,24 +2374,6 @@ function publicDemoSources() {
   }));
 }
 
-// Named Starter price questions ("what does starter cost", "how much is the
-// starter plan", ...) are answered with the exact live localized, tax-inclusive
-// amount the pricing/checkout surface renders for the SAME request: the
-// country-aware Dodo checkout preview, cached the same way /api/public/pricing
-// is. Only a live checkout-preview price is buyer truth — the USD plan anchor
-// never is, and no amount is ever hardcoded. When no trustworthy price
-// resolves, the dedicated source carries an honest answer that names the live
-// checkout/email path instead of inventing an amount. The replacement mirrors
-// exactly what the retrieval engine would return if the dedicated "Starter
-// pricing" source were in the pool: same sentence, same citation format. The
-// stored demo bot record is never mutated, refusals are never overridden, and
-// questions outside the named-plan price intent keep their normal answer.
-//
-// Generic pricing questions ("What does it cost?", "how much does Site Rep
-// cost", "do you have a cheap plan") are answered the same way, but quote the
-// four named-plan prices the live #public-pricing section renders on the same
-// page — again only from live checkout-preview amounts, never hardcoded, with
-// the same honest fallback when any plan's live total is unavailable.
 async function demoAnswerWithLiveStarterPrice(botId, question, answer, env, request) {
   if (!isPublicDemoBotId(botId) || !answer || answer.unknown) return answer;
   if (!isNamedStarterPriceQuestion(question) && !isPricingQuestion(question)) return answer;
@@ -2592,9 +2444,6 @@ function publicDemoBotNeedsRefresh(bot) {
   if (!bot || bot.publicKey !== PUBLIC_DEMO_PUBLIC_KEY || bot.lifecycleStatus !== "live" || !Array.isArray(bot.sources)) {
     return true;
   }
-  // Reseed whenever the curated content drifts from what's stored — comparing
-  // by fingerprint (not just id presence) so editing demo-sources.js actually
-  // propagates to the live bot on the next request after deploy.
   return !publicDemoSources().every((curated) =>
     bot.sources.some((item) => item.id === curated.id && item.contentFingerprint === curated.contentFingerprint),
   );
@@ -2778,8 +2627,6 @@ function activeCrawlJobFor(bot) {
 
 function customerFacingCrawlError(rawMessage) {
   const message = String(rawMessage || "");
-  // Owners can't act on "HTTP 403 from https://…"; map error classes to what
-  // to actually do next. The raw message rides along for support.
   if (/HTTP 40[13]/i.test(message) || /HTTP 429/i.test(message) || /challenge/i.test(message)) {
     return `Your website's security blocked our scanner (it identifies as SiteRepBot). Ask your host or firewall to allow "SiteRepBot", or paste your page text / upload a file in Add sources instead. (${message.slice(0, 120)})`;
   }
@@ -3137,17 +2984,9 @@ async function publicPricingCatalog(env = activeEnv, request = null) {
   };
 }
 
-// Deep-health storage proofs (2026-08-13): /api/health/deep must ACTIVELY
-// prove the durable surfaces a release depends on — D1 ledger schema + read
-// path, R2 write/read round-trip with cleanup, and RBAC schema + read path.
-// `ready` flags and deep-mode `ok` are only ever derived from these proofs, so
-// the release controller's exact `ok: true` predicate fails closed when a
-// deploy would ship with unproved durable storage/RBAC.
 const DEEP_HEALTH_PROBE_PREFIX = "__siterep_deep_health_probe__";
 
 async function runDeepStorageProofs(env = activeEnv) {
-  // Each probe already catches its own failures; the extra wrapper makes the
-  // whole run fail closed even if a probe throws outside its try/catch.
   const run = async (promise) => {
     try {
       return await promise;
@@ -3167,10 +3006,6 @@ function deploymentHealthPayload(request, url, options = {}) {
   const env = options.env || activeEnv;
   const storage = options.storage || storageInfoForEnv(env);
   const deepProof = options.deepProof || null;
-  // The durable storage surfaces are only ever marked ready from ACTIVE
-  // deep-health proofs (deepProof). Without a proof run, ready stays false so
-  // no consumer — most importantly the release controller's exact `ok: true`
-  // predicate — can mistake a configured binding for proved storage.
   const recordLedger = {
     ...recordLedgerInfo(env),
     ready: Boolean(deepProof?.recordLedger?.ok),
@@ -3202,8 +3037,6 @@ function deploymentHealthPayload(request, url, options = {}) {
     { recordLedger, sourceContent, accountRbac },
   );
   const payload = {
-    // Fast mode is liveness (always ok); deep mode is readiness and only ok
-    // when the durable storage surfaces were actively proven this call.
     ok: deepProof ? durableStorageProven : true,
     mode: options.mode || "fast",
     runtime: "cloudflare-worker",
@@ -3522,18 +3355,12 @@ async function publicHonestyCheckResponse(request, env) {
     sendJson(response, 403, { error: "CORS origin is not allowed." });
     return response.toResponse(request);
   }
-  // Pricing-accuracy dimension runs against the SAME live catalog the demo
-  // bot quotes — proves the named-plan prices come from the live Dodo
-  // checkout, not model memory. A catalog outage is reported as `skipped:
-  // true` so it never causes the whole check to fail.
   let pricingCatalog = null;
   try {
     pricingCatalog = await publicPricingCatalog(env, request);
   } catch {
     pricingCatalog = null;
   }
-  // Run the exact CI honesty evals against the live demo bot's real sources.
-  // Pure keyword retrieval over ~7 sources — no model calls, cheap to serve.
   const evals = runHonestyEvals(answerFromSources, publicDemoSources(), pricingCatalog);
   const pricingSkipped = evals.pricingAccuracy.skipped;
   const allPass =
@@ -3883,10 +3710,6 @@ async function postAdminScheduledPath(pathname, event, env) {
 const FRESHNESS_AUDIT_SOURCE_CAP = 300;
 
 async function runWorkerFreshnessAudit(env) {
-  // Worker-layer orchestration: pick the stalest due bot in the coordinator
-  // (fast), do the network HEAD/GET checks HERE (outside the serialized store
-  // queue), then merge results back (fast). One bot per 10-minute tick keeps
-  // every workspace audited roughly weekly without subrequest spikes.
   if (!env?.CITEREP_COORDINATOR) return { skipped: true };
   const coordinator = env.CITEREP_COORDINATOR.getByName("global-store");
   const internalRequest = (pathname, payload) =>
@@ -4157,9 +3980,6 @@ async function handleScheduled(event, env) {
 
 async function handlePaymentApi(request, env, ctx) {
   const response = new ApiResponse();
-  // Payment webhooks/claims can queue customer emails (access keys, payment
-  // confirmations). Flush the outbox after the response instead of making the
-  // customer wait for the next 10-minute cron sweep.
   const flushNotificationsSoon = () => {
     if (!ctx?.waitUntil) return;
     ctx.waitUntil(processInternalQueues().catch((error) => {
@@ -4329,10 +4149,6 @@ function sourceContentInfo(env = activeEnv) {
   };
 }
 
-// Active deep-health proof: R2 write/read round-trip with cleanup. `ready` is
-// only ever derived from this proof passing; a configured binding alone proves
-// nothing. The probe object is deleted in a finally block so a failed probe
-// cannot leak objects into the customer bucket.
 async function probeSourceContent(env = activeEnv) {
   const bucket = sourceContentBucket(env);
   if (!bucket) {
@@ -4437,10 +4253,6 @@ async function hydrateSourcesForQuestion(botId, question, sources = [], env = ac
   const candidates = candidateSourcesForQuestion(question, sources || [], 12);
   if (!candidates.length) return sources || [];
   const hydrated = await hydrateSourcesContent(botId, candidates, env);
-  // Merge hydrated content back by source identity, never by URL: distinct
-  // sources can legitimately share a URL (e.g. several manual sources citing
-  // the same page anchor), and a URL-keyed merge collapses them into one
-  // source repeated N times — duplicate citations and vanished content.
   const hydrationKey = (source) => source.id || sourceKeyForDiff(source);
   const byKey = new Map(hydrated.map((source) => [hydrationKey(source), source]));
   return (sources || []).map((source) => byKey.get(hydrationKey(source)) || source);
@@ -4546,9 +4358,6 @@ async function ensureRecordLedgerSchema(env = activeEnv) {
   return true;
 }
 
-// Active deep-health proof: the D1 ledger schema exists and its read path
-// answers. Schema creation alone is idempotent and cached; the COUNT read is
-// the live proof that the ledger actually serves queries.
 async function probeRecordLedgerSchema(env = activeEnv) {
   const db = recordLedgerDb(env);
   if (!db) {
@@ -4695,9 +4504,6 @@ const RECORD_LEDGER_EXPORT_PAGE = 500;
 const RECORD_LEDGER_EXPORT_MAX = 20000;
 
 async function listFullLedgerRecords(table, column, botId, fallback = [], env = activeEnv) {
-  // Exports must return the customer's FULL history from D1, not the
-  // 100/200-row dashboard window — a "backup" that silently truncates is the
-  // fastest way to lose a customer's trust.
   const normalizedBotId = String(botId || "").trim();
   if (!normalizedBotId) return fallback;
   return await readRecordLedger(`${table}_export`, async (db) => {
@@ -5041,9 +4847,6 @@ async function ensureAccountRbacSchema(env = activeEnv) {
   return true;
 }
 
-// Active deep-health proof: the account/team RBAC schema exists and its read
-// path answers. The COUNT read is the live proof that RBAC actually serves
-// queries, not just that the binding is configured.
 async function probeAccountRbacSchema(env = activeEnv) {
   const db = accountRbacDb(env);
   if (!db) {
@@ -5568,9 +5371,6 @@ async function createDodoCheckout(env, request, input) {
   }
 
   const referenceId = `sr_dodo_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
-  // One-time claim token: the reference id rides in the visible return URL and
-  // is not a secret, so the post-payment claim must present this token (stored
-  // only as a hash) before any workspace credential is returned.
   const claimToken = `sr_claim_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
   const claimTokenHash = await sha256Hex(claimToken);
   const createdAt = new Date().toISOString();
@@ -5599,7 +5399,6 @@ async function createDodoCheckout(env, request, input) {
   returnUrl.searchParams.set("checkout", "dodo");
   returnUrl.searchParams.set("referenceId", referenceId);
   returnUrl.searchParams.set("claimToken", claimToken);
-  // Land the buyer on the workspace surface, not the marketing teaser.
   returnUrl.searchParams.set("surface", "customer");
   returnUrl.hash = "product";
   let result;
@@ -5839,9 +5638,6 @@ async function markPaymentPaid(env, row, details) {
   if (row.status === "paid" || row.status === "activated") return row;
   if (Number(details.amountSubunits || row.amount_subunits) !== Number(row.amount_subunits) || String(details.currency || row.currency).toUpperCase() !== String(row.currency).toUpperCase()) {
     const now = new Date().toISOString();
-    // Park the payment for manual review instead of throwing: a throw makes the
-    // provider retry the same mismatch forever while the customer stays locked
-    // out silently. Parked rows surface via claim messaging + admin alert.
     await db.batch([
       db.prepare(`UPDATE payment_links SET status = ?, updated_at = ? WHERE reference_id = ?`).bind("payment_mismatch", now, row.reference_id),
       paymentLedgerEntryStatement(db, {
@@ -6187,9 +5983,6 @@ async function verifyDodoWebhookRequest(env, request, rawBody) {
 }
 
 async function recoverStuckPaidActivations(env) {
-  // Safety net for "money taken, workspace never unlocked": payments that
-  // reached paid/active but whose activation step failed and whose provider
-  // retries were exhausted or dropped. Runs on the 10-minute cron.
   const db = paymentDb(env);
   if (!db || !env?.CITEREP_ADMIN_KEY) return { skipped: true };
   await ensureDodoBillingSchema(env);
@@ -6286,8 +6079,6 @@ async function applyDodoWebhookEvent(env, details, webhookId) {
         `Reference: ${row.reference_id}. The customer is NOT activated until this is resolved.`,
       ].join("\n"),
     );
-    // Parked for manual review; report processed so the provider stops
-    // retrying a payload that will never match.
     return { ok: true, status: "product_mismatch", parked: true };
   }
 
@@ -6428,9 +6219,6 @@ async function claimDodoReturn(env, body) {
     );
     const activation = await activatePaidCustomerFromDodoRow(env, row, {}, new Date().toISOString());
     if (!tokenAuthorized) {
-      // The reference id travels in the visible return URL and is not a secret.
-      // Without the unused one-time claim token, never return dashboard
-      // credentials — the buyer already gets them via the access email.
       return {
         ok: true,
         status: "activated",
@@ -6558,8 +6346,6 @@ async function applyDodoBillingReviewState(body) {
     if (!bot) return null;
     const restrictStatuses = new Set(["cancelled", "failed", "expired", "past_due", "payment_failed", "payment_cancelled", "refund_review", "dispute_review", "dispute_lost"]);
     const cancelsAtMs = Date.parse(details.cancelsAt || bot.billing?.cancelsAt || "");
-    // A scheduled cancellation is PAID THROUGH the period end: the customer
-    // keeps what they paid for until cancelsAt; the cron pauses it after.
     const scheduledCancelStillPaid = nextStatus === "cancelled" && Number.isFinite(cancelsAtMs) && cancelsAtMs > Date.now();
     const restrictAccess = restrictStatuses.has(nextStatus) && !scheduledCancelStillPaid;
     const wasBillingRestricted = Boolean(bot.billing?.accessRestricted);
@@ -6858,8 +6644,6 @@ async function processRazorpayWebhook(env, rawBody, eventId) {
     if (PAID_PAYMENT_STATUSES.has(String(extracted.status || "").toLowerCase())) {
       nextRow = await markPaymentPaid(env, row, { ...extracted, eventId: webhookEventId });
       if (nextRow.status === "payment_mismatch") {
-        // Parked for manual review; mark processed so the provider stops
-        // retrying a payload that will never match.
         await markWebhookEvent(paymentDb(env), webhookEventId, "processed");
         return { ok: true, status: "payment_mismatch", parked: true };
       }
@@ -7103,7 +6887,6 @@ function isTrustedDodoUrl(value) {
 }
 
 async function handlePublicFunnelEvent(request, env, ctx) {
-  // 204 no matter what — collection must never break the visitor journey.
   // The tiny body must be read before responding (workerd closes the request
   // stream once the handler responds); any read failure is swallowed and the
   // request is still answered 204.
@@ -7118,9 +6901,6 @@ async function handlePublicFunnelEvent(request, env, ctx) {
   }
   response.end("");
   if (env?.CITEREP_STORE && ctx) {
-    // Fire-and-forget by design: collectFunnelEvent parses, rate-limits, and
-    // scrubs internally and never rejects, so the waitUntil promise can
-    // neither delay the response nor reject.
     ctx.waitUntil(collectFunnelEvent(raw, env.CITEREP_STORE).catch(() => {}));
   }
   return response.toResponse();
@@ -7178,8 +6958,6 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/funnel/stats") {
-    // Owner-facing read of the privacy-safe funnel counters. Aggregate counts
-    // only — no visitor data is stored, so nothing private is exposed here.
     if (!isAuthorizedAdmin(request, url)) {
       sendJson(response, 401, { error: "Admin key required.", adminRequired: true });
       return;
@@ -7191,9 +6969,6 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/mcp/stats") {
-    // Owner-facing read of the server-derived MCP-origin attribution
-    // counters. Aggregate counts only — no caller data is stored, so nothing
-    // private is exposed here.
     if (!isAuthorizedAdmin(request, url)) {
       sendJson(response, 401, { error: "Admin key required.", adminRequired: true });
       return;
@@ -7220,12 +6995,6 @@ async function handleApi(request, response, url) {
       sha256Hex,
       timingSafeEqual,
       touchDeveloperApiKey,
-      // Server-derived MCP-origin attribution. This callback is only ever
-      // invoked by the MCP handler AFTER server-verified API-key auth, and the
-      // event name always comes from this Worker, never from the client.
-      // Fire-and-forget via the Durable Object context so recording can
-      // neither delay nor change the MCP response; without CITEREP_STORE the
-      // attribution simply degrades to a no-op.
       recordMcpEvent: (eventName) => {
         if (!activeEnv?.CITEREP_STORE) return;
         const recording = recordMcpEvent(activeEnv.CITEREP_STORE, eventName).catch(() => {});
@@ -7242,9 +7011,6 @@ async function handleApi(request, response, url) {
 
   const authorization = await authorizeApiRequest(request, url);
   if (!authorization.ok) {
-    // Known customer-facing routes get a sign-in 401; everything else
-    // (including admin-only and unknown paths) gets a plain 404 so curious
-    // probes don't learn that an admin surface exists here.
     const knownCustomerRoute =
       isOwnerAllowedRoute(request.method, url.pathname) || isAccountScopedRoute(request.method, url.pathname);
     if (knownCustomerRoute) {
@@ -7737,9 +7503,6 @@ async function handleApi(request, response, url) {
     }
 
     const guardStore = await readStore();
-    // One free trial per email and per domain. A returning owner with the same
-    // email+domain just gets their existing workspace back (idempotent); a
-    // mismatch is blocked so the free tier can't be farmed.
     const claim = freeTrialClaim(guardStore, email, siteUrl);
     if (claim.blocked) {
       sendJson(response, 409, { error: claim.message });
@@ -8071,8 +7834,6 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "POST" && url.pathname === "/api/public/chat/record") {
-    // Reachable only with the admin key (the Worker-level compose
-    // orchestrator injects it); rate limiting already happened in prepare.
     const body = await readJson(request);
     const question = String(body.question || "").trim();
     if (!question) {
@@ -8150,9 +7911,6 @@ async function handleApi(request, response, url) {
         origin: requestOrigin || "unknown",
       });
     }
-    // Public projection: owner-side internals (tickets, private notes, reply
-    // drafts, answer traces, cost estimates, usage) never leave the server on
-    // a visitor-readable endpoint.
     sendJson(response, 200, {
       answer: result.answer,
       unknown: Boolean(result.unknown),
@@ -8215,9 +7973,6 @@ async function handleApi(request, response, url) {
     }
 
     const bot = await getBot(url.searchParams.get("botId"));
-    // This response is readable by any visitor with DevTools open. Plan caps
-    // are public marketing facts; the owner's live consumption (usage,
-    // limitStatus) is not — never expose how close a customer is to their cap.
     sendJson(response, 200, {
       botId: bot?.botId,
 	      widgetSettings: sanitizeWidgetSettings({}, bot?.widgetSettings),
@@ -9728,7 +9483,6 @@ function isPublicApiRoute(method, pathname) {
   if (method === "GET" && pathname === "/api/health") return true;
   if (method === "GET" && pathname === "/api/health/live") return true;
   if (method === "GET" && pathname === "/api/health/deep") return true;
-  // Auth is the per-bot unsubscribe token in the query string.
   if (method === "GET" && pathname === "/api/notifications/unsubscribe") return true;
   if (method === "POST" && pathname === "/api/public/chat/prepare") return true;
   if (method === "GET" && pathname === "/api/public/pricing") return true;
@@ -10038,7 +9792,6 @@ function rollMonthlyStats(bot) {
     return;
   }
   if (bot.monthlyStats.month !== month) {
-    // Preserve the finished month until the cron emails the value report.
     bot.monthlyStatsPrevious = { ...bot.monthlyStats };
     bot.monthlyStats = emptyMonthlyStats(month);
   }
@@ -10111,7 +9864,6 @@ async function mergeScheduledFreshnessAudit(body) {
     const attention = record.sourceAudit.changed + record.sourceAudit.deleted;
     pushEvent(record, "audit", "Weekly source check completed", `${record.sourceAudit.ok} healthy, ${record.sourceAudit.changed} changed, ${record.sourceAudit.deleted} deleted.`);
     if (attention > 0) {
-      // A silently-stale bot answers with yesterday's truth; tell the owner.
       queueOwnerNotification(record, {
         type: "source_sync_attention",
         title: "Your website changed — your rep may be out of date",
@@ -10140,7 +9892,6 @@ async function recordConversation(botId, question, context = {}) {
     const answeringModeNow = responseAnsweringMode(bot, activeEnv);
     if (answeringModeNow === "locked") {
       const usage = usageFor(bot);
-      // Visitor-facing copy: never reveal the owner's plan tier or quota size.
       const answerText = "The assistant is at capacity right now. Leave your email and the team will follow up directly.";
       const conversation = {
         id: Date.now() + Math.floor(Math.random() * 1000),
@@ -10265,24 +10016,16 @@ async function recordConversation(botId, question, context = {}) {
     bot.conversations = bot.conversations.slice(0, 100);
     const ticket = upsertConversationTicket(bot, conversation, answer, intent);
     rolloverMonthlyResponseUsage(bot);
-    // Only answered (cited) responses consume the plan's monthly cap. A refusal
-    // does no AI work, so charging it against a paying customer's allowance is
-    // both punitive and inconsistent with the free tier's cited-only counting.
-    // Total conversations are still tracked in monthly stats below.
     if (!answer.unknown) bot.responseCount = (bot.responseCount || 0) + 1;
     bumpMonthlyStats(bot, "conversations");
     if (!answer.unknown) bumpMonthlyStats(bot, "answered");
     if (!answer.unknown && isFreePlan(bot)) {
-      // A cited answer was delivered on the free trial — burn one of the
-      // lifetime allowance and nudge toward upgrade as it runs down.
       bot.freeTrial = bot.freeTrial || { citedAnswersUsed: 0, cap: FREE_ANSWER_CAP, startedAt: now };
       bot.freeTrial.citedAnswersUsed = (bot.freeTrial.citedAnswersUsed || 0) + 1;
       bot.freeTrial.cap = FREE_ANSWER_CAP;
       maybeQueueFreeTrialNudge(bot);
     }
     if (!answer.unknown && answeringModeNow === "overage") {
-      // A cited answer was served beyond the plan cap + grace, on a bot that
-      // opted into overage. Queue it for metered billing (cron flushes to Dodo).
       recordOverageEvent(bot, conversation.id, new Date());
     }
     pushEvent(
@@ -10322,9 +10065,6 @@ async function recordConversation(botId, question, context = {}) {
   return result;
 }
 
-// Decide whether a free-trial request can proceed. Returns the matching bot to
-// reuse (same email + same domain), blocks a mismatch (one trial per email,
-// one per domain), and otherwise clears the way for a fresh provision.
 function freeTrialClaim(store, email, siteUrl) {
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const normalizedSite = safeNormalizeSiteUrl(siteUrl);
@@ -10888,11 +10628,6 @@ function upsertOwnerTicket(bot, input) {
 function queueOwnerNotification(bot, input) {
   const now = new Date().toISOString();
   const key = input.dedupeKey || `${input.type}:${input.title}:${input.detail}`;
-  // An already-SENT (or in-flight) notification with the same dedupe key means
-  // this reminder was delivered for its bucket — do not queue it again.
-  // Without this, every 10-minute lifecycle sweep re-sends recurring reminders
-  // (install nags, usage warnings, renewal notices) for as long as the
-  // condition holds — up to ~144 duplicate emails a day.
   const alreadyDelivered = (bot.notifications || []).find(
     (item) => item.dedupeKey === key && ["sent", "sending", "skipped"].includes(item.deliveryStatus),
   );
@@ -10986,10 +10721,6 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
 }
 
 async function processNotificationOutbox(options = {}) {
-  // Every API request is serialized through the coordinator's store lock, so
-  // email sends (up to 8s each) must never run inside it. Claim deliverable
-  // notifications under the lock, deliver OUTSIDE it, then write receipts in a
-  // second short pass.
   const typeFilter = options.types instanceof Set ? options.types : null;
   const summary = { sent: 0, skipped: 0, failed: 0, checked: 0 };
   const nowMs = Date.now();
@@ -11005,7 +10736,6 @@ async function processNotificationOutbox(options = {}) {
           notification.deliveryStatus === "sending" &&
           (!Number.isFinite(claimedAtMs) || nowMs - claimedAtMs > NOTIFICATION_SENDING_STUCK_MS)
         ) {
-          // A crash between claim and receipt left this mid-flight; retry it.
           notification.deliveryStatus = "pending";
         }
         if (!["pending", "failed"].includes(notification.deliveryStatus)) continue;
@@ -11031,7 +10761,6 @@ async function processNotificationOutbox(options = {}) {
         notification.updatedAt = new Date().toISOString();
         batch.push({
           botId: bot.botId,
-          // Read-only snapshot of the fields the email builder needs.
           bot: {
             botId: bot.botId,
             label: bot.label,
@@ -11110,7 +10839,6 @@ async function queueWeeklyDigestNotifications() {
       summary.checked += 1;
       const digestItems = digestPreviewFor(bot);
       const allQuiet = digestItems.every((item) => /^0 /.test(item));
-      // An all-zeros digest proves non-value; a quiet week gets a nudge instead.
       const notification = queueOwnerNotification(bot, {
         type: "weekly_digest",
         title: allQuiet ? "Quiet week — get more visitors using your rep" : "Weekly Site Rep digest",
@@ -11151,7 +10879,6 @@ async function queueLifecycleReminderNotifications() {
         const notification = queueOwnerNotification(bot, reminder);
         if (notification?.createdAt === notification?.updatedAt) summary.queued += 1;
       }
-      // Scheduled cancellations: pause only when the paid period actually ends.
       const billing = bot.billing || {};
       const cancelsAtMs = Date.parse(billing.cancelsAt || "");
       if (
@@ -11173,7 +10900,6 @@ async function queueLifecycleReminderNotifications() {
           meta: { botId: bot.botId, adminCopy: true },
         });
       }
-      // Monthly value report — the one email that justifies the subscription.
       rollMonthlyStats(bot);
       const finished = bot.monthlyStatsPrevious;
       if (finished && !finished.reported && billingInGoodStanding(bot.billing)) {
@@ -11195,7 +10921,6 @@ async function queueLifecycleReminderNotifications() {
         });
         bot.monthlyStatsPrevious = { ...finished, reported: true };
       }
-      // Overdue lead follow-ups the owner scheduled themselves.
       const overdue = (bot.leads || []).filter(
         (lead) => lead.nextFollowUpAt && Date.parse(lead.nextFollowUpAt) < Date.now() && !["won", "lost"].includes(lead.status || "new"),
       );
@@ -11288,10 +11013,6 @@ function dayBucket(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
-// Recurring "still not fixed" reminders use this instead of dayBucket so the
-// same unresolved condition nags every third day, not every morning — daily
-// repeats train owners to unsubscribe from the channel that carries lead
-// alerts.
 function nagBucket(date = new Date()) {
   const days = Math.floor(date.getTime() / 86400000);
   return `nag-${Math.floor(days / 3)}`;
@@ -11328,9 +11049,6 @@ async function processInternalQueues() {
   }
 }
 
-// Report queued overage answers to Dodo metering, off the request hot path and
-// retry-safe: events that fail to send stay queued for the next run. Inert
-// until SITEREP_OVERAGE_BILLING_ENABLED is set and the bot is a Dodo customer.
 async function flushOverageUsage(env = activeEnv) {
   if (!overageBillingActive(env)) return { skipped: true, reason: "billing_disabled" };
   const config = dodoConfigForEnv(env);
@@ -11427,9 +11145,6 @@ async function releaseRuntimeLock(name, token) {
 }
 
 async function processIntegrationActionQueue() {
-  // Same shape as the notification outbox: claim under the store lock, send
-  // webhooks OUTSIDE it (one dead webhook URL must not stall all customer
-  // traffic), write receipts in a second short pass.
   const summary = { sent: 0, skipped: 0, failed: 0, checked: 0 };
   const claimed = await updateStore((store) => {
     const batch = [];
@@ -11450,7 +11165,6 @@ async function processIntegrationActionQueue() {
         }
         batch.push({
           botId: bot.botId,
-          // Read-only snapshot of what deliverIntegrationAction consumes.
           bot: {
             botId: bot.botId,
             label: bot.label,
@@ -11814,8 +11528,6 @@ function ownerNotificationConfig(bot) {
   const botRecipients = sanitizeEmailList(bot?.leadRules?.notifyEmails || [], []);
   const globalRecipient = String(activeEnv?.SITEREP_OWNER_NOTIFY_TO || "").trim();
   const ownerRecipient = String(bot?.ownerEmail || "").trim();
-  // The paying customer's own address always wins; the global notify address is
-  // only a fallback for bots with no owner email (demo/admin workspaces).
   const to = botRecipients.length ? botRecipients : [ownerRecipient || globalRecipient].filter(Boolean);
   const missing = [];
   if (enabled && provider === "plunk") {
@@ -11855,8 +11567,6 @@ function formatEmailAddress(name, email) {
 }
 
 async function sendAdminAlertEmail(env, subject, text) {
-  // Operator alert for states that need a human (payment mismatches, stuck
-  // activations). Best-effort: alert failure must never fail the payment flow.
   try {
     const to = String(env?.SITEREP_OWNER_NOTIFY_TO || "").trim();
     const fromEmail = String(env?.EMAIL_FROM_EMAIL || "").trim();
@@ -11875,9 +11585,6 @@ async function sendAdminAlertEmail(env, subject, text) {
   }
 }
 
-// Account-critical mail that must always deliver: access credentials, payment
-// receipts, and cancellation confirmations are not "marketing" and are exempt
-// from the unsubscribe mute.
 const CRITICAL_NOTIFICATION_TYPES = new Set([
   "workspace_access",
   "workspace_access_link",
@@ -11896,9 +11603,6 @@ function shouldSkipOwnedInternalEmail(env, fromEmail, recipient) {
   return Boolean(token && emailDomain(fromEmail) && emailDomain(fromEmail) === emailDomain(recipient));
 }
 
-// Notification types that are pure operator noise when the recipient is one of
-// the operator's own domains (dogfood installs): scanner probes on an owned
-// bot never need an email. Leads, sales, and critical types are unaffected.
 const OWNED_DOMAIN_MUTED_TYPES = new Set(["install_issue"]);
 
 function isOwnedRecipientDomain(env, recipient) {
@@ -12120,9 +11824,6 @@ function queueUnknownQuestionSummaryNotification(bot, day = dayBucket()) {
   });
 }
 
-// "jane@x.com asked for Asked a buying question." read like a mail-merge
-// accident. The lead alert is the flagship retention email — it must read
-// like a sentence a human wrote, and name the visitor when we know them.
 function leadAlertDetail(lead) {
   const email = String(lead.email || "").trim();
   const name = String(lead.name || "").trim();
@@ -12519,9 +12220,6 @@ function allowedOriginsFor(bot, appOrigin = "") {
 }
 
 function withWwwApexTwin(allowed, origin) {
-  // Customers type "dentist.com" at checkout while their site canonicalizes to
-  // "www.dentist.com" (or vice versa). Exact-origin matching then 403s every
-  // visitor question — so each allowed origin admits its www/apex twin.
   allowed.add(origin);
   try {
     const url = new URL(origin);
@@ -12533,20 +12231,14 @@ function withWwwApexTwin(allowed, origin) {
       return;
     }
     allowed.add(url.origin);
-  } catch {
-    // Non-URL entries stay as-is.
-  }
+  } catch {}
 }
 
 function storedAllowedOriginsFor(bot) {
-  // The origins the customer actually configured — used for plan-limit
-  // counting and setup checks (twins are free, not a consumed slot).
   const allowed = new Set();
   try {
     if (bot.siteUrl) allowed.add(new URL(bot.siteUrl).origin);
-  } catch {
-    // Ignore invalid local prototype state.
-  }
+  } catch {}
   for (const origin of bot.allowedOrigins || []) {
     allowed.add(origin);
   }
@@ -13200,49 +12892,31 @@ function planLimitError(label, status) {
 }
 
 function usageFor(bot) {
-  // The public demo bot (site-rep-demo) is Nish's marketing surface on
-  // siterep.net, not a customer bot. It must never lock into lead-capture
-  // mode — the live demo and the synthetic monitor that pins it depend on it
-  // always answering. Treat it as unlimited. (Regression 2026-08-25: it
-  // burned through the Starter 1000/month cap and refused every question.)
   if (isPublicDemoBotId(bot?.botId)) {
     return meterFor(0, Number.MAX_SAFE_INTEGER);
   }
   if (isFreePlan(bot)) {
-    // Free usage is a lifetime cap of cited answers — never resets monthly,
-    // and refusals don't count. When it locks, the existing usage-locked path
-    // in recordConversation auto-pauses the widget into lead-capture mode.
     return meterFor(bot.freeTrial?.citedAnswersUsed || 0, FREE_ANSWER_CAP);
   }
   const used = effectiveResponseCount(bot);
   return meterFor(used, planLimitsFor(bot).responseLimit);
 }
 
-// Overage is only available to paying Dodo customers (we report usage to their
-// Dodo subscription invoice). Free and Razorpay bots get grace then lead capture.
 function overageEligible(bot) {
   return !isFreePlan(bot) && bot?.billing?.provider === "dodo" && Boolean(bot?.billing?.customerId);
 }
 
-// The single switch that turns real overage charging on. Until this env flag is
-// set (after the Dodo meter is created and verified), opted-in bots still stop
-// at the grace buffer — no charge can occur.
 function overageBillingActive(env = activeEnv) {
   return String(env?.SITEREP_OVERAGE_BILLING_ENABLED || "").toLowerCase() === "true";
 }
 
-// Overage answers reported this calendar month, rolling the counter at the
-// month boundary so the customer's monthly ceiling resets cleanly.
 function overageReportedThisMonth(bot, now = new Date()) {
   const overage = bot.overage || {};
   if (String(overage.reportedMonth || "") !== currentUsageMonth(now)) return 0;
   return Number(overage.reportedCount || 0);
 }
 
-// included | grace | overage | locked — the live answering decision. Display
-// meters keep using usageFor (the true cap); this governs whether we answer.
 function responseAnsweringMode(bot, env = activeEnv) {
-  // The public demo bot is exempt from the cap — see usageFor. It always answers.
   if (isPublicDemoBotId(bot?.botId)) return "included";
   const limit = isFreePlan(bot) ? FREE_ANSWER_CAP : planLimitsFor(bot).responseLimit;
   const used = isFreePlan(bot) ? bot.freeTrial?.citedAnswersUsed || 0 : effectiveResponseCount(bot);
@@ -13258,8 +12932,6 @@ function responseAnsweringMode(bot, env = activeEnv) {
   });
 }
 
-// Record one billable overage answer: roll the monthly counter and queue the
-// event for the cron to report to Dodo (off the hot path, retry-safe).
 function recordOverageEvent(bot, conversationId, now = new Date()) {
   const month = currentUsageMonth(now);
   bot.overage = bot.overage || defaultOverageSettings();
@@ -13275,10 +12947,6 @@ function recordOverageEvent(bot, conversationId, now = new Date()) {
   }
 }
 
-// Conversion nudges as the free trial runs down. Each threshold fires once
-// (dedupe key per bot+threshold). The 50-of-50 nudge is the most important:
-// the rep has just auto-paused into lead capture, and the owner needs to know
-// answering is one upgrade away with everything they built still saved.
 function maybeQueueFreeTrialNudge(bot) {
   if (!isFreePlan(bot)) return;
   const used = bot.freeTrial?.citedAnswersUsed || 0;
@@ -14172,8 +13840,6 @@ function activeRetrievalPolicy(settings = {}) {
 
 function answerWithRetrievalPolicy(question, sources, options = {}, retrieval = {}) {
   const active = activeRetrievalPolicy(retrieval);
-  // Vector and rerank are intentionally gated contracts for now. Until an
-  // eval-backed implementation is present, lexical remains the safe answer path.
   const answer = answerFromSources(question, sources, options);
   return {
     ...answer,
@@ -14573,9 +14239,6 @@ async function recordEventIfBot(botId, type, title, detail = "", meta = {}) {
         title: "Widget request blocked",
         detail: `${meta?.origin || "unknown"}: ${detail}`,
         priority: "high",
-        // Every new blocked origin/title used to send its own owner email,
-        // so scanner traffic mailed the owner all day. One email per day is
-        // enough; the per-origin ticket above keeps the full detail.
         dedupeKey: `blocked-email:${dayBucket()}`,
         meta,
       });
@@ -14600,10 +14263,6 @@ function pushEvent(bot, type, title, detail = "", meta = {}) {
 }
 
 async function checkPublicRateLimit(botId, origin, action = "chat", maxHits = PUBLIC_RATE_LIMIT_MAX, options = {}) {
-  // The coordinator is a single Durable Object instance, so the in-memory
-  // window is authoritative. Writing rate-limit buckets into the durable store
-  // turned every public request into a full store write — pure amplification
-  // for state that is fine to lose on an instance restart.
   return checkMemoryRateLimit(botId, origin, action, maxHits, options);
 }
 
@@ -14648,9 +14307,6 @@ function pruneMemoryRateLimitBuckets(now = Date.now()) {
 }
 
 function publicRateLimitScope(request, origin) {
-  // Origin/Referer are attacker-controlled on non-browser clients; binding the
-  // bucket to the connecting IP stops Origin rotation from minting fresh
-  // rate-limit buckets (owner-inbox spam vector).
   const ip = String(request?.headers?.["cf-connecting-ip"] || "").trim() || "noip";
   return `${origin || "unknown"}|ip:${ip}`;
 }
@@ -14904,9 +14560,7 @@ function parseSourceUrlList(value) {
         seen.add(normalized);
         urls.push(normalized);
       }
-    } catch {
-      // Invalid tokens are ignored so pasted bullet lists can contain labels.
-    }
+    } catch {}
     if (urls.length >= MAX_URL_LIST_IMPORT_COUNT) break;
   }
   return urls;
@@ -14986,13 +14640,6 @@ function isPublicWidgetCorsRoute(request) {
     if (["GET", "OPTIONS"].includes(request.method) && url.pathname === "/api/public/config") return true;
     return (
       ["POST", "OPTIONS"].includes(request.method) &&
-      // chat/prepare and chat/record are the coordinator-internal legs of the
-      // composed-chat path: the orchestrator forwards them carrying the
-      // visitor's Origin, so they need the same open widget CORS as the parent
-      // /api/public/chat. The per-bot domain lock (validatePublicRequest in
-      // prepare) is the real boundary — without this, AI chat 403s for every
-      // customer widget on its own domain, since the internal legs fall through
-      // to the strict same-origin CORS check.
       ["/api/public/chat", "/api/public/chat/prepare", "/api/public/chat/record", "/api/public/install", "/api/public/feedback", "/api/public/leads"].includes(url.pathname)
     );
   } catch {

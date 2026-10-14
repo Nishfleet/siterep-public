@@ -1,11 +1,3 @@
-// Privacy-safe public funnel instrumentation for the public site.
-//
-// Best-effort by design: every failure is swallowed, the visitor journey is
-// never affected, and nothing is stored on the client or server except daily
-// aggregate counters (see docs/funnel-instrumentation.md). No cookies are
-// written or read here and no identifiers leave the page — the payload is a
-// single allow-listed event name.
-
 const FUNNEL_EVENT_NAMES = [
   "demo_opened",
   "demo_question_submitted",
@@ -42,7 +34,5 @@ export function funnelEvent(name: FunnelEventName) {
       keepalive: true,
       credentials: "omit",
     }).catch(() => {});
-  } catch {
-    // Best-effort: never break the customer journey.
-  }
+  } catch {}
 }

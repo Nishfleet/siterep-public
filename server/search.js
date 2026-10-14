@@ -104,8 +104,6 @@ export function candidateSourcesForQuestion(question, sources, limit = 12) {
 
 export function answerFromSources(question, sources, options = {}) {
   let terms = tokenize(question);
-  // Cheap multi-turn memory: short follow-ups ("how much is that?") borrow
-  // the previous question's words so retrieval has something to rank on.
   const recentQuestions = Array.isArray(options.recentQuestions) ? options.recentQuestions : [];
   let searchQuestion = question;
   if (shouldBorrowRecentQuestion(question, terms, recentQuestions)) {
@@ -116,9 +114,6 @@ export function answerFromSources(question, sources, options = {}) {
   const expandedTerms = expandTerms(terms);
   const ranked = rankSources(searchQuestion, terms, expandedTerms, sources);
   const minimumScore = Math.max(2, Math.ceil(expandedTerms.length * 0.18));
-  // Never cite the same source twice: a duplicated entry in the source pool
-  // (hydration collisions, double imports) must not crowd out distinct
-  // sources or produce repeated citations in the public payload.
   const citedKeys = new Set();
   const matched = ranked
     .filter((item) => item.score >= minimumScore && hasMeaningfulTermMatch(item, terms) && meetsRelevanceBar(item, terms))
@@ -231,15 +226,12 @@ function rankSources(question, terms, expandedTerms, sources) {
       let titleMatch = false;
       let fuzzyTokens = null;
       for (const term of expandedTerms) {
-        // The brand's own name matches every page; it is never evidence.
         const lowValue = LOW_VALUE_MATCH_TERMS.has(term);
         const isOriginal = termSet.has(term) && !lowValue;
         if (title.includes(term)) {
           score += 5;
           matchedTerms.push(term);
           if (isOriginal) originalMatches.add(term);
-          // Title/excerpt hits are strong evidence even via synonyms
-          // ("cost" → "Pricing"), but never via the brand's own name.
           if (!lowValue) {
             strongMatch = true;
             titleMatch = true;
@@ -258,8 +250,6 @@ function rankSources(question, terms, expandedTerms, sources) {
           matchedTerms.push(term);
           if (isOriginal) originalMatches.add(term);
         } else if (isOriginal) {
-          // Typo recovery: an original question word with no exact hit anywhere
-          // still matches a document token within one edit.
           fuzzyTokens ||= haystack.split(" ");
           if (fuzzyTokenMatch(term, fuzzyTokens)) {
             score += 2;
@@ -293,26 +283,13 @@ function rankSources(question, terms, expandedTerms, sources) {
     .sort((a, b) => b.score - a.score || newestTime(b.source) - newestTime(a.source));
 }
 
-// A keyword score alone invites confident non-sequiturs (one stray substring
-// hit clears the old bar). Demand real evidence: either two distinct words
-// from the visitor's question, or a strong title/excerpt hit.
 function meetsRelevanceBar(item, terms) {
   const meaningfulTerms = terms.filter((term) => !LOW_VALUE_MATCH_TERMS.has(term));
   if (meaningfulTerms.length <= 1) return item.originalMatchCount >= 1 || item.strongMatch;
-  // Multi-word questions pass on two original-word hits, a title-level hit
-  // (titles are curated topic labels, and brand-name matches never count),
-  // or the full question phrase appearing verbatim. Demanding MOST words
-  // match refused natural phrasings of covered topics ("how much is the
-  // starter plan" — "plan" appears nowhere in the pricing source body), while
-  // excerpt-body hits alone stay insufficient ("plus tax" in a pricing
-  // excerpt must not answer "can you file my taxes"). The AI compose layer
-  // is the second gate: it answers from the retrieved excerpts or reports
-  // unsupported, which becomes an honest refusal.
   return item.originalMatchCount >= 2 || item.titleMatch || item.phraseMatch;
 }
 
 function buildGroundedAnswer(matches) {
-  // Cite the source the answer text actually came from, not every ranked one.
   const sentence = matches[0].sentence;
   return `${sentence} Source: ${matches[0].source.title}.`;
 }
@@ -344,8 +321,6 @@ function bestSentence(question, content, expandedTerms = expandTerms(tokenize(qu
   }
   if (bestScore <= 0) return "";
 
-  // The answer often continues into the next sentence (price → trial note,
-  // step 1 → step 2). Append it when it stays on topic and fits.
   const next = bestIndex >= 0 ? candidates[bestIndex + 1] : "";
   if (next && best.length + next.length <= 440 && supportScore(question, next, terms, expandedTerms) > 0) {
     return `${best} ${next}`;
@@ -421,8 +396,6 @@ function tokenize(value) {
     .slice(0, 18);
 }
 
-// Light stemming: fold trivial plural/verb endings so "prices"/"pricing edits"
-// match "price" without a stemmer dependency.
 function stemLight(term) {
   if (term.length > 5 && term.endsWith("ies")) return `${term.slice(0, -3)}y`;
   if (term.length > 4 && term.endsWith("es")) return term.slice(0, -2);
@@ -430,8 +403,6 @@ function stemLight(term) {
   return term;
 }
 
-// True when two terms differ by a single edit (insert, delete, substitute, or
-// adjacent transposition) — recovers the typo'd version of a content word.
 export function withinOneEdit(a, b) {
   if (a === b) return true;
   const lengthDiff = Math.abs(a.length - b.length);
@@ -447,7 +418,6 @@ export function withinOneEdit(a, b) {
       }
     }
     if (mismatches <= 1) return true;
-    // Allow one adjacent transposition.
     return (
       mismatches === 2 &&
       firstMismatch + 1 < a.length &&
@@ -486,8 +456,6 @@ function expandTerms(terms) {
   for (const term of terms) {
     let synonyms = SYNONYMS.get(term);
     if (!synonyms && term.length >= 4) {
-      // A typo'd content word ("costt", "pricng") still unlocks its synonym
-      // family when it is one edit away from a known key.
       for (const key of SYNONYMS.keys()) {
         if (Math.abs(key.length - term.length) <= 1 && withinOneEdit(term, key)) {
           synonyms = [key, ...(SYNONYMS.get(key) || [])];

@@ -51,7 +51,6 @@ export async function crawlSite(rawUrl, maxPages = MAX_PAGES, options = {}) {
     const url = queue.shift();
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    // The start URL is always allowed (the owner asked for it explicitly).
     if (url !== startUrl && isDisallowedByRobots(url, robotsDisallow)) continue;
     pagesThisRun += 1;
 
@@ -477,9 +476,7 @@ function feedItemUrl(itemXml, feedUrl) {
       url.hash = "";
       const normalized = url.toString().replace(/\/$/, "");
       return isCrawlableUrl(normalized, url.origin) ? normalized : "";
-    } catch {
-      // Try the next link form.
-    }
+    } catch {}
   }
   return "";
 }
@@ -516,9 +513,6 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECT_HOPS = 5;
 
 async function guardedFetch(url, init = {}) {
-  // Follow redirects manually and re-validate every hop: the SSRF guard on the
-  // initial hostname is useless if a public host can 302 the crawler into
-  // localhost, link-local metadata, or private ranges.
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
     assertCrawlableTarget(current);
@@ -580,17 +574,12 @@ async function discoverSitemapUrls(origin, maxPages) {
         })
         .filter((url) => isCrawlableUrl(url, origin));
       urls.push(...discovered);
-    } catch {
-      // Try the next sitemap candidate.
-    }
+    } catch {}
   }
   return [...new Set(urls)].slice(0, maxPages - 1);
 }
 
 export async function fetchRobotsDisallow(origin) {
-  // Respect robots.txt Disallow for * and SiteRepBot: crawling pages a site
-  // explicitly excluded indexes content owners believe is opted out, and
-  // invites bot-reputation blocks.
   try {
     const robots = await fetchText(`${origin}/robots.txt`, "text/plain,*/*");
     const rules = [];
@@ -742,9 +731,7 @@ function extractLinks(html, baseUrl, origin) {
       url.search = "";
       const normalized = url.toString().replace(/\/$/, "");
       if (isCrawlableUrl(normalized, origin)) links.add(normalized);
-    } catch {
-      // Ignore malformed links.
-    }
+    } catch {}
   }
   return [...links];
 }
@@ -834,7 +821,7 @@ function isPrivateIpv4(a, b, c, d) {
     (a === 192 && b === 168) ||
     (a === 100 && b >= 64 && b <= 127) ||
     (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224 // multicast (224/4), reserved (240/4), broadcast 255.255.255.255
+    a >= 224
   );
 }
 
@@ -850,12 +837,8 @@ function parseDottedIpv4(host) {
   return octets;
 }
 
-// Block private, loopback, link-local, ULA, and IPv4-mapped IPv6. The old guard
-// only caught ::1 and fc/fd/fe80 prefixes, so ::ffff:169.254.169.254 (cloud
-// metadata) and ::ffff:7f00:1 (loopback) walked straight through.
 function isBlockedIpv6Host(host) {
-  if (host === "::1" || host === "::") return true; // loopback, unspecified
-  // Embedded IPv4 tail in dotted form (::ffff:169.254.169.254 / ::127.0.0.1).
+  if (host === "::1" || host === "::") return true;
   const dottedTail = host.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
   if (dottedTail) {
     const octets = parseDottedIpv4(dottedTail[1]);
@@ -871,7 +854,7 @@ function isBlockedIpv6Host(host) {
   }
   const firstHextet = host.split(":")[0];
   if (/^f[cd]/.test(firstHextet)) return true; // ULA fc00::/7
-  if (/^fe[89ab]/.test(firstHextet)) return true; // link-local fe80::/10
+  if (/^fe[89ab]/.test(firstHextet)) return true;
   return false;
 }
 
