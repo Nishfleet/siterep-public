@@ -853,7 +853,7 @@ function isBlockedIpv6Host(host) {
     if (isPrivateIpv4((hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff)) return true;
   }
   const firstHextet = host.split(":")[0];
-  if (/^f[cd]/.test(firstHextet)) return true; // ULA fc00::/7
+  if (/^f[cd]/.test(firstHextet)) return true;
   if (/^fe[89ab]/.test(firstHextet)) return true;
   return false;
 }

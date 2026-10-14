@@ -23,9 +23,6 @@ test("answers with a cited supporting source sentence", () => {
 });
 
 test("never cites the same source twice when the pool contains duplicate entries", () => {
-  // Regression: a URL-keyed hydration merge used to collapse distinct sources
-  // sharing a URL into one source repeated N times, producing triplicate
-  // citations in the public demo bot's payload.
   const result = answerFromSources("What does it cost?", [pricingSource, { ...pricingSource }, { ...pricingSource }]);
 
   assert.equal(result.unknown, false);
@@ -199,7 +196,6 @@ test("distinct short questions do not borrow context from the previous topic", (
 test("answers continue into the adjacent sentence when on topic", () => {
   const result = answerFromSources("What does it cost?", [pricingSource]);
 
-  // Both the Starter and Growth pricing sentences are on topic and adjacent.
   assert.match(result.answer, /\$9\/month/);
   assert.match(result.answer, /\$29\/month/);
 });

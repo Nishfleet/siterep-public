@@ -1545,7 +1545,6 @@ function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "section";
 }
 
-// The Docs Mode install guide gets anchored host sections plus a jump nav.
 function docsInstallBody(markdown) {
   const html = markdownBodyToHtml(markdown);
   const headings = [];

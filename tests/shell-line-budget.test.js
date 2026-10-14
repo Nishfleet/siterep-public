@@ -1,22 +1,3 @@
-// Shell-line ratchet, ported from the retired .semgrep Python count helper
-// into the runner this repo already uses (`npm test` -> node --test).
-// One test, no helper files: the counting logic lives here because the
-// orchestrator ratchet is a check, and the #109 series moves checks into the
-// existing test dir. The retired helper filename is intentionally not
-// reproduced here so this repo keeps zero references to it.
-//
-// Definition (unchanged from the Python original):
-//   1. Every *.sh / *.bash / *.bats file anywhere in the repo (excluding
-//      .git/, node_modules/, dist/, .wrangler/) -> all lines counted.
-//   2. Every .github/workflows/*.{yml,yaml} -> for each `run: |` block, the
-//      indented body lines after the `run: |` header, up to the first line at
-//      indentation <= the `run:` key's indentation. The `run: |` header line
-//      itself is NOT counted; body lines (blank or not) ARE counted.
-//
-// The Python original also counted shell-shebang files directly under
-// scripts/. That clause is dropped on purpose: scripts/ is being emptied and
-// gated by the #109 CI check, so the clause would only ever count a shape
-// that gate already bans.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -37,9 +18,6 @@ function countFileLines(text) {
 }
 
 function countRunBlocks(text) {
-  // Mirror Python's str.splitlines(): split on \r?\n, then drop the trailing
-  // empty element a final newline produces. Without this the last `run: |`
-  // block counts a phantom blank line and the ratchet drifts by one.
   const lines = text.split(/\r?\n/);
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   let total = 0;
