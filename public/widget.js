@@ -470,8 +470,6 @@
         const name = box.querySelector('input[name="name"]').value;
         const website = box.querySelector('input[name="website"]').value;
         const need = box.querySelector('textarea[name="need"]').value || lastQuestion || "";
-        // The server 403s an untokened lead; block until the visitor check
-        // completes, mirroring the chat gate.
         const abuseProtectionToken = await ensureAbuseToken("lead");
         if (abuseProtection.enabled && abuseProtection.actions.includes("lead") && !abuseProtectionToken) {
           showLeadError(box, "Complete the visitor check above, then send your details again.");

@@ -841,9 +841,6 @@ const defaultLimitStatus: LimitStatus = {
   },
 };
 
-// Budget guards the raw (unminified) /widget.js served to hosts. Raised from
-// 36,000 when the lead form gained its visitor-check gate (the server 403s
-// untokened leads, so the form must block and guide the visitor instead).
 const widgetByteBudget = 36_800;
 
 const fallbackPlans = [
@@ -1301,8 +1298,6 @@ type ChatApiResponse = {
   confidence?: "none" | "low" | "medium" | "high";
 };
 
-// The owner-authenticated /api/chat route returns the full record; only the
-// public widget route is trimmed to visitor-safe fields.
 type OwnerChatApiResponse = Omit<ChatApiResponse, "conversation"> & {
   responseCount: number;
   usage?: Usage;
@@ -1622,8 +1617,6 @@ function App() {
   const [lifecycleStatus, setLifecycleStatus] = useState("draft");
   const [publishBlockers, setPublishBlockers] = useState<string[]>([]);
   const trainingTimers = useRef<number[]>([]);
-  // Unsaved-edit guards: background refreshes (crawl polling, any action that
-  // returns BotState) must never overwrite what the owner is typing.
   const widgetSettingsDirtyRef = useRef(false);
   const dirtyLeadNoteIdsRef = useRef<Set<number>>(new Set());
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -1663,13 +1656,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Durable public signup entry: comparison pages are Worker-rendered HTML,
-    // so their free-start control is a plain link that lands on the SPA home.
-    // Accept both the legacy /#free-start hash (already-cached pages and links
-    // in the wild) and the /?surface=free-start query entry the comparison
-    // pages now emit. Query entries survive navigation paths that strip URL
-    // fragments, so activation reaches the real signup surface with no
-    // JS-only wiring or silent dead-end.
     function openFreeStartFromEntry() {
       const params = new URLSearchParams(window.location.search);
       if (window.location.hash === "#free-start" || params.get("surface") === "free-start") {
@@ -1685,11 +1671,6 @@ function App() {
     };
   }, []);
 
-  // Closing the comparison-page entry must not leave a sticky #free-start hash
-  // or ?surface=free-start query: the URL would claim a signup flow that is no
-  // longer open, and re-entering the same hash fires no hashchange, so the
-  // entry would silently do nothing. Replacing the entry keeps browser Back
-  // honest and the free-start link reusable on every visit.
   function closeFreeStart() {
     setFreeStartOpen(false);
     const params = new URLSearchParams(window.location.search);
@@ -1724,9 +1705,6 @@ function App() {
     .replace(/^-|-$/g, "") || "your-site"}`;
   const botId = activeBotId || computedBotId;
   const isCustomerMode = accessRole === "customer";
-  // A customer clicking Site Rep-marketing questions against their own bot
-  // gets blocked at the exact first setup moment; suggest questions their
-  // own sources can actually answer.
   const testExamples = useMemo(() => {
     if (!isCustomerMode || !sources.length) return examples;
     return sources.slice(0, 4).map((source) => `What does "${(source.title || "this page").slice(0, 60)}" cover?`);
@@ -2825,13 +2803,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Guest surfaces (public marketing home, the pre-auth sign-in page, and
-    // the locked admin entry) must not fire the owner-oriented deep health
-    // probe: /api/health/deep reads the whole store and account-RBAC counters
-    // and measures ~1.4 s on the live edge, while its payload is rendered only
-    // by the operator workspace. Skipping it on guest surfaces removes that
-    // slow request from the home waterfall without changing any visible
-    // content; operator surfaces below keep fetching it.
+    // Guest surfaces skip the owner deep-health probe.
     if (forcePublicSurface) {
       setApiError("");
       setBotRegistry([]);
@@ -7899,12 +7871,6 @@ function ChatPreview({
           <small>{subtitle}</small>
         </div>
       </div>
-      {/*
-        AI disclosure. Deliberately rendered outside the message list and above
-        it, so a visitor reads it before the first bot message rather than after
-        mistaking the demo for a human. It is fixed copy, not a configurable
-        greeting, so no caller can quietly drop it.
-      */}
       <p className="chat-disclosure">
         You are chatting with an AI assistant, not a person. It answers from approved sources, or hands the question to the team.
       </p>
@@ -8213,9 +8179,6 @@ function FreeStartModal({
           startedAt: form.get("startedAt"),
         }),
       });
-      // Lands the visitor straight into their new workspace (same flow as
-      // paid signup). The access email is also on its way; publishing still
-      // waits for source review and widget install.
       await onStarted(result);
       funnelEvent("signup_succeeded");
       onClose();
@@ -8437,8 +8400,6 @@ function readDurableState(): LocalState {
 }
 
 function readSessionAccess(): LocalState {
-  // Access material is tab-scoped. Closing the browser requires signing in again,
-  // which is safer than leaving workspace/admin access in durable browser storage.
   const sessionRaw = window.sessionStorage.getItem(SESSION_ACCESS_KEY);
   const legacyRaw = sessionRaw ? "" : window.localStorage.getItem(SESSION_ACCESS_KEY);
   const raw = sessionRaw || legacyRaw;
@@ -8963,9 +8924,7 @@ function addWithWwwApexTwin(origins: Set<string>, origin: string) {
       return;
     }
     origins.add(parsed.origin);
-  } catch {
-    // Non-URL origins remain as-entered.
-  }
+  } catch {}
 }
 
 function isBlockedSetupHost(hostname: string) {

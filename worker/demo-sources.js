@@ -1,17 +1,5 @@
-// Curated knowledge for the public demo bot (site-rep-demo). These are the
-// only sources the homepage demo can cite — keep them in sync with live
-// product truth. tests/demo-refusal-evals.test.js runs the retrieval evals
-// (should-answer vs should-refuse) against exactly this content.
 const PUBLIC_SITE_URL = "https://siterep.net";
 
-// Named-plan price questions: the demo bot answers "What does Starter cost?"
-// (and natural variants) with the exact live localized, tax-inclusive amount
-// the pricing/checkout surface renders — but ONLY when a trustworthy current
-// price resolves for the same request. The detection demands both "starter"
-// AND a real price-intent word, so "what does the starter plan include" or
-// "can the starter plan handle 5,000 pages" never trigger the price answer,
-// and the generic "What does Site Rep cost?" keeps its checkout-explaining
-// answer. See starterPriceAnswerFor below for the trust rule.
 const STARTER_PRICE_INTENT = /\b(?:cost|costs|pricing|price|priced|fee|fees|charge|charges|much|worth|expensive|cheap|affordable|subscription)\b/i;
 
 export function isNamedStarterPriceQuestion(question) {
@@ -20,13 +8,6 @@ export function isNamedStarterPriceQuestion(question) {
   return STARTER_PRICE_INTENT.test(value);
 }
 
-// A price is the buyer's truth ONLY when it came from the live checkout
-// preview: localized to the buyer, tax-inclusive, with a real amount and
-// currency (source "dodo_checkout_preview"). Everything else — unset plans,
-// the static USD plan anchor ("plan-fallback"), or static env amounts that
-// are not buyer-localized and tax-inclusive — must fall back to the honest
-// checkout/email path. Never hardcode a currency amount here: the only
-// amount that can appear comes from the plan's live displayPrice.
 export function starterPriceAnswerFor(plan = {}) {
   const displayPrice = String(plan.displayPrice || "").trim();
   const trustworthy =
@@ -43,12 +24,6 @@ export function starterPriceUnavailableAnswer() {
   return "The live local cost for the Starter plan is not confirmed right now — checkout preview pricing is unavailable. Start setup at live checkout to see the exact total in your currency, tax included, before you pay, or email hello@siterep.net so the Starter total can be confirmed before payment.";
 }
 
-// The dedicated source the demo bot cites for named-plan price answers. Its
-// title carries "starter" and "pricing" and its content carries the answer
-// verbatim, so lexical retrieval ranks it first for natural named-plan
-// phrasings ("how much is the starter plan", "what's the starter price") and
-// the citation points at the live pricing surface. Built per request from
-// the live checkout preview; never stored on the demo bot record.
 export function starterPricingSource(answerText) {
   return {
     id: "demo-starter-pricing",
@@ -62,14 +37,6 @@ export function starterPricingSource(answerText) {
   };
 }
 
-// Generic pricing questions ("What does it cost?", "how much does Site Rep
-// cost", "do you have a cheap plan") ask about the overall cost of Site Rep
-// rather than one named plan. The demo bot answers these by quoting the four
-// named-plan prices the live #public-pricing section renders on the same page
-// — but ONLY when a trustworthy current price resolves for every plan. The
-// detection demands a real price-intent word and rejects any question that
-// names a specific plan (those use the exact-price path) or asks about the
-// free trial (which keeps its own answer).
 const PRICING_INTENT = /\b(?:cost|costs|costing|pricing|price|priced|prices|fee|fees|charge|charges|much|worth|expensive|cheap|affordable|subscription)\b/i;
 const NAMED_PLAN = /\b(?:starter|growth|pro|agency)\b/i;
 const FREE_TRIAL = /\b(?:free trial|free start|trial)\b/i;
@@ -82,14 +49,6 @@ export function isPricingQuestion(question) {
   return true;
 }
 
-// A plan price is the buyer's truth ONLY when it came from the live checkout
-// preview: localized to the buyer, tax-inclusive, with a real amount and
-// currency (source "dodo_checkout_preview"). Everything else — unset plans,
-// the static USD plan anchor ("plan-fallback"), or static env amounts that are
-// not buyer-localized and tax-inclusive — must fall back to the honest
-// checkout/email path. Never hardcode a currency amount here: the only amounts
-// that can appear come from each plan's live displayPrice, the same values the
-// #public-pricing section renders on the page.
 export function planPricesAnswerFor(plans = []) {
   const named = ["Starter", "Growth", "Pro", "Agency"];
   const priced = named.map((name) => plans.find((plan) => plan.name === name)).filter(Boolean);
@@ -114,12 +73,6 @@ export function planPricesUnavailableAnswer() {
   return "The live local totals for the plans are not confirmed right now — checkout preview pricing is unavailable. Start setup at live checkout to see the exact totals in your currency, tax included, before you pay, or email hello@siterep.net so the totals can be confirmed before payment.";
 }
 
-// The dedicated source the demo bot cites for generic pricing answers. Its
-// title carries "pricing" and its content carries the answer verbatim, so
-// lexical retrieval ranks it first for natural phrasings ("what does it
-// cost", "how much is site rep") and the citation points at the live
-// #public-pricing surface on the same page. Built per request from the live
-// checkout preview; never stored on the demo bot record.
 export function planPricingSource(answerText) {
   return {
     id: "demo-plan-pricing",
@@ -133,23 +86,11 @@ export function planPricingSource(answerText) {
   };
 }
 
-// These dedicated pricing sources carry exact live-checkout quotes the
-// retrieval layer built one sentence at a time ("Starter €9.25, Growth €29.80,
-// Pro €60.64, Agency €153.13 per month, tax included — ..." or the honest
-// checkout/email fallback). The compose step must never paraphrase them: a
-// warm rewrite drops the plan names the quote guarantees. When an answer
-// cites either source, its text is final and ships verbatim.
 export function isExactDemoPricingAnswer(answer) {
   const id = String(answer?.sources?.[0]?.id || "");
   return id === "demo-plan-pricing" || id === "demo-starter-pricing";
 }
 
-// Same replacement the public demo chat applies after retrieval: named Starter
-// price questions cite demo-starter-pricing, generic price questions cite
-// demo-plan-pricing. Both URLs are #public-pricing. The honesty check and the
-// chat must share this path so a visitor reproducing a check question in the
-// widget sees the same citation. Catalog may be null (checkout outage); the
-// dedicated source then carries the honest unavailable-price answer.
 export function applyLiveDemoPricingAnswer(question, answer, catalog = null) {
   if (!answer || answer.unknown) return answer;
   if (!isNamedStarterPriceQuestion(question) && !isPricingQuestion(question)) return answer;

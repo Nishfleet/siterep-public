@@ -1,15 +1,3 @@
-// One enforced readiness invariant for the machine-readable health payload.
-//
-// Required storage components (D1 record ledger, R2 source content, and D1
-// account/team RBAC) must never report `ready: false` while the aggregate
-// self-serve/storage check reports green — that would publish two
-// contradictory truths to agents, monitors, and trust-conscious buyers at
-// once (the exact defect behind scout 2026-08-09). The "Durable app storage"
-// self-serve check derives from the same component `ready` signals, so today
-// the aggregate and the components cannot drift apart by construction; this
-// guard exists so any future divergence downgrades the aggregate with an
-// explicit mismatch blocker instead of shipping the contradiction.
-
 const REQUIRED_READINESS_COMPONENTS = Object.freeze([
   "recordLedger",
   "sourceContent",
@@ -20,9 +8,6 @@ export function requiredReadinessComponents() {
   return REQUIRED_READINESS_COMPONENTS;
 }
 
-// Enforce the invariant on a computed self-serve readiness result. Pure:
-// never mutates the input. Returns the input-shaped result unchanged when
-// the invariant holds, and a downgraded copy when it does not.
 export function enforceSelfServeReadinessInvariant(selfServe, components) {
   const result = {
     ready: Boolean(selfServe?.ready),
