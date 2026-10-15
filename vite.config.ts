@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import Beasties from "beasties";
 
 function inlineStylesheet(): Plugin {
@@ -25,5 +26,10 @@ function inlineStylesheet(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), inlineStylesheet()],
+  plugins: [react(), tailwindcss(), inlineStylesheet()],
+  resolve: {
+    alias: {
+      "@": "/src",
+    },
+  },
 });
