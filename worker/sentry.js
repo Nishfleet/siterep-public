@@ -23,6 +23,10 @@ export function sentryOptions(env) {
     // SITEREP_RELEASE_DEPLOYED_AT; a local `wrangler dev` run does not.
     environment: env?.SENTRY_ENVIRONMENT || (env?.SITEREP_RELEASE_DEPLOYED_AT ? "production" : "development"),
     sendDefaultPii: false,
+    // Volume: every error is kept (no sampleRate), so none is missed. The
+    // cap lives in Sentry, not here: the org has spike protection on and is
+    // on the free plan, which drops events over its quota instead of billing
+    // them. Moving to a paid plan means setting a spend cap there first.
     // Tracing stays off: no tracesSampleRate (even 0 lets an incoming
     // sentry-trace header sample a request), and any transaction that still
     // gets built is dropped, since transactions skip beforeSend's scrubber.
