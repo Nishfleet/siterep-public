@@ -11254,7 +11254,8 @@ async function listStoreBackupKeys(kv) {
 // Scrubs the visitor from the KV daily backups. Every writer of the backup
 // keys runs inside the single "global-store" coordinator's request queue
 // (enqueue chains each request after the last, KV awaits included): this
-// scrub through handleApi, and the daily backup through its internal route.
+// scrub through handleApi, and the daily backup through its internal route
+// (CiteRepCoordinator.writeDailyStoreBackup; a test pins it as the only writer).
 // So two deletions, or a deletion and the backup job, never interleave their
 // read-modify-write of a backup. The live mirror at
 // STORE_KEY is not touched here: it has one writer, the store's own

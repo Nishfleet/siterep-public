@@ -818,3 +818,25 @@ test("the dashboard and public trust copy describe self-serve deletion, not tick
   for (const copy of [worker, llms]) assert.match(copy, /point-in-time recovery copies keep earlier states for up to 30 days/);
   assert.match(worker, /D1 Time Travel/);
 });
+
+test("privacy internals stay in the store: public shapes are allowlists and every backup writer runs in the coordinator", async () => {
+  const source = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const body = (name) => {
+    const start = source.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, `${name} exists`);
+    return source.slice(start, source.indexOf("\n}\n", start));
+  };
+  // The salt and stored email hashes reach no owner-facing response or export.
+  for (const name of ["toPublicBot", "buildBotBackup"]) {
+    assert.doesNotMatch(body(name), /\.\.\.bot\b|\.\.\.record\b|privacySalt/, `${name} lists its fields`);
+  }
+  // Daily backups are written by the coordinator Durable Object itself, so the
+  // deletion scrub (also run inside it) never interleaves with the backup job.
+  const uses = [...source.matchAll(/STORE_BACKUP_KEY_PREFIX/g)].map((match) => match.index);
+  assert.equal(uses.length, 3, "defined once, written once, listed once");
+  const classStart = source.indexOf("export class CiteRepCoordinator extends DurableObject {");
+  const classEnd = source.indexOf("\n}\n", classStart);
+  const writer = source.indexOf("async writeDailyStoreBackup() {");
+  assert.ok(writer > classStart && writer < classEnd, "the daily backup is a coordinator method");
+  assert.ok(uses[1] > writer && uses[1] < classEnd, "the only backup key write is in that method");
+});
