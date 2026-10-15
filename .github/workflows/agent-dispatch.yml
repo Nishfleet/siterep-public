@@ -36,8 +36,13 @@ on:
         description: 'miss-review to replay a miss on issue, orchestrate to hand a parked issue to the orchestrator, empty for a normal sweep'
         required: false
         type: string
-  # All nine PR events the fleet's review and merge gates listen for
-  # (fleet-ops README, Intake enrolment, precondition 3).
+  # All nine PR events the fleet's review and merge gates listen for:
+  # https://github.com/Nishfleet/fleet-ops#intake-enrolment (precondition 3),
+  # the same list as the callee's own on.pull_request_target.types. On these
+  # events only the callee's PR jobs run (hold-risky, ejected, paused); its
+  # sweep job runs only on issues: closed, workflow_dispatch and schedule.
+  # hold-risky serialises per PR in its own concurrency group and labels with
+  # GITHUB_TOKEN, which starts no new run.
   pull_request_target:
     types: [dequeued, auto_merge_disabled, closed, auto_merge_enabled, synchronize, labeled, opened, reopened, ready_for_review]
   workflow_run:
