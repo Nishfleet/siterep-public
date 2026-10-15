@@ -50,11 +50,14 @@ on:
 # labels cannot fan out. A new push cancels the run for the push before it,
 # since only the latest head matters. A PR close and every other event get
 # their own group and never queue (the callee owns the sweep's own group).
+# Every group here is prefixed so it never equals the callee's
+# agent-dispatch-<run_id>: a caller and callee sharing a group deadlock, and
+# GitHub fails the run as a workflow file issue with no jobs.
 concurrency:
   group: >-
     ${{ github.event_name == 'issue_comment' && format('agent-dispatch-comment-{0}-{1}', github.repository, github.event.issue.number) ||
     (github.event_name == 'pull_request_target' && github.event.action != 'closed') && format('agent-dispatch-pr-{0}-{1}-{2}', github.repository, github.event.pull_request.number, github.event.action) ||
-    format('agent-dispatch-{0}', github.run_id) }}
+    format('agent-dispatch-stub-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request_target' && github.event.action == 'synchronize' }}
 jobs:
   dispatch:
