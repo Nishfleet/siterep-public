@@ -188,6 +188,7 @@ test("runtime: SPA surfaces (/, /signin) still serve the shell with 200", async 
       const contentType = (response.headers.get("content-type") || "").toLowerCase();
       assert.equal(response.status, 200, `${path} must answer 200, got ${response.status}`);
       assert.ok(contentType.includes("text/html"), `${path} must serve the HTML shell, got ${contentType}`);
+      assert.match(response.headers.get("cache-control") || "", /\bno-transform\b/, `${path} must forbid edge HTML rewriting`);
     }
   } finally {
     await mf.dispose();
