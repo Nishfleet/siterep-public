@@ -1,15 +1,6 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
+import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
 
-/*
- * Site Rep keeps its looks in src/styles.css recipes (context-dependent, e.g.
- * ".lead-form button"), so the base recipe is intentionally EMPTY: a plain
- * native <button> that recipes and className style, matching DESIGN.md
- * ("Components"). Variants are opt-in token-level looks for new screens.
- * `type` defaults to "submit" to preserve the native button semantics the app
- * relies on (Base UI would otherwise force type="button").
- */
 const buttonVariants = cva("", {
   variants: {
     variant: {
@@ -40,12 +31,12 @@ function Button({
   size,
   type = "submit",
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: React.ComponentProps<"button"> & VariantProps<typeof buttonVariants>) {
   return (
-    <ButtonPrimitive
+    <button
       data-slot="button"
       type={type}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={buttonVariants({ variant, size, className })}
       {...props}
     />
   )

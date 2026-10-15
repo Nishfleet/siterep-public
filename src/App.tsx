@@ -37,7 +37,6 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { strFromU8, unzipSync } from "fflate";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { buyerCheckoutErrorMessage } from "./checkout-errors.js";
@@ -8728,7 +8727,12 @@ async function extractPdfSourceText(file: File) {
   return normalizeExtractedSourceText(parts.join("\n\n"));
 }
 
+function strFromU8(data: Uint8Array) {
+  return new TextDecoder().decode(data);
+}
+
 async function extractOfficeSourceText(file: File, extension: "docx" | "pptx" | "xlsx") {
+  const { unzipSync } = await import("fflate");
   const zip = unzipSync(new Uint8Array(await file.arrayBuffer()));
   if (extension === "xlsx") return extractSpreadsheetSourceText(zip);
   const entries = Object.keys(zip)
