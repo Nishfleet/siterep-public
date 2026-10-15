@@ -2512,7 +2512,7 @@ function ensureBot(store, botId) {
   }
 
   if (!store.bots[botId].publicKey) store.bots[botId].publicKey = makePublicKey();
-  if (!store.bots[botId].ownerAccessKey) store.bots[botId].ownerAccessKey = makeOwnerAccessKey();
+  if (!hasOwnerAccessKey(store.bots[botId])) store.bots[botId].ownerAccessKey = makeOwnerAccessKey();
   if (!store.bots[botId].notificationUnsubscribeToken) {
     store.bots[botId].notificationUnsubscribeToken = `unsub_${crypto.randomUUID().replace(/-/g, "")}`;
   }
@@ -2874,6 +2874,25 @@ function makePublicKey() {
 
 function makeOwnerAccessKey() {
   return `own_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+// A bot holds either a legacy plaintext key (until its owner first signs in with it) or only its SHA-256 hash.
+function hasOwnerAccessKey(bot) {
+  return Boolean(bot?.ownerAccessKey || bot?.ownerAccessKeyHash);
+}
+
+const OWNER_ACCESS_KEY_REDACTED = "(the key you already use to sign in; it is not stored in readable form)";
+
+function migrateOwnerAccessKeyToHash(bot, key, keyHash) {
+  if (!bot || !bot.ownerAccessKey || !timingSafeEqual(key, bot.ownerAccessKey)) return false;
+  bot.ownerAccessKeyHash = keyHash;
+  delete bot.ownerAccessKey;
+  for (const notification of bot.notifications || []) {
+    if (typeof notification?.detail === "string" && notification.detail.includes(key)) {
+      notification.detail = notification.detail.split(key).join(OWNER_ACCESS_KEY_REDACTED);
+    }
+  }
+  return true;
 }
 
 function defaultBillingForPlan(plan = "Starter") {
@@ -6957,7 +6976,7 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/funnel/stats") {
-    if (!isAuthorizedAdmin(request, url)) {
+    if (!(await authorizeAdminKeyRequest(request, url))) {
       sendJson(response, 401, { error: "Admin key required.", adminRequired: true });
       return;
     }
@@ -6968,7 +6987,7 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/mcp/stats") {
-    if (!isAuthorizedAdmin(request, url)) {
+    if (!(await authorizeAdminKeyRequest(request, url))) {
       sendJson(response, 401, { error: "Admin key required.", adminRequired: true });
       return;
     }
@@ -7028,7 +7047,7 @@ async function handleApi(request, response, url) {
       sendJson(response, 429, { error: "Sign-in is rate limited. Try again shortly.", retryAfterSeconds: preflightRateLimit.retryAfterSeconds });
       return;
     }
-    const session = await createAuthSession(body);
+    const session = await createAuthSession(body, request);
     if (!session) {
       const rateLimit = await recordFailedAuthAttempt(request, body, "auth-session");
       if (rateLimit.limited) {
@@ -7661,7 +7680,7 @@ async function handleApi(request, response, url) {
     const store = await readStore();
     const id = decodeURIComponent(botMatch[1]);
     let bot = store.bots[id];
-    if (bot && (!bot.publicKey || !bot.ownerAccessKey)) {
+    if (bot && (!bot.publicKey || !hasOwnerAccessKey(bot))) {
       bot = await updateStore((nextStore) => ensureBot(nextStore, id));
     }
     bot = await hydrateBotRecordLedger(bot);
@@ -9184,10 +9203,21 @@ async function getCustomerBot(botId, accessKey) {
   if (!id || !key) return null;
   const store = await readStore();
   let bot = store.bots[id];
-  if (bot && !bot.ownerAccessKey) {
+  if (bot && !hasOwnerAccessKey(bot)) {
     bot = await updateStore((nextStore) => ensureBot(nextStore, id));
   }
-  return bot && timingSafeEqual(key, bot.ownerAccessKey) ? bot : null;
+  if (!bot) return null;
+  const keyHash = await sha256Hex(key);
+  if (bot.ownerAccessKeyHash) {
+    return timingSafeEqual(keyHash, bot.ownerAccessKeyHash) ? bot : null;
+  }
+  if (!timingSafeEqual(key, bot.ownerAccessKey)) return null;
+  // Legacy plaintext key verified: keep only its hash from now on.
+  const migrated = await updateStore((nextStore) => {
+    const record = nextStore.bots?.[id];
+    return migrateOwnerAccessKeyToHash(record, key, keyHash) ? record : null;
+  });
+  return migrated || bot;
 }
 
 async function createDeveloperApiKey(botId, body = {}) {
@@ -9309,10 +9339,11 @@ async function touchDeveloperApiKey(botId, keyId) {
   });
 }
 
-async function createAuthSession(body = {}) {
+async function createAuthSession(body = {}, request = null) {
   const requestedRole = String(body.role || "").trim();
   const adminKey = String(body.adminKey || body.key || "").trim();
   if ((requestedRole === "admin" || adminKey) && timingSafeEqual(adminKey, configuredAdminKey())) {
+    logAdminAccess(request, new URL("https://siterep.internal/api/auth/session"), "admin_key", "session_issued");
     return await issueAuthSession({ role: "admin" });
   }
 
@@ -9454,9 +9485,10 @@ async function authorizeApiRequest(request, url) {
   }
   const session = await authSessionFromRequest(request);
   if (session?.role === "admin") {
+    logAdminAccess(request, url, "admin_session");
     return { ok: true, role: "admin", session };
   }
-  if (isAuthorizedAdmin(request, url)) {
+  if (await authorizeAdminKeyRequest(request, url)) {
     return { ok: true, role: "admin" };
   }
   if (isAccountScopedRoute(request.method, url.pathname)) {
@@ -9603,6 +9635,42 @@ function isAuthorizedAdmin(request, url) {
   return timingSafeEqual(supplied, expected);
 }
 
+// Admin-key header check with failed-attempt rate limiting and an audit log line for every accepted use.
+async function authorizeAdminKeyRequest(request, url) {
+  if (!headerValue(request, "x-citerep-admin-key")) return false;
+  const preflight = await checkFailedAuthLimit(request, {}, "admin-key");
+  if (preflight.limited) {
+    logAdminAccess(request, url, "admin_key", "rate_limited");
+    return false;
+  }
+  if (isAuthorizedAdmin(request, url)) {
+    logAdminAccess(request, url, "admin_key");
+    return true;
+  }
+  await recordFailedAuthAttempt(request, {}, "admin-key");
+  logAdminAccess(request, url, "admin_key", "rejected");
+  return false;
+}
+
+function logAdminAccess(request, url, credential, outcome = "allowed") {
+  let botId = url?.searchParams?.get?.("botId") || String(url?.pathname || "").match(/^\/api\/bots\/([^/]+)/)?.[1] || "";
+  try {
+    botId = decodeURIComponent(botId);
+  } catch {
+    // keep the raw path segment
+  }
+  console.info(JSON.stringify({
+    event: "admin_access",
+    credential,
+    outcome,
+    method: String(request?.method || ""),
+    path: String(url?.pathname || "").slice(0, 200),
+    botId: String(botId || "").slice(0, 120),
+    ip: requestHeaderValue(request, "cf-connecting-ip") || "",
+    at: new Date().toISOString(),
+  }));
+}
+
 function configuredAdminKey() {
   return String(activeEnv?.CITEREP_ADMIN_KEY || "").trim();
 }
@@ -9728,7 +9796,7 @@ function toBotSummary(bot) {
     installCount: (bot.installs || []).length,
     usage,
     analytics: analyticsFor(bot),
-    ownerAccessReady: Boolean(bot.ownerAccessKey),
+    ownerAccessReady: hasOwnerAccessKey(bot),
     qualityScore: bot.qualityRun?.score ?? null,
     launchReport: buildLaunchReport(bot),
     activeCrawlJob: activeCrawlJobFor(bot),
@@ -10101,7 +10169,7 @@ function workspaceAccessEmailDetail(bot, input = {}) {
     "",
     `Sign in at: ${signInUrl}`,
     `Site ID: ${bot.botId}`,
-    `Dashboard access key: ${bot.ownerAccessKey}`,
+    `Dashboard access key: ${bot.ownerAccessKey || OWNER_ACCESS_KEY_REDACTED}`,
     "",
     "Browser sessions expire. When that happens, or on a new device, sign in with the Site ID and dashboard access key above.",
     "Need help? Reply to this email or write to hello@siterep.net.",
@@ -13269,7 +13337,7 @@ function buildCustomerReceipt(bot, report = buildLaunchReport(bot)) {
   const paidStart = !isFreePlan(bot) && billingHasActiveAccess(bot.billing);
   const freeStart = isFreePlan(bot) && (bot.freeTrial?.startedAt || publicBilling.status === "free");
   const startConfirmed = Boolean(paidStart || freeStart);
-  const dashboardConfirmed = Boolean(bot.botId && bot.ownerEmail && bot.ownerAccessKey);
+  const dashboardConfirmed = Boolean(bot.botId && bot.ownerEmail && hasOwnerAccessKey(bot));
   const sourceImported = indexedSources.length > 0;
   const exportsReady = Boolean(report && sourceImported && citedConversation && verifiedInstall && publicLead);
   const stepInputs = [
@@ -13303,7 +13371,7 @@ function buildCustomerReceipt(bot, report = buildLaunchReport(bot)) {
 	        botId: bot.botId,
 	        label: bot.label || bot.botId,
 	        accountEmail: bot.ownerEmail ? "recorded" : "",
-	        dashboardAccessConfigured: Boolean(bot.ownerAccessKey),
+	        dashboardAccessConfigured: hasOwnerAccessKey(bot),
       },
       "missing",
     ),
