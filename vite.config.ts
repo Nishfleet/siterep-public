@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import Beasties from "beasties";
 
 const BOOTSTRAP_SCRIPT =
-  'window.addEventListener("load",()=>{requestAnimationFrame(()=>{setTimeout(()=>{import(document.querySelector("meta[name=app-entry]").content)},0)})})';
+  '(()=>{const url=document.querySelector("meta[name=app-entry]").content;let started=false;const go=()=>{if(started)return;started=true;requestAnimationFrame(()=>{setTimeout(()=>{import(url)},0)})};const painted=()=>performance.getEntriesByName("first-contentful-paint").length>0;const start=()=>{if(painted()||document.hidden)return go();try{new PerformanceObserver((list,observer)=>{if(painted()){observer.disconnect();go()}}).observe({type:"paint",buffered:true})}catch(error){go()}setTimeout(go,2500)};if(document.readyState==="complete")start();else window.addEventListener("load",start)})()';
 
 function inlineStylesheet(): Plugin {
   return {
