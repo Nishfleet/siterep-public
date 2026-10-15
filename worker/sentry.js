@@ -28,51 +28,10 @@ export function sentryOptions(env) {
     tracePropagationTargets: [],
     integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
     beforeBreadcrumb: scrubBreadcrumb,
-    beforeSend: scrubAndCapEvent,
+    beforeSend: scrubSentryEvent,
   };
   if (env?.SITEREP_RELEASE_COMMIT) options.release = env.SITEREP_RELEASE_COMMIT;
   return options;
-}
-
-// Per-isolate cap on error events. A 500 storm (a D1 or R2 outage, or a
-// request an attacker can make fail) would otherwise send one event per
-// request and burn the Sentry quota. Each isolate sends at most
-// MAX_EVENTS_PER_WINDOW events per window and drops the rest. The cap is per
-// isolate only; Sentry spike protection caps bursts across isolates.
-export const MAX_EVENTS_PER_WINDOW = 20;
-export const EVENT_WINDOW_MS = 60_000;
-
-export function createEventCap({ max = MAX_EVENTS_PER_WINDOW, windowMs = EVENT_WINDOW_MS, now = Date.now } = {}) {
-  let windowStart = -Infinity;
-  let count = 0;
-  return {
-    allow() {
-      const at = now();
-      if (at - windowStart >= windowMs) {
-        windowStart = at;
-        count = 0;
-      }
-      if (count >= max) return false;
-      count += 1;
-      return true;
-    },
-    reset() {
-      windowStart = -Infinity;
-      count = 0;
-    },
-  };
-}
-
-const isolateEventCap = createEventCap();
-
-export function resetSentryEventCap() {
-  isolateEventCap.reset();
-}
-
-export function scrubAndCapEvent(event) {
-  const scrubbed = scrubSentryEvent(event);
-  if (!scrubbed) return null;
-  return isolateEventCap.allow() ? scrubbed : null;
 }
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -83,9 +42,25 @@ const REDACTED_NUMBER = "[number]";
 const REDACTED_DEPTH = "[depth limit]";
 const WITHHELD_MESSAGE = "[message withheld]";
 const MAX_SCRUB_DEPTH = 12;
-// Ids the SDK generates (and the release sha) can contain long digit runs;
-// they carry no visitor data, so the number pass leaves them alone.
-const SDK_ID_KEYS = new Set(["event_id", "trace_id", "span_id", "parent_span_id", "release", "timestamp", "start_timestamp"]);
+// Ids the SDK generates, the release sha, and stack-frame locations can
+// contain long digit runs (hashed asset names); they carry no visitor data,
+// and rewriting them would break symbolication, so the number pass leaves
+// them alone.
+const NO_NUMBER_REDACTION_KEYS = new Set([
+  "event_id",
+  "trace_id",
+  "span_id",
+  "parent_span_id",
+  "release",
+  "timestamp",
+  "start_timestamp",
+  "filename",
+  "module",
+  "abs_path",
+]);
+// Source lines around a stack frame. The Cloudflare SDK does not add them
+// today; if a later version does, they are dropped rather than checked.
+const FRAME_SOURCE_KEYS = ["context_line", "pre_context", "post_context", "vars"];
 
 function redactText(value) {
   return value.replace(EMAIL_PATTERN, REDACTED_EMAIL).replace(NUMBER_PATTERN, REDACTED_NUMBER);
@@ -95,7 +70,7 @@ function redactText(value) {
 // anything the SDK adds): emails and phone-like numbers are redacted.
 function redactLeftovers(value, depth = 0, key = "") {
   if (typeof value === "string") {
-    return SDK_ID_KEYS.has(key) ? value.replace(EMAIL_PATTERN, REDACTED_EMAIL) : redactText(value);
+    return NO_NUMBER_REDACTION_KEYS.has(key) ? value.replace(EMAIL_PATTERN, REDACTED_EMAIL) : redactText(value);
   }
   if (!value || typeof value !== "object") return value;
   // Past the depth limit the value is dropped, never returned unredacted.
@@ -108,32 +83,50 @@ function redactLeftovers(value, depth = 0, key = "") {
 
 // Exception messages are sent only when they match a known shape that cannot
 // carry visitor text: the Worker's own fixed error messages, and runtime or
-// platform messages built from code identifiers. Anything else (a message
-// built from lead or chat fields, a third-party error body, a JSON parse error
-// that quotes its input) is replaced; the error type and stack still go.
-const SAFE_MESSAGE_PATTERNS = [
+// platform messages. Where a runtime message names a property key or an
+// expression (which code can build from visitor input, e.g. obj[name]), the
+// shape is kept and the key is replaced. Anything else (a message built from
+// lead or chat fields, a third-party error body, a JSON parse error that
+// quotes its input) is withheld; the error type and stack still go.
+const KEEP = (message) => message;
+const SAFE_MESSAGE_RULES = [
   // The Worker's own fixed messages (throw sites in worker/index.js).
-  /^(Payment ledger is not configured yet|Payment was not found|Payment return signature could not be verified|Payment claim write could not be verified|Payment activation did not return a bot ID|Admin key is required for paid activation)\.$/,
-  /^(Dodo webhook key is not configured|Dodo API key is not configured|Dodo pricing is not available for checkout|Dodo preview did not return a display price|Dodo did not return a trusted checkout URL|Dodo checkout was not found)\.$/,
-  /^(MCP body too large|MCP body length required|Only http and https domains are supported|Feedback rating must be up or down|Add a domain or origin first)\.$/,
-  /^(CITEREP_STORE KV binding|CITEREP_COORDINATOR Durable Object binding) is not configured\.$/,
-  /^(Activation failed|Dodo billing status sync failed) with \d{3}\.$/,
-  /^(Dodo checkout|Dodo preview|Razorpay) returned \d{3}\.$/,
-  /^Dodo product is not configured for [a-z_-]{1,32}\.$/,
-  /^Razorpay is missing keys, currency, or [A-Z0-9_]{1,64}\.$/,
-  // Runtime and platform messages.
-  /^Cannot (read|set) properties of (undefined|null) \((reading|setting) '[\w$]{1,64}'\)$/,
-  /^[\w$.]{1,80} is not (a function|a constructor|iterable|defined)$/,
-  /^(Network connection lost|Too many subrequests|The script will never generate a response|Maximum call stack size exceeded|Unexpected end of JSON input|fetch failed|The operation was aborted|This operation was aborted|Invalid URL|Invalid URL string)\.?$/,
-  /^internal error; reference = \w{1,64}$/,
-  /^D1_[A-Z_]{1,32}: (UNIQUE|NOT NULL|FOREIGN KEY|CHECK) constraint failed: [\w., ]{1,200}(: SQLITE_\w{1,40})?$/,
-  /^D1_[A-Z_]{1,32}: no such (table|column): [\w.]{1,128}(: SQLITE_\w{1,40})?$/,
-  /^D1_[A-Z_]{1,32}: (Network connection lost|Internal error)\.?$/,
+  [/^(Payment ledger is not configured yet|Payment was not found|Payment return signature could not be verified|Payment claim write could not be verified|Payment activation did not return a bot ID|Admin key is required for paid activation)\.$/, KEEP],
+  [/^(Dodo webhook key is not configured|Dodo API key is not configured|Dodo pricing is not available for checkout|Dodo preview did not return a display price|Dodo did not return a trusted checkout URL|Dodo checkout was not found)\.$/, KEEP],
+  [/^(MCP body too large|MCP body length required|Only http and https domains are supported|Feedback rating must be up or down|Add a domain or origin first)\.$/, KEEP],
+  [/^(CITEREP_STORE KV binding|CITEREP_COORDINATOR Durable Object binding) is not configured\.$/, KEEP],
+  [/^(Activation failed|Dodo billing status sync failed) with \d{3}\.$/, KEEP],
+  [/^(Dodo checkout|Dodo preview|Razorpay) returned \d{3}\.$/, KEEP],
+  // normalizePlan only returns a PLAN_LIMITS key or "Free".
+  [/^Dodo product is not configured for [A-Za-z]{1,32}\.$/, KEEP],
+  [/^Razorpay is missing keys, currency, or [A-Z0-9_]{1,64}\.$/, KEEP],
+  // Runtime messages: keep the shape, never the key or expression.
+  [/^Cannot (read|set) properties of (undefined|null) \((reading|setting) .*\)$/s, (message) => message.replace(/\((reading|setting) .*\)$/s, "($1 '[key]')")],
+  [/^.+ is not (a function|a constructor|iterable|defined)$/s, (message) => message.replace(/^.+ (is not (a function|a constructor|iterable|defined))$/s, "[expression] $1")],
+  // Platform messages.
+  [/^(Network connection lost|Too many subrequests|The script will never generate a response|Maximum call stack size exceeded|Unexpected end of JSON input|fetch failed|The operation was aborted|This operation was aborted|Invalid URL|Invalid URL string)\.?$/, KEEP],
+  [/^internal error; reference = \w{1,64}$/, KEEP],
+  [/^D1_[A-Z_]{1,32}: (UNIQUE|NOT NULL|FOREIGN KEY|CHECK) constraint failed: [\w., ]{1,200}(: SQLITE_\w{1,40})?$/, KEEP],
+  [/^D1_[A-Z_]{1,32}: no such (table|column): [\w.]{1,128}(: SQLITE_\w{1,40})?$/, KEEP],
+  [/^D1_[A-Z_]{1,32}: (Network connection lost|Internal error)\.?$/, KEEP],
 ];
 
 export function safeMessage(message) {
   if (typeof message !== "string" || message === "") return message;
-  return SAFE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message)) ? message : WITHHELD_MESSAGE;
+  const rule = SAFE_MESSAGE_RULES.find(([pattern]) => pattern.test(message));
+  return rule ? rule[1](message) : WITHHELD_MESSAGE;
+}
+
+function scrubStacktrace(stacktrace) {
+  if (!stacktrace || !Array.isArray(stacktrace.frames)) return stacktrace;
+  return {
+    ...stacktrace,
+    frames: stacktrace.frames.map((frame) => {
+      const out = { ...frame };
+      for (const key of FRAME_SOURCE_KEYS) delete out[key];
+      return out;
+    }),
+  };
 }
 
 // Keep a path segment only if it is a literal segment of a route in the
@@ -205,7 +198,7 @@ function scrubException(exception) {
   return {
     values: exception.values.map((value) => {
       const out = { type: value.type, value: safeMessage(value.value) };
-      if (value.stacktrace) out.stacktrace = value.stacktrace;
+      if (value.stacktrace) out.stacktrace = scrubStacktrace(value.stacktrace);
       if (value.mechanism) out.mechanism = { type: value.mechanism.type, handled: value.mechanism.handled };
       return out;
     }),

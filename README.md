@@ -44,8 +44,7 @@ that is not a literal route segment replaced by `:id`. An exception message is
 kept only when it has a known safe shape (the Worker's own fixed messages and
 runtime messages built from code identifiers); any other message is withheld.
 Request bodies, query strings, cookies, headers, console lines, breadcrumb text
-and URLs, extra data, and custom contexts are dropped. Each isolate sends at
-most 20 events a minute; Sentry spike protection caps bursts across isolates.
+and URLs, extra data, and custom contexts are dropped.
 
 ## Test, build, and check
 

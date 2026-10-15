@@ -20,11 +20,8 @@ registerHooks({
 const { default: worker } = await import("../worker/index.js");
 const { ROUTE_SEGMENTS } = await import("../worker/sentry-route-segments.js");
 const {
-  createEventCap,
-  MAX_EVENTS_PER_WINDOW,
   redactPath,
   safeMessage,
-  resetSentryEventCap,
   scrubBreadcrumb,
   scrubSentryEvent,
   sentryEnabled,
@@ -130,7 +127,6 @@ test("the Worker export is withSentry with the options callback, and the compat 
 test("with no DSN the Worker serves requests and sends nothing, even when a request fails", async () => {
   assert.equal(typeof worker.fetch, "function");
   assert.equal(typeof worker.scheduled, "function");
-  resetSentryEventCap();
 
   let health;
   let failed;
@@ -151,7 +147,6 @@ test("with no DSN the Worker serves requests and sends nothing, even when a requ
 
 for (const mode of ["no DSN", "a DSN"]) {
   test(`with ${mode}, cron work is awaited by the scheduled handler itself`, async () => {
-    resetSentryEventCap();
     const state = { failed: false };
     const env = {
       ...(mode === "a DSN" ? { SENTRY_DSN: TEST_DSN } : {}),
@@ -177,7 +172,6 @@ for (const mode of ["no DSN", "a DSN"]) {
 }
 
 test("with a DSN, a fetch error is reported scrubbed and the visitor still gets a 500", async () => {
-  resetSentryEventCap();
   const leakyEmail = "visitor.lead@example.com";
   const ctx = fakeCtx();
   let response;
@@ -208,33 +202,6 @@ test("with a DSN, a fetch error is reported scrubbed and the visitor still gets 
   assert.doesNotMatch(payload, /"category":"console"/);
   assert.doesNotMatch(payload, /session=secret/);
   assert.doesNotMatch(payload, /\?email=/);
-});
-
-test("with a DSN, a 500 storm sends at most the per-isolate cap of events", async () => {
-  resetSentryEventCap();
-  const ctx = fakeCtx();
-  const storm = MAX_EVENTS_PER_WINDOW + 10;
-  const statuses = [];
-  const sent = await withCapturedTraffic(async () => {
-    for (let i = 0; i < storm; i += 1) {
-      const env = failingAssetsEnv({ SENTRY_DSN: TEST_DSN }, () => new Error(`storm failure ${i}`));
-      statuses.push((await worker.fetch(new Request("https://siterep.net/"), env, ctx)).status);
-    }
-    await ctx.settle();
-  });
-  assert.deepEqual(new Set(statuses), new Set([500]), "every request still gets its 500");
-  assert.equal(errorEventsIn(sent).length, MAX_EVENTS_PER_WINDOW);
-  resetSentryEventCap();
-});
-
-test("the event cap allows a fixed number per window and opens again in the next window", () => {
-  let now = 1_000;
-  const cap = createEventCap({ max: 3, windowMs: 60_000, now: () => now });
-  assert.deepEqual([cap.allow(), cap.allow(), cap.allow(), cap.allow()], [true, true, true, false]);
-  now += 59_999;
-  assert.equal(cap.allow(), false);
-  now += 1;
-  assert.deepEqual([cap.allow(), cap.allow(), cap.allow(), cap.allow()], [true, true, true, false]);
 });
 
 test("beforeSend keeps exception type and stack and drops request data, user, extra, contexts, and breadcrumb text", () => {
@@ -347,14 +314,23 @@ test("exception messages go out only in a known safe shape", () => {
   const kept = [
     "Payment ledger is not configured yet.",
     "Dodo checkout returned 502.",
-    "Dodo product is not configured for growth.",
-    "Cannot read properties of undefined (reading 'botId')",
-    "store.bots.map is not a function",
+    "Dodo product is not configured for Starter.",
     "Network connection lost.",
     "D1_ERROR: UNIQUE constraint failed: payment_links.reference_id: SQLITE_CONSTRAINT",
     "D1_ERROR: no such table: dodo_checkout_sessions",
   ];
   for (const message of kept) assert.equal(safeMessage(message), message, message);
+  // Runtime messages keep their shape; the key or expression (which code can
+  // build from visitor input, e.g. obj[name]) never leaves.
+  const reshaped = [
+    ["Cannot read properties of undefined (reading 'botId')", "Cannot read properties of undefined (reading '[key]')"],
+    ["Cannot set properties of null (setting 'Jane Visitor')", "Cannot set properties of null (setting '[key]')"],
+    ["Cannot read properties of undefined (reading 'it's Jane')", "Cannot read properties of undefined (reading '[key]')"],
+    ["store.bots.map is not a function", "[expression] is not a function"],
+    ["handlers[Jane Visitor] is not a function", "[expression] is not a function"],
+    ["Jane is not defined", "[expression] is not defined"],
+  ];
+  for (const [message, expected] of reshaped) assert.equal(safeMessage(message), expected, message);
   const withheld = [
     "lead from Jane Visitor",
     "Dodo checkout returned Jane Visitor.",
@@ -364,4 +340,26 @@ test("exception messages go out only in a known safe shape", () => {
     "Payment was not found. Jane",
   ];
   for (const message of withheld) assert.equal(safeMessage(message), "[message withheld]", message);
+});
+
+test("stack frames keep their locations intact and lose any source lines", () => {
+  const frame = {
+    filename: "/assets/index-20261015123456.js",
+    module: "index-20261015123456",
+    abs_path: "https://siterep.net/assets/index-20261015123456.js",
+    function: "fetch",
+    lineno: 12345678,
+    context_line: "const lead = 'Jane Visitor';",
+    pre_context: ["// call (415) 555-0134"],
+    post_context: ["return lead;"],
+    vars: { lead: "Jane Visitor" },
+  };
+  const scrubbed = scrubSentryEvent({ exception: { values: [{ type: "Error", value: "fetch failed", stacktrace: { frames: [frame] } }] } });
+  assert.deepEqual(scrubbed.exception.values[0].stacktrace.frames[0], {
+    filename: frame.filename,
+    module: frame.module,
+    abs_path: frame.abs_path,
+    function: "fetch",
+    lineno: 12345678,
+  });
 });
