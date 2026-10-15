@@ -1,4 +1,4 @@
-import "./styles.css";
+import "./index.css";
 
 window.addEventListener("load", () => {
   requestAnimationFrame(() => {
