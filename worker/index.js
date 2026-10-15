@@ -128,7 +128,7 @@ const DEFAULT_ALLOWED_CORS_ORIGINS = new Set([
 ]);
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy":
-    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://static.cloudflareinsights.com 'sha256-fkyzLoZdr62MqznQcguEvkDNu0crDfWyD/QStx24HyA=' 'sha256-S+xGqB0BY7Ay6EHkTqah0QLhrAwnYCPl83FhcqFnzCE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; upgrade-insecure-requests",
+    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://static.cloudflareinsights.com 'sha256-fkyzLoZdr62MqznQcguEvkDNu0crDfWyD/QStx24HyA=' 'sha256-ZN+7XkQUjcDBJE/+NCOSXiGsoT397mLKlJ5RjyH3370='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; upgrade-insecure-requests",
   "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -291,6 +291,7 @@ These notes describe the current Site Rep product behavior and should not be rea
 - Visitor questions, cited answers, feedback, and unknown-question repair items.
 - Lead details that a visitor chooses to submit, such as name, email, and buying need.
 - Basic install, usage, quota, and source-health events needed to run the service.
+- Scrubbed error reports when the service hits an error, sent to Sentry (see Sub-processors).
 
 ## How Site Rep uses this data
 
@@ -325,6 +326,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only when they come from Site Rep's own code, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
@@ -349,7 +351,7 @@ description: Site Rep security, privacy, reliability, and what is not included t
 
 # Site Rep Trust and Data Handling
 
-Last updated: 2026-08-11.
+Last updated: 2026-10-15.
 
 This page explains what Site Rep does today, how customer and visitor data is handled, and which larger capabilities are not included today.
 
@@ -368,7 +370,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 
 ## Sub-processors
 
-Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments for billing, and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
+Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments for billing, Sentry (Functional Software, Inc., USA) for error monitoring, and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 
 ## What is not included today
 
@@ -3508,7 +3510,7 @@ function publicTrustStatusPayload(env = activeEnv) {
       {
         area: "Sub-processors disclosed",
         status: "confirmed",
-        evidence: "Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments (billing), and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.",
+        evidence: "Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments (billing), Sentry (Functional Software, Inc., USA; error monitoring), and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.",
       },
       {
         area: "Access control",
@@ -3560,6 +3562,12 @@ function publicTrustStatusPayload(env = activeEnv) {
 	        purpose: "Verify checkout, activation, billing portal access, renewals, and plan state.",
 	        customerControl: "Billing portal when linked; manual support fallback through hello@siterep.net.",
 	        ownerControl: "Billing portal when linked; manual support fallback through hello@siterep.net.",
+	      },
+      {
+	        data: "Error reports",
+	        purpose: "Find and fix service errors. A scrubbed report (error type, stack trace, request method and path with ids replaced) goes to Sentry; visitor text, emails, bodies, query strings, cookies and headers are removed first.",
+	        customerControl: "Not stored in the dashboard; ask hello@siterep.net to have reports about your workspace deleted.",
+	        ownerControl: "Sentry project settings and retention.",
 	      },
       {
 	        data: "Operational events",
