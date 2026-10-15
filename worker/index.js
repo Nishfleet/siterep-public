@@ -369,6 +369,7 @@ Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments
 - Lead details: submitted by visitors for human follow-up; exported privately for the customer.
 - Payment records: used only to verify checkout, activation, billing portal access, renewals, and plan status.
 - Operational events: install checks, source health, quota warnings, notification receipts, and error visibility for reliability work.
+- Error reports: scrubbed reports sent to Sentry so service errors can be found and fixed; visitor text, emails, bodies, query strings, cookies, and headers are removed first.
 
 ## Technical details
 
@@ -3547,7 +3548,7 @@ function publicTrustStatusPayload(env = activeEnv) {
       {
 	        data: "Error reports",
 	        purpose: "Find and fix service errors. A scrubbed report (error type, stack trace, request method and path with ids replaced) goes to Sentry; visitor text, emails, bodies, query strings, cookies and headers are removed first.",
-	        customerControl: "Not stored in the dashboard; ask hello@siterep.net to have reports about your workspace deleted.",
+	        customerControl: "Not shown in the dashboard; reports expire on Sentry's retention schedule.",
 	        ownerControl: "Sentry project settings and retention.",
 	      },
       {

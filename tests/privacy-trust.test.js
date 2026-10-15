@@ -35,6 +35,7 @@ test("privacy page, trust page and trust-status payload name the same sub-proces
   }
   assert.match(worker, /- Scrubbed error reports when the service hits an error/);
   assert.match(worker, /data: "Error reports",/);
+  assert.match(worker, /## Data map\n[\s\S]*?- Error reports: scrubbed reports sent to Sentry/);
 });
 
 test("widget lead form shows a point-of-capture consent line", async () => {
