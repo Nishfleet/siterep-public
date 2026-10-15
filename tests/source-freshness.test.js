@@ -91,9 +91,8 @@ test("crawler rejects private hosts and caps fetched text", async () => {
 
   assert.match(crawler, /const MAX_FETCH_TEXT_BYTES = 1_500_000/);
   assert.match(crawler, /function isBlockedCrawlHost/);
-  // IPv6 / IPv4-mapped SSRF hardening must stay in place.
   assert.match(crawler, /function isBlockedIpv6Host/);
-  assert.match(crawler, /ULA fc00::\/7/);
+  assert.match(crawler, /if \(\/\^f\[cd\]\/\.test\(firstHextet\)\) return true;/);
   assert.match(crawler, /readResponseTextWithLimit/);
   assert.match(crawler, /function parseTagAttributes/);
   assert.doesNotMatch(crawler, /new RegExp\(`<meta/);

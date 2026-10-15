@@ -4,26 +4,17 @@ import { readFile } from "node:fs/promises";
 
 import { skipReasonIfPackageMissing } from "./optional-dev-package.js";
 
-// These privacy facts were verified true in code before publishing:
-// the widget uses no cookies/localStorage (sessionStorage only), and visitor
-// IPs are used transiently for rate-limiting and never persisted. Promoting
-// them to the trust status is under-claiming and over-delivering.
 test("trust status publishes the already-true privacy facts", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  // Machine-readable trust-status payload.
   assert.match(worker, /area: "Visitor data minimization"/);
   assert.match(worker, /area: "No tracking cookies"/);
   assert.match(worker, /area: "Sub-processors disclosed"/);
 
-  // Human trust page + privacy page.
   assert.match(worker, /No tracking cookies: the chat widget sets no cookies/);
   assert.match(worker, /Visitor IP addresses are used only transiently in memory/);
   assert.match(worker, /## Sub-processors/);
   assert.match(worker, /Dodo Payments — checkout, subscription, and billing/);
-  // The trust page's visible "Last updated" stamp must match the
-  // machine-readable TRUST_STATUS_UPDATED_AT constant: a content edit that
-  // bumps one and not the other makes the page advertise stale freshness.
   const trustUpdatedAt = worker.match(/const TRUST_STATUS_UPDATED_AT = "([^"]+)"/)?.[1];
   assert.ok(trustUpdatedAt, "TRUST_STATUS_UPDATED_AT constant must exist");
   assert.match(worker, new RegExp(`Last updated: ${trustUpdatedAt}\\.`));
@@ -53,9 +44,6 @@ test("trust page list items wrap at 320px instead of overflowing the article", {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const style = extractTrustPageStyle(worker);
 
-  // Live 2026-08-13 defect: this slash-token list item was 266px inside a
-  // 206px box and grew the 320px document to 333px. Copy stays verbatim;
-  // the article must wrap, not hide overflow at the document.
   assert.match(worker, new RegExp(TRUST_OVERFLOW_LI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(style, /p,li\{[^}]*overflow-wrap:anywhere/);
   assert.doesNotMatch(style, /(?:html|body)\{[^}]*overflow-x:\s*hidden/);

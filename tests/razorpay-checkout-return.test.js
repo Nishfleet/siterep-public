@@ -2,11 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// D6 UX flow: Razorpay buyers return with signed payment-link params while the
-// webhook is still catching up. claimRazorpayReturn must poll payment_pending
-// like claimDodoReturn instead of falling through to handleSelfServeSignup and
-// reporting checkout_failed on a still-valid pending payment.
-
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 

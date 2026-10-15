@@ -19,9 +19,6 @@ test("comparison pages are registered, discoverable, and listed for AI agents", 
     assert.match(index, new RegExp(`href="${path}"`), `${path} must be linked from the static homepage fallback`);
   }
   assert.match(worker, /Honest comparison pages are available at \[All comparisons\]\(\/vs\), \[CustomGPT\]\(\/vs\/customgpt\), \[Chatbase\]\(\/vs\/chatbase\), \[Intercom Fin\]\(\/vs\/intercom-fin\), \[Tidio Lyro\]\(\/vs\/tidio-lyro\), \[WebSpeaker\]\(\/vs\/webspeaker\), and \[Chatling\]\(\/vs\/chatling\)\./);
-  // The /vs hub lists every comparison page so the hub collects link equity
-  // for the whole cluster, including the WebSpeaker and Chatling leaves
-  // (scout 2026-08-09, 2026-08-21).
   const hubStart = worker.indexOf("const VS_HUB_MARKDOWN =");
   assert.ok(hubStart >= 0, "VS_HUB_MARKDOWN must exist");
   const hubBody = worker.slice(hubStart, worker.indexOf("\n`;", hubStart));
@@ -30,9 +27,7 @@ test("comparison pages are registered, discoverable, and listed for AI agents", 
   for (const [path, label] of Object.entries(hubLeafLabels)) {
     assert.ok(hubBody.includes(`[${label}](${path})`), `the hub body must list ${path}`);
   }
-  // The hub's own TRUST_PAGES description matches the front matter list.
   assert.match(worker, /"\/vs": \{\s*\n\s*title: "Site Rep comparisons",\s*\n\s*description: "Honest, dated comparisons of Site Rep with CustomGPT, Chatbase, Intercom Fin, Tidio Lyro, WebSpeaker, and Chatling/, "the /vs TRUST_PAGES description must name all six comparison pages");
-  // Internal link equity from the shared trust-page footer.
   for (const path of VS_PATHS) {
     assert.match(worker, new RegExp(`path: "${path}"`), `${path} must be linked from the shared comparison link list`);
   }
@@ -43,56 +38,39 @@ test("the /vs hub is a self-canonical index page with an h1 naming the compariso
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
 
-  // The scout defect: /vs 404'd while the four leaves were 200 and cross-linked
-  // each other, so directory-truncating crawlers hit a hard 404 instead of a
-  // comparison index. The closure contract ("Done when") is: /vs returns 200
-  // with an h1 naming the comparison index, a self-canonical, links to all
-  // leaves with human labels, and a sitemap entry with a current lastmod.
   const hubStart = worker.indexOf("const VS_HUB_MARKDOWN =");
   assert.ok(hubStart >= 0, "VS_HUB_MARKDOWN must exist");
   const hubBody = worker.slice(hubStart, worker.indexOf("\n`;", hubStart));
 
-  // h1 naming the comparison index, not a leaf or a generic title.
   assert.match(hubBody, /^# Site Rep comparisons$/m, "the hub must render an h1 naming the comparison index");
 
-  // Every leaf is linked from the hub with its human label (no raw paths).
   const hubLeafLabels = { "/vs/customgpt": "CustomGPT", "/vs/chatbase": "Chatbase", "/vs/intercom-fin": "Intercom Fin", "/vs/tidio-lyro": "Tidio Lyro", "/vs/webspeaker": "WebSpeaker" };
   for (const [path, label] of Object.entries(hubLeafLabels)) {
     assert.ok(hubBody.includes(`[${label}](${path})`), `the hub must link ${path} with its human label`);
   }
   assert.doesNotMatch(hubBody, /\]\(\/vs\/[a-z-]+\)\s*—\s*\/vs\//, "the hub must not render a raw path as link text");
 
-  // The worker emits a canonical for /vs (self-canonical) via canonicalUrlFor.
   assert.match(worker, /function canonicalUrlFor\(pathname\)/, "the worker must have a canonical URL builder");
   assert.ok(worker.includes('canonicalUrlFor(page.pathname || "/")'), "the worker must emit a canonical per page");
 
-  // The hub's TRUST_PAGES entry is registered and carries a description.
   assert.match(worker, /"\/vs": \{\s*\n\s*title: "Site Rep comparisons",/, "the /vs TRUST_PAGES entry must be registered");
 
-  // The hub is in the sitemap with a lastmod (presence, not staleness — the
-  // live monitor pins the freshness floor).
   assert.match(sitemap, /<loc>https:\/\/siterep\.net\/vs<\/loc>\s*<lastmod>/, "the sitemap must include /vs with a lastmod");
 
-  // The homepage links to the hub with a human label ("All comparisons").
   assert.match(app, /name: "All comparisons",\s*\n\s*href: "\/vs"/, "the homepage comparison grid must link the hub with a human label");
 });
 
 test("short comparison guesses redirect to the real dated pages instead of soft-falling to the homepage", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  // The alias map: short visitor guesses point at the canonical dated pages.
   assert.match(worker, /\/vs\/intercom": "\/vs\/intercom-fin"/, "/vs/intercom must alias the Intercom Fin page");
   assert.match(worker, /\/vs\/tidio": "\/vs\/tidio-lyro"/, "/vs/tidio must alias the Tidio Lyro page");
 
-  // The worker resolves the alias before the SPA soft-fallback serves the
-  // homepage, and only for GET/HEAD requests.
   assert.match(worker, /const aliasTarget = comparisonAliasFor\(url\)/, "the fetch path must resolve the comparison alias");
   assert.match(worker, /if \(request\.method === "GET" \|\| request\.method === "HEAD"\)/, "the alias redirect must apply to GET and HEAD");
   assert.match(worker, /withSecurityHeaders\(Response\.redirect\(new URL\(aliasTarget, url\)\.toString\(\), 301\)\)/, "the alias must 301 to the canonical page on the same origin");
   assert.ok(worker.indexOf("const aliasTarget = comparisonAliasFor(url)") < worker.indexOf("const trustPage = trustPageFor(url)"), "the alias redirect must run before the trust page lookup");
 
-  // Every alias target is a real registered page (and the aliases themselves
-  // are never registered as duplicate content pages).
   for (const target of ["/vs/intercom-fin", "/vs/tidio-lyro"]) {
     assert.match(worker, new RegExp(`"${target}": \\{`), `${target} must stay a registered TRUST_PAGES entry`);
   }
@@ -176,14 +154,9 @@ test("comparison pages stay honest: dated claims, sourced pricing, and a fit cav
     const start = worker.indexOf(`const ${name} =`);
     assert.ok(start >= 0, `${name} must exist`);
     const body = worker.slice(start, worker.indexOf("\n`;", start));
-    // Every competitor claim is date-stamped so it can't silently go stale.
     assert.match(body, /as of (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}/i, `${name} must date-stamp competitor facts`);
-    // ...and points to the vendor's own pricing page as the source of truth.
     assert.ok(body.includes(pricingSource), `${name} must link ${pricingSource}`);
-    // ...and never overclaims: each page says where the competitor fits better.
     assert.match(body, /may fit better/i, `${name} must include a candid fit caveat`);
-    // Site Rep's own verifiable hook appears on every page without hardcoding
-    // buyer-visible pricing away from the live local checkout.
     assert.match(body, /buyer-local total|buyer's local currency/i, `${name} must state Site Rep's local checkout pricing`);
     assert.doesNotMatch(body, /Site Rep Starter is \$9\/month|\$9\/month for 1,000/i, `${name} must not hardcode Site Rep public prices`);
     assert.match(body, /50 source-backed answers/i, `${name} must state the no-card free trial`);
@@ -222,37 +195,23 @@ test("every comparison page renders an actionable free-start link from the Try S
     const sectionStart = html.indexOf("<h2>Try Site Rep free</h2>");
     assert.ok(sectionStart >= 0, `${name} must render a Try Site Rep free heading`);
     const section = html.slice(sectionStart, html.indexOf("<h2>Compare Site Rep with</h2>", sectionStart));
-    // The free-start control is a real anchor to the durable /?surface=free-start
-    // signup entry (a query entry, not a same-page pricing fragment), so
-    // Enter/Space activation works through native link semantics and survives
-    // navigation paths that strip URL fragments.
     assert.match(section, /<a href="\/\?surface=free-start">Start free<\/a>/, `${name} must render the free-start CTA with a human label instead of the raw URL`);
     assert.doesNotMatch(section, /href="\/#public-pricing"/, `${name} must not point the CTA at a pricing fragment`);
-    // The 50 source-backed answers and no-card explanation survive the render.
     assert.match(section, /50 source-backed answers and no card/i, `${name} must keep the no-card 50-answer explanation`);
-    // Only the intended free-start path becomes a link inside the section.
     assert.equal(section.match(/href="/g).length, section.match(/href="\/\?surface=free-start"/g).length, `${name} must not linkify anything else in the free-start section`);
-    // The comparison cluster cross-links still render after the CTA.
     const compareSection = html.slice(html.indexOf("<h2>Compare Site Rep with</h2>", sectionStart));
     for (const path of VS_PATHS) {
       assert.ok(compareSection.includes(`href="${path}"`), `${name} must still render the ${path} cross-link`);
     }
-    // The cluster cross-links must show human labels, never the raw path as
-    // link text (the same human-label rule the CTA already follows; the
-    // footer on these pages uses the same labels).
     const clusterLabels = { "/vs/customgpt": "CustomGPT", "/vs/chatbase": "Chatbase", "/vs/intercom-fin": "Intercom Fin", "/vs/tidio-lyro": "Tidio Lyro", "/vs/webspeaker": "WebSpeaker", "/vs/chatling": "Chatling" };
     for (const [path, label] of Object.entries(clusterLabels)) {
       assert.ok(compareSection.includes(`<a href="${path}">${label}</a>`), `${name} must render the ${path} cross-link with its human label`);
       assert.doesNotMatch(compareSection, new RegExp(`>${path}</a>`), `${name} must not render the raw ${path} as link text`);
     }
-    // The Useful links section follows the same human-label rule: no bare
-    // paths as visible link text, including the bare root homepage link.
     const usefulSection = html.slice(html.indexOf("<h2>Useful links</h2>", sectionStart));
     assert.ok(usefulSection.includes('<a href="/trust">Trust and data handling</a>'), `${name} must render the trust link with a human label`);
     assert.doesNotMatch(usefulSection, />\/<\/a>/, `${name} must not render the raw root path as link text`);
     assert.doesNotMatch(usefulSection, />\/trust<\/a>/, `${name} must not render the raw /trust as link text`);
-    // The body copy follows the same human-label rule: the trust-note bullet
-    // links to /trust with a human label, never the raw path as link text.
     const howDifferentStart = html.indexOf("<h2>How Site Rep is different</h2>");
     const howDifferentEnd = html.indexOf("<h2>Where ", howDifferentStart);
     assert.ok(howDifferentStart >= 0 && howDifferentEnd > howDifferentStart, `${name} must render the How Site Rep is different section`);
@@ -261,25 +220,14 @@ test("every comparison page renders an actionable free-start link from the Try S
     assert.doesNotMatch(howDifferentSection, />\/trust<\/a>/, `${name} must not render the raw /trust as link text in the body copy`);
     assert.doesNotMatch(html, />\/trust<\/a>/, `${name} must not render the raw /trust as link text anywhere`);
   }
-  // The free-start linkifier must stay available for the Worker-rendered pages:
-  // the emitted /?surface=free-start query entry turns into a real anchor, and
-  // the legacy /#free-start hash stays linkified for already-cached pages.
   assert.match(worker, /\\\?surface=free-start/, "the Worker linkifier must turn /?surface=free-start into a real anchor");
   assert.match(worker, /#free-start\|\\\?surface=free-start\)\?/, "the Worker linkifier must keep the legacy /#free-start hash linkified next to the query entry");
 
-  // URL-to-signup handoff: the durable query entry opens the existing public
-  // FreeStartModal — one signup implementation, no dead fragment. The legacy
-  // hash entry stays supported for already-cached comparison pages.
   assert.match(app, /params\.get\("surface"\) === "free-start"/, "the SPA must react to the comparison /?surface=free-start query entry");
   assert.match(app, /window\.location\.hash === "#free-start" \|\| params\.get\("surface"\) === "free-start"/, "the SPA must open the modal from either durable entry");
   assert.match(app, /setFreeStartOpen\(true\)/, "the SPA must open the existing free-start modal state");
   assert.match(app, /<FreeStartModal onClose=\{closeFreeStart\}/, "the SPA must reuse the existing FreeStartModal entry path");
 
-  // Closing the entry must not leave a sticky ?surface=free-start query or
-  // #free-start hash: the URL would claim a signup flow that is no longer
-  // open, and re-entering the same hash fires no hashchange, silently
-  // dead-ending the shared path. The close path clears the entry so the
-  // comparison CTA keeps finishing the handoff on every visit.
   assert.match(app, /function closeFreeStart\(\)/, "the SPA must have a single named close path for the free-start modal");
   assert.match(app, /function closeFreeStart\(\) \{\s*\n\s*setFreeStartOpen\(false\);/, "the close path must close the existing modal state");
   assert.match(app, /params\.get\("surface"\) === "free-start"/, "the close path must detect the sticky ?surface=free-start query entry");

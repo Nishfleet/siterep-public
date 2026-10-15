@@ -5,14 +5,9 @@ import { readFile } from "node:fs/promises";
 test("the visible public Sign in anchors are real links to the emailed customer entry URL", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
-  // The product emails customers "Sign in at: ?surface=customer&botId=...".
-  // Both visible public anchors must carry that same real href so activation
-  // without the JS handler (middle-click, open-in-new-tab, assistive-tech
-  // navigation) lands on the sign-in surface instead of the #top no-op.
   const anchorHrefs = app.match(/href="\?surface=customer"/g) || [];
   assert.ok(anchorHrefs.length >= 2, "desktop and mobile public Sign in anchors must both use the ?surface=customer href");
 
-  // Desktop nav Sign in link: keeps its same-tab JS enhancement.
   const desktopStart = app.indexOf('<a href="#invitation">Start</a>');
   assert.ok(desktopStart !== -1, "desktop nav must contain the Start anchor");
   const desktopNav = app.slice(desktopStart, app.indexOf("</nav>"));
@@ -21,7 +16,6 @@ test("the visible public Sign in anchors are real links to the emailed customer 
   assert.match(desktopNav, /event\.preventDefault\(\)/, "desktop Sign in must keep the same-tab JS enhancement");
   assert.match(desktopNav, /requestSignIn\(\)/, "desktop Sign in must keep requesting the sign-in surface");
 
-  // Mobile-only Sign in control: same real href, same same-tab enhancement.
   const mobileStart = app.indexOf('className="mobile-signin"');
   assert.ok(mobileStart !== -1, "mobile Sign in control must exist");
   const mobileAnchor = app.slice(mobileStart - 4, app.indexOf("</a>", mobileStart));
@@ -34,8 +28,6 @@ test("the visible public Sign in anchors are real links to the emailed customer 
 test("every visible Sign in control reaches the existing sign-in form", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
-  // Desktop nav link and mobile-only link must both drive the same sign-in
-  // request path instead of independent dead-end state sets.
   assert.match(app, /<a\s+className="mobile-signin"/, "mobile Sign in control must exist");
   assert.match(app, /focusCustomerAccess\(\)/, "mobile and nav Sign in controls must route through focusCustomerAccess");
   assert.match(app, /function focusCustomerAccess\(\)/, "focusCustomerAccess must exist");
@@ -54,8 +46,6 @@ test("every visible Sign in control reaches the existing sign-in form", async ()
 test("direct navigation and bookmarks open the sign-in form instead of a dead end", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
-  // The product emails customers "Sign in at: ?surface=customer&botId=..." —
-  // that URL must render the sign-in form on load.
   assert.match(
     app,
     /const signInEntryRequested = normalizedPath === "\/signin" \|\| surfaceParams\.get\("surface"\) === "customer"/,
@@ -67,8 +57,6 @@ test("direct navigation and bookmarks open the sign-in form instead of a dead en
     "sign-in state must initialize from the URL so bookmarks and direct navigation land on the form",
   );
 
-  // surface=customer must not auto-lock the visitor into an empty-key customer
-  // dashboard: the durable-state reader may not turn the URL into access.
   const readDurableState = app.slice(app.indexOf("function readDurableState"), app.indexOf("function readSessionAccess"));
   assert.doesNotMatch(readDurableState, /customerSurface/, "readDurableState must not invent access from surface=customer");
   assert.doesNotMatch(readDurableState, /accessRole: customerSurface/, "URL surface must not force accessRole");
@@ -96,13 +84,9 @@ test("the emailed sign-in links and the sign-in surface stay consistent", async 
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  // The worker still sends the customer to the surface=customer entry, and the
-  // app still honors it (coupled, so one side cannot drift).
   assert.match(worker, /surface=customer/, "worker emails must keep using the sign-in entry URL");
   assert.match(app, /surfaceParams\.get\("surface"\) === "customer"/, "app must keep parsing the emailed entry URL");
 
-  // The public marketing surface must not leak into the sign-in surface and
-  // the admin /admin route must keep its own locked surface.
   assert.match(app, /const showSignInSurface = !forcePublicSurface && signInRequested && adminLocked && !adminEntryRequested/);
   assert.match(app, /const showLockedAdminSurface = !forcePublicSurface && adminLocked && adminEntryRequested/);
   assert.match(app, /const adminEntryRequested = normalizedPath === "\/admin" \|\| surfaceParams\.get\("surface"\) === "admin"/);
