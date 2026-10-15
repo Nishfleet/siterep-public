@@ -1,7 +1,10 @@
 import { defineConfig, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/vite";
 import Beasties from "beasties";
+
+const BOOTSTRAP_SCRIPT =
+  '(()=>{const url=document.querySelector("meta[name=app-entry]").content;let started=false;const go=()=>{if(started)return;started=true;requestAnimationFrame(()=>{setTimeout(()=>{import(url)},0)})};const painted=()=>performance.getEntriesByName("first-contentful-paint").length>0;const start=()=>{if(painted()||document.hidden)return go();try{new PerformanceObserver((list,observer)=>{if(painted()){observer.disconnect();go()}}).observe({type:"paint",buffered:true})}catch(error){go()}setTimeout(go,2500)};if(document.readyState==="complete")start();else window.addEventListener("load",start)})()';
 
 function inlineStylesheet(): Plugin {
   return {
@@ -25,8 +28,29 @@ function inlineStylesheet(): Plugin {
   };
 }
 
+function inlineBootstrap(): Plugin {
+  return {
+    name: "inline-bootstrap",
+    apply: "build",
+    enforce: "post",
+    transformIndexHtml: {
+      order: "post",
+      handler(html, { bundle }) {
+        if (!bundle) return html;
+        const chunks = Object.values(bundle).filter((item) => item.type === "chunk");
+        const entry = chunks.find((item) => item.isEntry);
+        const mount = chunks.find((item) => item.isDynamicEntry && item.facadeModuleId?.endsWith("/src/mount.tsx"));
+        if (!entry || !mount) throw new Error("inline-bootstrap: entry or mount chunk not found");
+        const tag = `<script type="module" crossorigin src="/${entry.fileName}"></script>`;
+        if (!html.includes(tag)) throw new Error("inline-bootstrap: entry script tag not found");
+        return html.replace(tag, () => `<meta name="app-entry" content="/${mount.fileName}">\n    <script type="module">${BOOTSTRAP_SCRIPT}</script>`);
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), inlineStylesheet()],
+  plugins: [preact(), tailwindcss(), inlineStylesheet(), inlineBootstrap()],
   resolve: {
     alias: {
       "@": "/src",
