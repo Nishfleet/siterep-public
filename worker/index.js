@@ -309,6 +309,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report (request method and path, stack trace) is sent; request bodies, query strings, cookies, headers, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
@@ -351,7 +352,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 
 ## Sub-processors
 
-Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments for billing, and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
+Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments for billing, Sentry (Functional Software, Inc., USA) for error monitoring, and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 
 ## What is not included today
 
@@ -3489,7 +3490,7 @@ function publicTrustStatusPayload(env = activeEnv) {
       {
         area: "Sub-processors disclosed",
         status: "confirmed",
-        evidence: "Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments (billing), and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.",
+        evidence: "Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments (billing), Sentry (Functional Software, Inc., USA; error monitoring), and the configured email provider. Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.",
       },
       {
         area: "Access control",
