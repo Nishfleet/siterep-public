@@ -277,6 +277,46 @@ test("a queued webhook about another lead keeps its delivery and loses only the 
   assert.doesNotMatch(JSON.stringify(bot.actionQueue), /jane@visitor\.test/i);
 });
 
+function boundaryBot(deletedEmail, otherEmail) {
+  return {
+    botId: "deletebot",
+    leads: [
+      { id: 1, email: deletedEmail, need: "Quote", conversationId: 10 },
+      { id: 2, email: otherEmail, need: "Demo", conversationId: 20 },
+    ],
+    conversations: [
+      { id: 10, question: "Quote please", visitor: { email: deletedEmail } },
+      { id: 20, question: "Demo please", visitor: { email: otherEmail } },
+    ],
+    notifications: [{ id: "note_other", type: "sales_lead", title: "Sales lead captured", detail: `Lead (${otherEmail}) asked: "Demo"`, deliveryStatus: "pending" }],
+    events: [{ id: 2, type: "lead", title: "Lead captured", detail: `${otherEmail} · warm intent` }],
+    actionQueue: [{ id: "act_other", status: "queued", payload: { conversationId: null, leadId: null, email: "", title: `New lead ${otherEmail}` } }],
+  };
+}
+
+for (const [deleted, other] of [
+  ["jo@x.com", "bojo@x.com"],
+  ["jo@x.co", "jo@x.co.uk"],
+  ["jo@x.com", "jo@x.com.au"],
+]) {
+  test(`deleting ${deleted} leaves ${other} alone`, () => {
+    const bot = boundaryBot(deleted, other);
+    const counts = eraseLeadFromBot(bot, leadDeletionTargets(bot, { email: deleted.toUpperCase() }));
+    assert.equal(counts.leads, 1);
+    assert.deepEqual(bot.leads.map((lead) => lead.email), [other]);
+    assert.deepEqual(bot.notifications.map((item) => item.id), ["note_other"], "the other lead's alert still goes out");
+    assert.deepEqual(bot.events.map((item) => item.id), [2]);
+    assert.equal(bot.actionQueue[0].payload.title, `New lead ${other}`, "the other lead's webhook is not masked");
+    assert.equal(counts.actionsScrubbed, 0);
+
+    // The whole address is still found case-insensitively, at a sentence end too.
+    const mixed = boundaryBot(deleted, other);
+    mixed.actionQueue[0].payload.title = `Compare ${other} with ${deleted.toUpperCase()}.`;
+    eraseLeadFromBot(mixed, leadDeletionTargets(mixed, { email: deleted }));
+    assert.equal(mixed.actionQueue[0].payload.title, `Compare ${other} with [deleted].`);
+  });
+}
+
 function harness({ kvNoExpiry = [], extraBots = {} } = {}) {
   const bot = seededBot();
   const editorSession = {
@@ -428,7 +468,7 @@ test("an open lead deletion request completes through the same deletion path", a
   const stored = h.botRecord();
   const done = stored.privacyRequests.find((item) => item.id === request.id);
   assert.equal(done.status, "completed");
-  assert.equal(done.targetLeadId, undefined, "the completed request no longer names the visitor");
+  assert.equal(done.targetLeadId, "11", "the completed request still shows which lead it covered");
   assert.ok(done.completedAt);
   assert.equal(stored.tickets.find((ticket) => ticket.id === done.ticketId)?.status, "resolved");
   assert.doesNotMatch(JSON.stringify(stored.leads), /jane@visitor\.test/);
@@ -451,18 +491,31 @@ test("an owner's lead deletion request runs immediately; account requests stay i
   assert.equal((await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: accountRequest.id })).status, 409);
 });
 
-test("the main KV store copy keeps having no expiry after a deletion", async () => {
-  // Without a Durable Object, KV holds the only copy of the store, written
-  // with no expiration. A scrub must not give it one.
-  const h = harness({ kvNoExpiry: ["store"] });
-  // The Durable Object's own mirror is rate limited; with a mirror write just
-  // done, the deletion's scrub is the only write to the main copy.
+test("the live KV store key is written only by the store's own writer, from the erased store", async () => {
+  // The KV copy is older than the live store: it still holds a bot the live
+  // store no longer has. A scrub that rewrote this copy would put that stale
+  // state back (and in KV-only mode would overwrite chats that landed since).
+  const h = harness();
+  await h.kv.put("store", JSON.stringify({ bots: { deletebot: seededBot(), stalebot: { botId: "stalebot" } } }), { expirationTtl: 3600 });
+  // The once-a-minute mirror limit is in force; the deletion must still refresh it.
   h.coordinator.lastKvMirrorAt = Date.now();
+  const put = h.kv.put;
+  const storeWrites = [];
+  h.kv.put = async (name, value, options = {}) => {
+    if (name === "store") storeWrites.push({ value, options });
+    await put(name, value, options);
+  };
   const response = await h.post("/api/leads/delete", { leadId: 11 });
   assert.equal(response.status, 200);
-  const main = h.kv._map.get("store");
-  assert.doesNotMatch(main.value, /jane@visitor\.test/);
-  assert.equal(main.expiration, undefined, "the main store copy must not start expiring");
+  assert.equal((await response.json()).deletion.complete, true);
+  assert.ok(storeWrites.length >= 1, "the deletion refreshes the mirror");
+  for (const write of storeWrites) {
+    assert.doesNotMatch(write.value, /stalebot/, "the key is never rewritten from the old KV copy");
+    assert.equal(write.options.expirationTtl, 60 * 60 * 24 * 30, "only the mirror path writes it");
+  }
+  const main = h.kv._map.get("store").value;
+  assert.doesNotMatch(main, /jane@visitor\.test/);
+  assert.match(main, /omar@visitor\.test/);
   const backup = h.kv._map.get(h.backupKey);
   assert.doesNotMatch(backup.value, /jane@visitor\.test/);
   assert.ok(backup.expiration > Date.now() / 1000, "backups keep the expiry they had");
@@ -543,13 +596,64 @@ test("an email that matches nothing is a 404 and leaves no audit trail", async (
 
 test("completing a request with a lead id that matches nothing leaves the request open", async () => {
   const h = harness();
-  const queued = await h.post("/api/privacy/deletion-request", { scope: "lead", leadId: 11 }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  // A request that names no lead, completed with a lead id that does not exist.
+  const queued = await h.post("/api/privacy/deletion-request", { scope: "lead" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   const request = (await queued.json()).privacyRequests[0];
+  assert.equal(request.targetLeadId, undefined);
   const response = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id, leadId: "999" });
   assert.equal(response.status, 404);
   const stored = h.botRecord();
   assert.equal(stored.privacyRequests.find((item) => item.id === request.id).status, "requested");
   assert.match(JSON.stringify(stored.leads), /jane@visitor\.test/);
+});
+
+test("completing a request that names a lead never deletes a different one", async () => {
+  const h = harness();
+  const queued = await h.post("/api/privacy/deletion-request", { scope: "lead", leadId: 11 }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const request = (await queued.json()).privacyRequests[0];
+  const response = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id, leadId: 22 });
+  assert.equal(response.status, 409);
+  const stored = h.botRecord();
+  assert.equal(stored.privacyRequests.find((item) => item.id === request.id).status, "requested");
+  assert.match(JSON.stringify(stored.leads), /omar@visitor\.test/, "the body's lead is untouched");
+  assert.match(JSON.stringify(stored.leads), /jane@visitor\.test/);
+
+  // A request that names no lead takes the one the owner chooses, and keeps it on the record.
+  const open = await h.post("/api/privacy/deletion-request", { scope: "lead", note: "Visitor asked by phone." }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const unnamed = (await open.json()).privacyRequests.find((item) => !item.targetLeadId && item.scope === "lead");
+  const chosen = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: unnamed.id, leadId: 22 });
+  assert.equal(chosen.status, 200);
+  const done = h.botRecord().privacyRequests.find((item) => item.id === unnamed.id);
+  assert.equal(done.status, "completed");
+  assert.equal(done.targetLeadId, "22");
+  assert.doesNotMatch(JSON.stringify(h.botRecord().leads), /omar@visitor\.test/);
+});
+
+test("an owner's deletion request that matches nothing is a 404 with nothing recorded", async () => {
+  const h = harness();
+  await seedLedger(h);
+  const before = (h.botRecord()?.privacyRequests || []).length;
+  const response = await h.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: "nobody@visitor.test" });
+  assert.equal(response.status, 404);
+  const stored = h.botRecord();
+  assert.equal((stored?.privacyRequests || []).length, before, "no request is created");
+  assert.ok(!(stored?.events || []).some((event) => event.title === "Lead data deleted"));
+  if (h.d1) assert.equal(h.d1._db.prepare("SELECT COUNT(*) AS n FROM siterep_privacy_audit").get().n, 0);
+});
+
+test("deletion routes reject a blank or padded bot id instead of creating a bot", async () => {
+  const h = harness();
+  const admin = { "x-citerep-admin-key": "test-admin-key" };
+  for (const path of ["/api/privacy/deletion-request", "/api/privacy/deletion-request/complete", "/api/leads/delete"]) {
+    for (const botId of ["   ", " deletebot"]) {
+      const response = await h.rawPost(path, { botId, scope: "account", leadId: 11, privacyRequestId: "x" }, admin);
+      assert.equal(response.status, 400, `${path} with ${JSON.stringify(botId)}`);
+    }
+  }
+  const missing = await h.rawPost("/api/privacy/deletion-request", { botId: "ghostbot", scope: "account" }, admin);
+  assert.equal(missing.status, 404, "a deletion request never creates a workspace");
+  assert.equal(h.botRecord("ghostbot"), undefined);
+  assert.equal(h.botRecord("   "), undefined);
 });
 
 test("the dashboard and public trust copy describe self-serve deletion, not ticket-only erasure", async () => {

@@ -184,11 +184,19 @@ function conversationMatches(conversation, targets) {
   return targets.conversationIds.has(idKey(conversation?.id)) || identityConversationMatches(conversation, targets);
 }
 
+// An email mentioned as a whole address, case-insensitive. The characters
+// around it must not continue an address: deleting jo@x.com never matches
+// bojo@x.com or jo@x.com.au, and deleting jo@x.co never matches jo@x.co.uk.
+// A sentence's closing full stop still ends the address.
+function emailMentionPattern(email, flags) {
+  return new RegExp(`(?<![A-Za-z0-9._%+\\-])${escapeRegExp(email)}(?![A-Za-z0-9_\\-]|\\.[A-Za-z0-9])`, flags);
+}
+
 function textMentionsTarget(text, targets) {
-  const value = String(text || "").toLowerCase();
+  const value = String(text || "");
   if (!value) return false;
   for (const email of targets.emails) {
-    if (email && value.includes(email)) return true;
+    if (email && emailMentionPattern(email, "i").test(value)) return true;
   }
   return false;
 }
@@ -211,7 +219,7 @@ function scrubText(text, targets) {
   // A single-subject text has no other segment to keep, so it is masked.
   let next = withoutTargetSegments(text, targets) || String(text);
   for (const email of targets.emails) {
-    if (email) next = next.replace(new RegExp(escapeRegExp(email), "gi"), SCRUBBED_EMAIL);
+    if (email) next = next.replace(emailMentionPattern(email, "gi"), SCRUBBED_EMAIL);
   }
   return next;
 }
@@ -499,28 +507,37 @@ export async function expandTargetsInLedger(db, botId, targets) {
 export async function resolveSessions(db, botId, bot, targets) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
-  for (const sessionId of [...targets.sessionIds]) {
-    if (targets.blockedSessions.has(sessionId)) continue;
-    const members = conversations
-      .filter((conversation) => conversationSessionId(conversation) === sessionId)
-      .map((conversation) => ({ id: idKey(conversation.id), question: conversation.question, email: conversationEmail(conversation) }));
-    if (db) {
+  const candidates = [...targets.sessionIds].filter((sessionId) => !targets.blockedSessions.has(sessionId));
+  // The ledger has no session column, so the bot's rows are scanned by text
+  // (bot_id is indexed). One scan covers every candidate session.
+  const ledgerMembers = new Map(candidates.map((sessionId) => [sessionId, []]));
+  if (db) {
+    for (const group of chunks(candidates, 20)) {
       const rows = await db
         .prepare(
-          "SELECT conversation_id, question, visitor_email, conversation_json FROM siterep_conversations WHERE bot_id = ? AND instr(conversation_json, ?) > 0",
+          `SELECT conversation_id, question, visitor_email, conversation_json FROM siterep_conversations WHERE bot_id = ? AND (${group
+            .map(() => "instr(conversation_json, ?) > 0")
+            .join(" OR ")})`,
         )
-        .bind(botId, `"sessionId":${JSON.stringify(sessionId)}`)
+        .bind(botId, ...group.map((sessionId) => `"sessionId":${JSON.stringify(sessionId)}`))
         .all();
       for (const row of rows.results || []) {
         const conversation = parseJson(row.conversation_json);
-        if (conversationSessionId(conversation) !== sessionId) continue;
-        members.push({
+        const list = ledgerMembers.get(conversationSessionId(conversation));
+        if (!list) continue;
+        list.push({
           id: idKey(row.conversation_id),
           question: row.question,
           email: normalizeLeadEmail(row.visitor_email) || conversationEmail(conversation),
         });
       }
     }
+  }
+  for (const sessionId of candidates) {
+    const members = conversations
+      .filter((conversation) => conversationSessionId(conversation) === sessionId)
+      .map((conversation) => ({ id: idKey(conversation.id), question: conversation.question, email: conversationEmail(conversation) }))
+      .concat(ledgerMembers.get(sessionId) || []);
     const memberIds = new Set(members.map((member) => member.id).filter(Boolean));
     let foreign =
       members.some((member) => isForeignEmail(member.email, targets)) ||

@@ -1751,10 +1751,10 @@ export class CiteRepCoordinator extends DurableObject {
     return await this.readPartitionedStore();
   }
 
-  async writeStore(store) {
+  async writeStore(store, options = {}) {
     const normalized = normalizeStore(store);
     await this.writePartitionedStore(normalized);
-    await this.mirrorToKv(normalized);
+    await this.mirrorToKv(normalized, options);
   }
 
   async readPartitionedStore() {
@@ -1840,10 +1840,12 @@ export class CiteRepCoordinator extends DurableObject {
     await this.writePartitionedStore(store);
   }
 
-  async mirrorToKv(store) {
+  // forceMirror skips the once-a-minute limit, for a write (a lead deletion)
+  // whose old state must not linger in the recovery mirror.
+  async mirrorToKv(store, { forceMirror = false } = {}) {
     if (!this.env?.CITEREP_STORE) return;
     const now = Date.now();
-    if (now - (this.lastKvMirrorAt || 0) < STORE_KV_MIRROR_MIN_INTERVAL_MS) return;
+    if (!forceMirror && now - (this.lastKvMirrorAt || 0) < STORE_KV_MIRROR_MIN_INTERVAL_MS) return;
     try {
       await this.env.CITEREP_STORE.put(STORE_KEY, JSON.stringify(store), { expirationTtl: STORE_BACKUP_TTL_SECONDS });
       this.lastKvMirrorAt = now;
@@ -2297,19 +2299,19 @@ async function readStore() {
   return normalizeStore(raw);
 }
 
-async function writeStore(store) {
+async function writeStore(store, options = {}) {
   if (activeStore) {
-    await activeStore.writeStore(store);
+    await activeStore.writeStore(store, options);
     return;
   }
   const normalized = normalizeStore(store);
   await legacyStoreBinding().put(STORE_KEY, JSON.stringify(normalized));
 }
 
-async function updateStore(updater) {
+async function updateStore(updater, options = {}) {
   const store = await readStore();
   const result = await updater(store);
-  await writeStore(store);
+  await writeStore(store, options);
   return result;
 }
 
@@ -8967,8 +8969,11 @@ async function handleApi(request, response, url) {
 
   if (request.method === "POST" && url.pathname === "/api/privacy/deletion-request") {
     const body = await readJson(request);
-    // The same bot id the route authorization checked (body, then query).
-    const botId = botIdFromRequest(request, url, body);
+    const botId = privacyRouteBotId(request, url, body);
+    if (!botId) {
+      sendJson(response, 400, { error: "A bot id is required." });
+      return;
+    }
     const target = privacyRequestTarget(body);
     // A lead or visitor request from someone allowed to erase data runs the
     // deletion now; everything else is logged for an owner to complete.
@@ -8977,8 +8982,15 @@ async function handleApi(request, response, url) {
         trigger: "privacy_request",
         actor: privacyAuditActor(response._siterepAuthorization),
         newPrivacyRequest: body,
+        // A lead or email that matches nothing is a 404: no request, event or audit row.
+        requireExistingLead: true,
       });
       sendJson(response, result.status, result.body);
+      return;
+    }
+    // A deletion request never creates a workspace.
+    if (!(await getBot(botId))) {
+      sendJson(response, 404, { error: "Bot not found." });
       return;
     }
     const bot = await updateStore((store) => {
@@ -8991,7 +9003,11 @@ async function handleApi(request, response, url) {
 
   if (request.method === "POST" && url.pathname === "/api/privacy/deletion-request/complete") {
     const body = await readJson(request);
-    const botId = botIdFromRequest(request, url, body);
+    const botId = privacyRouteBotId(request, url, body);
+    if (!botId) {
+      sendJson(response, 400, { error: "A bot id is required." });
+      return;
+    }
     const privacyRequestId = String(body.privacyRequestId || body.id || "").trim();
     const existing = (await getBot(botId))?.privacyRequests?.find((item) => item.id === privacyRequestId);
     if (!existing || existing.type !== "deletion") {
@@ -9006,8 +9022,15 @@ async function handleApi(request, response, url) {
       sendJson(response, 409, { error: "Account deletion requests stay in review. Only lead and visitor requests complete here." });
       return;
     }
-    const target = privacyRequestTarget({ scope: existing.scope, ...body }) ||
-      privacyRequestTarget({ scope: existing.scope, leadId: existing.targetLeadId, visitorEmail: existing.targetEmail });
+    // The lead a request names is the one it is about. A body target is
+    // only for a request that names none (the dashboard's "Choose lead").
+    const namedTarget = privacyRequestTarget({ scope: existing.scope, leadId: existing.targetLeadId, visitorEmail: existing.targetEmail });
+    const bodyTarget = privacyRequestTarget({ scope: existing.scope, leadId: body.leadId, visitorEmail: body.visitorEmail || body.leadEmail });
+    if (namedTarget && bodyTarget && JSON.stringify(namedTarget) !== JSON.stringify(bodyTarget)) {
+      sendJson(response, 409, { error: "This request already names its lead. Complete it for that lead, or open a new request." });
+      return;
+    }
+    const target = namedTarget || bodyTarget;
     if (!target) {
       sendJson(response, 400, { error: "Choose the lead or visitor email this request is about." });
       return;
@@ -9017,6 +9040,7 @@ async function handleApi(request, response, url) {
       trigger: "privacy_request",
       actor: privacyAuditActor(response._siterepAuthorization),
       privacyRequestId,
+      completedTarget: target,
       requireExistingLead: true,
     });
     sendJson(response, result.status, result.body);
@@ -9030,7 +9054,12 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { error: "Lead id is required." });
       return;
     }
-    const result = await deleteLeadData(botIdFromRequest(request, url, body), { leadId, email: body.email }, {
+    const botId = privacyRouteBotId(request, url, body);
+    if (!botId) {
+      sendJson(response, 400, { error: "A bot id is required." });
+      return;
+    }
+    const result = await deleteLeadData(botId, { leadId, email: body.email }, {
       trigger: "owner_delete",
       actor: privacyAuditActor(response._siterepAuthorization),
       requireExistingLead: true,
@@ -10923,6 +10952,13 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
   return bot;
 }
 
+// The bot id the route authorization checked (body, then query), or "" when
+// it is not a plain, non-empty id. Handlers must act on exactly that id.
+function privacyRouteBotId(request, url, body) {
+  const botId = botIdFromRequest(request, url, body);
+  return typeof botId === "string" && botId.trim() && botId === botId.trim() ? botId : "";
+}
+
 // Lead and visitor deletion requests name who they are about by lead id or
 // the visitor's email. `email` stays the requester's address, as before.
 function privacyRequestTarget(input = {}) {
@@ -10939,13 +10975,14 @@ function privacyRequestTarget(input = {}) {
 // and daily backups. Copies already delivered outside Site Rep (sent emails,
 // webhooks) are not recalled.
 //
-// Order: resolve the targets, scrub the ledger and KV copies, erase the live
-// store, then scrub the ledger and KV once more. The first scrub runs before
+// Order: resolve the targets, scrub the ledger and KV backups, erase the
+// live store (which rewrites the KV mirror through the store's own writer),
+// then scrub the ledger and backups once more. The first scrub runs before
 // the live erase so a failure leaves the lead in place and a retry finds the
-// same targets. The second scrub closes the window in between: a KV mirror or
-// daily backup taken from the live store before the erase landed would
-// otherwise bring the visitor back. Every write after the live erase reads
-// the erased store, so nothing later can capture the visitor again.
+// same targets. The second scrub closes the window in between: a daily
+// backup taken from the live store before the erase landed would otherwise
+// bring the visitor back. Every write after the live erase reads the erased
+// store, so nothing later can capture the visitor again.
 async function deleteLeadData(botId, input = {}, options = {}) {
   const normalizedBotId = String(botId || "").trim();
   const current = (await readStore()).bots?.[normalizedBotId];
@@ -10991,13 +11028,18 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   let storeCounts = null;
   let privacyRequestId = String(options.privacyRequestId || "");
   const completedRequestIds = [];
+  // The live erase also rewrites the KV mirror at once, through the store's
+  // own writer, so the mirror never holds the visitor after this point.
   await updateStore((store) => {
     const record = ensureBot(store, normalizedBotId);
-    storeCounts = eraseLeadFromBot(record, targets);
+    // Sessions were decided against the live record and the ledger above;
+    // the live erase follows exactly those, never a session judged alone.
+    storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
     if (options.newPrivacyRequest) {
       privacyRequestId = `privacy_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
       const requesterEmail = String(options.newPrivacyRequest.requesterEmail || options.newPrivacyRequest.email || record.ownerEmail || "").trim().toLowerCase();
       const scope = LEAD_DELETION_SCOPES.includes(options.newPrivacyRequest.scope) ? options.newPrivacyRequest.scope : "lead";
+      const named = privacyRequestTarget({ ...options.newPrivacyRequest, scope }) || {};
       record.privacyRequests = [
         {
           id: privacyRequestId,
@@ -11006,6 +11048,8 @@ async function deleteLeadData(botId, input = {}, options = {}) {
           status: "requested",
           requesterEmail: isValidEmail(requesterEmail) ? requesterEmail : "",
           note: String(options.newPrivacyRequest.note || "").slice(0, 1000),
+          ...(named.leadId ? { targetLeadId: String(named.leadId) } : {}),
+          ...(named.email ? { targetEmail: named.email } : {}),
           requestedAt: now,
           updatedAt: now,
         },
@@ -11024,9 +11068,9 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     }
     record.updatedAt = now;
     return record;
-  });
+  }, { forceMirror: true });
 
-  // Second pass: anything a mirror or backup wrote before the live erase.
+  // Second pass: anything a backup or the ledger took before the live erase.
   let recheckFailed = false;
   try {
     await scrubCopies();
@@ -11038,6 +11082,19 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       message: error instanceof Error ? error.message : "Unknown lead deletion failure",
     }));
   }
+  // Read-only check that the mirror rewrite landed (it fails soft on a KV error).
+  let mirrorStale = false;
+  try {
+    const mirror = await activeEnv?.CITEREP_STORE?.get(STORE_KEY);
+    if (mirror) {
+      const check = eraseLeadFromStoreSnapshot(mirror, normalizedBotId, targets);
+      if (check.unreadable) unreadableSnapshots.add(STORE_KEY);
+      else if (check.json) mirrorStale = true;
+    }
+  } catch {
+    mirrorStale = true;
+  }
+  if (mirrorStale) console.warn(JSON.stringify({ type: "lead_deletion_mirror_stale", botId: normalizedBotId }));
   if (unreadableSnapshots.size) {
     console.warn(JSON.stringify({
       type: "lead_deletion_snapshot_unreadable",
@@ -11058,15 +11115,18 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   if (unreadableSnapshots.size) {
     warnings.push(`${unreadableSnapshots.size} recovery snapshot${unreadableSnapshots.size === 1 ? " was" : "s were"} in an unexpected format and could not be checked for this visitor.`);
   }
+  if (mirrorStale) warnings.push("The KV recovery mirror could not be refreshed yet. The next store write replaces it; it expires within 30 days at most.");
   if (recheckFailed) warnings.push("The final check of recovery backups did not finish. A backup that still holds this visitor expires within 30 days.");
   if (targets.blockedSessions.size) {
     warnings.push("Some anonymous questions came from a browser session shared with another lead, so they were kept.");
   }
-  const complete = !unreadableSnapshots.size && !recheckFailed;
+  const complete = !unreadableSnapshots.size && !recheckFailed && !mirrorStale;
 
   const bot = await updateStore((store) => {
     const record = ensureBot(store, normalizedBotId);
-    for (const id of completedRequestIds) completePrivacyRequest(record, id, summary, now);
+    for (const id of completedRequestIds) {
+      completePrivacyRequest(record, id, summary, now, id === privacyRequestId ? options.completedTarget : null);
+    }
     pushEvent(
       record,
       "privacy",
@@ -11087,14 +11147,25 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, complete, warnings, privacyRequestId, counts: summary } } };
 }
 
-// Marks a deletion request done and drops the target it named, keeping only
-// counts. Its review ticket closes once no other open request shares it.
-function completePrivacyRequest(bot, privacyRequestId, counts, now) {
+// Marks a deletion request done with counts. It keeps the target it names
+// (or, for one that named none, the target it was completed for), so the
+// record shows who the completion covered. Its review ticket closes once no
+// other open request shares it.
+function completePrivacyRequest(bot, privacyRequestId, counts, now, completedTarget = null) {
   let completed = null;
   bot.privacyRequests = (bot.privacyRequests || []).map((item) => {
     if (item.id !== privacyRequestId) return item;
-    const { targetLeadId, targetEmail, ...rest } = item;
-    completed = { ...rest, status: "completed", completedAt: now, completedBy: "self_serve", result: counts, updatedAt: now };
+    const named = item.targetLeadId || item.targetEmail;
+    completed = {
+      ...item,
+      ...(!named && completedTarget?.leadId ? { targetLeadId: String(completedTarget.leadId) } : {}),
+      ...(!named && completedTarget?.email ? { targetEmail: completedTarget.email } : {}),
+      status: "completed",
+      completedAt: now,
+      completedBy: "self_serve",
+      result: counts,
+      updatedAt: now,
+    };
     return completed;
   });
   const ticketId = completed?.ticketId;
@@ -11109,20 +11180,19 @@ function completePrivacyRequest(bot, privacyRequestId, counts, now) {
   return completed;
 }
 
-// Scrubs the visitor from the KV copies of the store: the live mirror at
-// STORE_KEY and the daily backups. Each key keeps the expiry it already had.
-// The mirror has none when KV is the primary store (no Durable Object), and
-// giving it one would make the whole store expire. A key due to expire within
-// a minute is deleted instead, since KV rejects expirations that close.
-// Returns how many copies changed and which could not be read as a store.
+// Scrubs the visitor from the KV daily backups. The live mirror at
+// STORE_KEY is not touched here: it has one writer, the store's own
+// serialized write path, and deleteLeadData's live erase rewrites it from the
+// already-scrubbed store. A second writer here could overwrite a chat or lead
+// that landed in between. Each backup keeps the expiry it already had; one
+// due to expire within a minute is deleted instead, since KV rejects
+// expirations that close. Returns how many backups changed and which could
+// not be read as a store.
 async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
   const result = { scrubbed: 0, unreadable: [] };
   if (!kv) return result;
-  // KV lists keys in byte order, so STORE_KEY comes first under its own
-  // prefix; the listing is the only place KV reports a key's expiration.
-  const main = await kv.list({ prefix: STORE_KEY, limit: 1 });
-  const keys = [(main?.keys || []).find((key) => key.name === STORE_KEY) || { name: STORE_KEY }];
+  const keys = [];
   let cursor;
   do {
     const page = await kv.list({ prefix: STORE_BACKUP_KEY_PREFIX, ...(cursor ? { cursor } : {}) });
