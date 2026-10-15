@@ -1,4 +1,5 @@
 import { captureException } from "@sentry/cloudflare";
+import { ROUTE_SEGMENTS } from "./sentry-route-segments.js";
 
 // Error reporting is opt-in. sentryOptions feeds withSentry on every
 // invocation; with no SENTRY_DSN secret it sets `enabled: false`, the SDK's
@@ -18,7 +19,9 @@ export function sentryOptions(env) {
   const options = {
     enabled,
     dsn: enabled ? env.SENTRY_DSN.trim() : undefined,
-    environment: env?.SENTRY_ENVIRONMENT || "production",
+    // Production deploys (npm run deploy:cloudflare) always set
+    // SITEREP_RELEASE_DEPLOYED_AT; a local `wrangler dev` run does not.
+    environment: env?.SENTRY_ENVIRONMENT || (env?.SITEREP_RELEASE_DEPLOYED_AT ? "production" : "development"),
     sendDefaultPii: false,
     tracesSampleRate: 0,
     // No sentry-trace/baggage headers on outgoing fetches to third parties.
@@ -26,7 +29,6 @@ export function sentryOptions(env) {
     integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
     beforeBreadcrumb: scrubBreadcrumb,
     beforeSend: scrubAndCapEvent,
-    beforeSendTransaction: scrubSentryEvent,
   };
   if (env?.SITEREP_RELEASE_COMMIT) options.release = env.SITEREP_RELEASE_COMMIT;
   return options;
@@ -35,7 +37,8 @@ export function sentryOptions(env) {
 // Per-isolate cap on error events. A 500 storm (a D1 or R2 outage, or a
 // request an attacker can make fail) would otherwise send one event per
 // request and burn the Sentry quota. Each isolate sends at most
-// MAX_EVENTS_PER_WINDOW events per window and drops the rest.
+// MAX_EVENTS_PER_WINDOW events per window and drops the rest. The cap is per
+// isolate only; Sentry spike protection caps bursts across isolates.
 export const MAX_EVENTS_PER_WINDOW = 20;
 export const EVENT_WINDOW_MS = 60_000;
 
@@ -78,54 +81,68 @@ const NUMBER_PATTERN = /\+?\(?\d[\d\s().-]{6,}\d/g;
 const REDACTED_EMAIL = "[email]";
 const REDACTED_NUMBER = "[number]";
 const REDACTED_DEPTH = "[depth limit]";
+const WITHHELD_MESSAGE = "[message withheld]";
 const MAX_SCRUB_DEPTH = 12;
-const MAX_FREE_TEXT = 300;
+// Ids the SDK generates (and the release sha) can contain long digit runs;
+// they carry no visitor data, so the number pass leaves them alone.
+const SDK_ID_KEYS = new Set(["event_id", "trace_id", "span_id", "parent_span_id", "release", "timestamp", "start_timestamp"]);
 
-function redactEmails(value, depth = 0) {
-  if (typeof value === "string") return value.replace(EMAIL_PATTERN, REDACTED_EMAIL);
+function redactText(value) {
+  return value.replace(EMAIL_PATTERN, REDACTED_EMAIL).replace(NUMBER_PATTERN, REDACTED_NUMBER);
+}
+
+// Final pass over every string left in the event (tags, fingerprint, frames,
+// anything the SDK adds): emails and phone-like numbers are redacted.
+function redactLeftovers(value, depth = 0, key = "") {
+  if (typeof value === "string") {
+    return SDK_ID_KEYS.has(key) ? value.replace(EMAIL_PATTERN, REDACTED_EMAIL) : redactText(value);
+  }
   if (!value || typeof value !== "object") return value;
   // Past the depth limit the value is dropped, never returned unredacted.
   if (depth >= MAX_SCRUB_DEPTH) return REDACTED_DEPTH;
-  if (Array.isArray(value)) return value.map((item) => redactEmails(item, depth + 1));
+  if (Array.isArray(value)) return value.map((item) => redactLeftovers(item, depth + 1, key));
   const out = {};
-  for (const [key, item] of Object.entries(value)) out[key] = redactEmails(item, depth + 1);
+  for (const [childKey, item] of Object.entries(value)) out[childKey] = redactLeftovers(item, depth + 1, childKey);
   return out;
 }
 
-// Free text (exception messages, event messages) can quote a visitor: redact
-// emails and phone-like numbers and cap the length.
-function redactFreeText(value) {
-  if (typeof value !== "string") return value;
-  const redacted = value.replace(EMAIL_PATTERN, REDACTED_EMAIL).replace(NUMBER_PATTERN, REDACTED_NUMBER);
-  return redacted.length > MAX_FREE_TEXT ? `${redacted.slice(0, MAX_FREE_TEXT)}…` : redacted;
+// Exception messages are sent only when they match a known shape that cannot
+// carry visitor text: the Worker's own fixed error messages, and runtime or
+// platform messages built from code identifiers. Anything else (a message
+// built from lead or chat fields, a third-party error body, a JSON parse error
+// that quotes its input) is replaced; the error type and stack still go.
+const SAFE_MESSAGE_PATTERNS = [
+  // The Worker's own fixed messages (throw sites in worker/index.js).
+  /^(Payment ledger is not configured yet|Payment was not found|Payment return signature could not be verified|Payment claim write could not be verified|Payment activation did not return a bot ID|Admin key is required for paid activation)\.$/,
+  /^(Dodo webhook key is not configured|Dodo API key is not configured|Dodo pricing is not available for checkout|Dodo preview did not return a display price|Dodo did not return a trusted checkout URL|Dodo checkout was not found)\.$/,
+  /^(MCP body too large|MCP body length required|Only http and https domains are supported|Feedback rating must be up or down|Add a domain or origin first)\.$/,
+  /^(CITEREP_STORE KV binding|CITEREP_COORDINATOR Durable Object binding) is not configured\.$/,
+  /^(Activation failed|Dodo billing status sync failed) with \d{3}\.$/,
+  /^(Dodo checkout|Dodo preview|Razorpay) returned \d{3}\.$/,
+  /^Dodo product is not configured for [a-z_-]{1,32}\.$/,
+  /^Razorpay is missing keys, currency, or [A-Z0-9_]{1,64}\.$/,
+  // Runtime and platform messages.
+  /^Cannot (read|set) properties of (undefined|null) \((reading|setting) '[\w$]{1,64}'\)$/,
+  /^[\w$.]{1,80} is not (a function|a constructor|iterable|defined)$/,
+  /^(Network connection lost|Too many subrequests|The script will never generate a response|Maximum call stack size exceeded|Unexpected end of JSON input|fetch failed|The operation was aborted|This operation was aborted|Invalid URL|Invalid URL string)\.?$/,
+  /^internal error; reference = \w{1,64}$/,
+  /^D1_[A-Z_]{1,32}: (UNIQUE|NOT NULL|FOREIGN KEY|CHECK) constraint failed: [\w., ]{1,200}(: SQLITE_\w{1,40})?$/,
+  /^D1_[A-Z_]{1,32}: no such (table|column): [\w.]{1,128}(: SQLITE_\w{1,40})?$/,
+  /^D1_[A-Z_]{1,32}: (Network connection lost|Internal error)\.?$/,
+];
+
+export function safeMessage(message) {
+  if (typeof message !== "string" || message === "") return message;
+  return SAFE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message)) ? message : WITHHELD_MESSAGE;
 }
 
-// Path segments that carry an id, key or token. Bot ids are slugs of the
-// customer's domain, so the routes that take one are listed explicitly; any
-// other segment that looks like an id or token is redacted by shape.
-const BOT_ACTION_ROUTES = new Set(["clone", "create", "reset-usage", "status"]);
-const DEVELOPER_API_RESOURCES = new Set(["sources", "conversations", "leads", "retrain"]);
-const TOKEN_PREFIX = /^(sr_live_|sr_|pk_|own_|unsub_|rbac_|snap_|crawl_)/i;
-
-function looksLikeId(segment) {
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(segment)) return true;
-  if (TOKEN_PREFIX.test(segment)) return true;
-  if (/\d{6,}/.test(segment)) return true;
-  return segment.length >= 20 && /\d/.test(segment) && /[A-Za-z]/.test(segment);
-}
-
+// Keep a path segment only if it is a literal segment of a route in the
+// router; every other segment (bot slugs, ids, keys, tokens) becomes ":id".
 export function redactPath(pathname) {
-  const segments = String(pathname || "/").split("/");
-  // segments[0] is "" for an absolute path.
-  const out = segments.map((segment) => (segment === "" || !looksLikeId(segment) ? segment : ":id"));
-  if (segments[1] === "api" && segments[2] === "bots" && segments.length > 3 && segments[3] !== "" && !BOT_ACTION_ROUTES.has(segments[3])) {
-    out[3] = ":botId";
-  }
-  if (segments[1] === "api" && segments[2] === "v1" && segments[3] === "bots" && segments.length > 4) {
-    out[4] = ":botId";
-    if (segments.length > 5 && !DEVELOPER_API_RESOURCES.has(segments[5])) out[5] = ":id";
-  }
-  return out.join("/");
+  return String(pathname || "/")
+    .split("/")
+    .map((segment) => (segment === "" || ROUTE_SEGMENTS.has(segment) ? segment : ":id"))
+    .join("/");
 }
 
 function scrubUrl(rawUrl) {
@@ -143,7 +160,7 @@ function scrubTransaction(transaction) {
   // "GET /api/bots/acme" style names: redact the path part.
   const match = transaction.match(/^([A-Z]+ )?(\/\S*)$/);
   if (match) return `${match[1] || ""}${redactPath(match[2].split("?")[0])}`;
-  return transaction.startsWith("Scheduled Cron ") ? transaction : undefined;
+  return /^Scheduled Cron [\d*/,\- ]+$/.test(transaction) ? transaction : undefined;
 }
 
 // Contexts the SDK fills in that carry no request or visitor data. Anything
@@ -165,7 +182,8 @@ function scrubContexts(contexts) {
 }
 
 // Breadcrumbs keep only what kind of thing happened: no message text, and for
-// outgoing fetches only the method, status, and origin of the URL.
+// outgoing fetches only the method and status. No URL, so customer hostnames
+// from crawls and source audits never leave the Worker.
 export function scrubBreadcrumb(crumb) {
   if (!crumb || typeof crumb !== "object") return null;
   if (crumb.category === "console") return null;
@@ -177,11 +195,6 @@ export function scrubBreadcrumb(crumb) {
     const data = {};
     if (crumb.data.method) data.method = crumb.data.method;
     if (crumb.data.status_code !== undefined) data.status_code = crumb.data.status_code;
-    try {
-      if (crumb.data.url) data.url = new URL(crumb.data.url).origin;
-    } catch {
-      // Relative or unparseable URL: leave it out.
-    }
     out.data = data;
   }
   return out;
@@ -191,7 +204,7 @@ function scrubException(exception) {
   if (!exception || !Array.isArray(exception.values)) return undefined;
   return {
     values: exception.values.map((value) => {
-      const out = { type: value.type, value: redactFreeText(value.value) };
+      const out = { type: value.type, value: safeMessage(value.value) };
       if (value.stacktrace) out.stacktrace = value.stacktrace;
       if (value.mechanism) out.mechanism = { type: value.mechanism.type, handled: value.mechanism.handled };
       return out;
@@ -201,9 +214,10 @@ function scrubException(exception) {
 
 // Visitor leads (names, emails, phone numbers, chat text) arrive in request
 // bodies and log lines, so an error report keeps the exception type and stack,
-// a redacted message, the request method, and the request origin and path
-// with ids and tokens redacted. No body, query string, cookies, headers, user,
-// extra data, custom contexts, or breadcrumb text leaves the Worker.
+// a message only when it has a known safe shape, the request method, and the
+// request origin and path with every non-route segment redacted. No body,
+// query string, cookies, headers, user, extra data, custom contexts, or
+// breadcrumb text leaves the Worker.
 export function scrubSentryEvent(event) {
   if (!event || typeof event !== "object") return event;
   const scrubbed = { ...event };
@@ -224,12 +238,12 @@ export function scrubSentryEvent(event) {
   }
   if ("contexts" in scrubbed) scrubbed.contexts = scrubContexts(scrubbed.contexts);
   if ("exception" in scrubbed) scrubbed.exception = scrubException(scrubbed.exception);
-  if (typeof scrubbed.message === "string") scrubbed.message = redactFreeText(scrubbed.message);
-  if (scrubbed.logentry) scrubbed.logentry = { message: redactFreeText(scrubbed.logentry.message) };
+  if (typeof scrubbed.message === "string") scrubbed.message = safeMessage(scrubbed.message);
+  if (scrubbed.logentry) scrubbed.logentry = { message: safeMessage(scrubbed.logentry.message) };
   if (Array.isArray(scrubbed.breadcrumbs)) {
     scrubbed.breadcrumbs = scrubbed.breadcrumbs.map(scrubBreadcrumb).filter(Boolean);
   }
-  return redactEmails(scrubbed);
+  return redactLeftovers(scrubbed);
 }
 
 export function reportError(error) {

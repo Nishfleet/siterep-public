@@ -18,10 +18,12 @@ registerHooks({
 });
 
 const { default: worker } = await import("../worker/index.js");
+const { ROUTE_SEGMENTS } = await import("../worker/sentry-route-segments.js");
 const {
   createEventCap,
   MAX_EVENTS_PER_WINDOW,
   redactPath,
+  safeMessage,
   resetSentryEventCap,
   scrubBreadcrumb,
   scrubSentryEvent,
@@ -107,6 +109,11 @@ test("Sentry options use the SDK off switch and keep PII, tracing, and console b
   assert.deepEqual(options.tracePropagationTargets, []);
   assert.equal(typeof options.beforeSend, "function");
   assert.equal(typeof options.beforeBreadcrumb, "function");
+  assert.equal(options.beforeSendTransaction, undefined);
+  // Only a real deploy (which sets SITEREP_RELEASE_DEPLOYED_AT) reports as production.
+  assert.equal(options.environment, "development");
+  assert.equal(sentryOptions({ SENTRY_DSN: TEST_DSN, SITEREP_RELEASE_DEPLOYED_AT: "2026-10-15T00:00:00Z" }).environment, "production");
+  assert.equal(sentryOptions({ SENTRY_DSN: TEST_DSN, SENTRY_ENVIRONMENT: "staging" }).environment, "staging");
   const kept = options.integrations([{ name: "Console" }, { name: "HttpServer" }, { name: "Dedupe" }, { name: "LinkedErrors" }]);
   assert.deepEqual(kept.map((integration) => integration.name), ["Dedupe", "LinkedErrors"]);
 });
@@ -161,7 +168,8 @@ for (const mode of ["no DSN", "a DSN"]) {
     if (mode === "a DSN") {
       const events = errorEventsIn(sent);
       assert.ok(events.length >= 1, "the failing cron task must reach Sentry");
-      assert.ok(events.some((entry) => entry.body.includes("payments db unavailable")));
+      // A free-form message is withheld; the event still carries the type and stack.
+      assert.ok(events.some((entry) => /"value":"\[message withheld\]"/.test(entry.body) && entry.body.includes('"stacktrace"')));
     } else {
       assert.deepEqual(sent, []);
     }
@@ -191,8 +199,10 @@ test("with a DSN, a fetch error is reported scrubbed and the visitor still gets 
   const events = errorEventsIn(sent);
   assert.equal(events.length, 1, "exactly one error event must be sent");
   const payload = events[0].body;
-  assert.match(payload, /asset failure for \[email\] at \[number\]/);
+  // The message was built from visitor data, so only the type and stack go.
+  assert.match(payload, /"type":"Error","value":"\[message withheld\]"/);
   assert.match(payload, /"stacktrace"/);
+  assert.doesNotMatch(payload, /asset failure/);
   assert.doesNotMatch(payload, /visitor\.lead@example\.com/);
   assert.doesNotMatch(payload, /Jane Visitor|555 0134/);
   assert.doesNotMatch(payload, /"category":"console"/);
@@ -231,7 +241,7 @@ test("beforeSend keeps exception type and stack and drops request data, user, ex
   const stacktrace = { frames: [{ filename: "worker/index.js", function: "fetch", lineno: 1200 }] };
   const event = {
     event_id: "0123456789abcdef0123456789abcdef",
-    message: "Lead from jane@example.com, phone (415) 555-0134",
+    message: "Lead from Jane Visitor, phone (415) 555-0134",
     transaction: "GET /api/bots/acme-dental",
     user: { email: "jane@example.com", ip_address: "203.0.113.9" },
     request: {
@@ -255,32 +265,37 @@ test("beforeSend keeps exception type and stack and drops request data, user, ex
       trace: { trace_id: "t1", span_id: "s1", data: { "url.full": "https://siterep.net/?email=jane@example.com" } },
       lead: { name: "Jane Visitor" },
     },
-    exception: { values: [{ type: "TypeError", value: "bad lead jane@example.com", stacktrace, mechanism: { type: "generic", handled: true, data: { x: 1 } } }] },
+    tags: { note: "call (415) 555-0134 or jane@example.com" },
+    exception: {
+      values: [
+        { type: "Error", value: "Payment was not found.", stacktrace },
+        { type: "TypeError", value: "bad lead Jane Visitor wants a refund", stacktrace, mechanism: { type: "generic", handled: true, data: { x: 1 } } },
+      ],
+    },
   };
   const scrubbed = scrubSentryEvent(event);
 
   assert.equal(scrubbed.event_id, event.event_id);
   assert.equal(scrubbed.user, undefined);
   assert.equal(scrubbed.extra, undefined);
-  assert.deepEqual(scrubbed.request, { method: "POST", url: "https://siterep.net/api/v1/bots/:botId/leads" });
-  assert.equal(scrubbed.transaction, "GET /api/bots/:botId");
-  assert.equal(scrubbed.message, "Lead from [email], phone [number]");
+  assert.deepEqual(scrubbed.request, { method: "POST", url: "https://siterep.net/api/v1/bots/:id/leads" });
+  assert.equal(scrubbed.transaction, "GET /api/bots/:id");
+  assert.equal(scrubbed.message, "[message withheld]");
+  assert.deepEqual(scrubbed.tags, { note: "call [number] or [email]" });
   assert.deepEqual(scrubbed.contexts, {
     runtime: { name: "cloudflare", version: undefined },
     cloud_resource: { "cloud.provider": "cloudflare" },
     trace: { trace_id: "t1", span_id: "s1" },
   });
   assert.deepEqual(scrubbed.breadcrumbs, [
-    { category: "fetch", type: "http", data: { method: "POST", status_code: 500, url: "https://api.example.net" } },
+    { category: "fetch", type: "http", data: { method: "POST", status_code: 500 } },
     { category: "custom" },
   ]);
-  assert.deepEqual(scrubbed.exception.values[0], {
-    type: "TypeError",
-    value: "bad lead [email]",
-    stacktrace,
-    mechanism: { type: "generic", handled: true },
-  });
-  assert.doesNotMatch(JSON.stringify(scrubbed), /jane@example\.com|Jane|secret|acme-dental|token=|555/);
+  assert.deepEqual(scrubbed.exception.values, [
+    { type: "Error", value: "Payment was not found.", stacktrace },
+    { type: "TypeError", value: "[message withheld]", stacktrace, mechanism: { type: "generic", handled: true } },
+  ]);
+  assert.doesNotMatch(JSON.stringify(scrubbed), /jane@example\.com|Jane|secret|acme-dental|token=|555|example\.net/);
 });
 
 test("beforeBreadcrumb drops console breadcrumbs and message text", () => {
@@ -296,23 +311,57 @@ test("values past the scrub depth limit are dropped, not returned raw", () => {
   assert.match(JSON.stringify(scrubbed), /\[depth limit\]/);
 });
 
-test("request paths redact bot ids, developer API ids, and id- or token-shaped segments", () => {
+test("request paths keep only literal route segments; slugs, ids and tokens become :id", () => {
   const cases = [
-    ["/api/bots/acme-dental", "/api/bots/:botId"],
+    ["/api/bots/acme-dental", "/api/bots/:id"],
     ["/api/bots/status", "/api/bots/status"],
-    ["/api/bots/create", "/api/bots/create"],
-    ["/api/v1/bots/acme-dental", "/api/v1/bots/:botId"],
-    ["/api/v1/bots/acme-dental/conversations", "/api/v1/bots/:botId/conversations"],
-    ["/api/v1/bots/acme-dental/whatever", "/api/v1/bots/:botId/:id"],
+    ["/api/v1/bots/acme-dental/conversations", "/api/v1/bots/:id/conversations"],
+    // A bot slug on widget, public, export and MCP style paths is redacted too.
+    ["/api/widget/acme-dental", "/api/widget/:id"],
+    ["/api/public/acme-dental/chat", "/api/public/:id/chat"],
+    ["/api/export/acme-dental/leads.csv", "/api/export/:id/leads.csv"],
+    ["/api/mcp/acme-dental", "/api/mcp/:id"],
+    ["/acme-dental", "/:id"],
     ["/api/export/leads.csv", "/api/export/leads.csv"],
     ["/api/notifications/unsubscribe", "/api/notifications/unsubscribe"],
-    ["/assets/index-B1x2Yz.js", "/assets/index-B1x2Yz.js"],
-    ["/api/x/unsub_0123456789abcdef0123456789abcdef", "/api/x/:id"],
-    ["/api/x/sr_live_abcdef0123", "/api/x/:id"],
-    ["/r/3f2b6c1e-8a4d-4e7b-9c0d-1a2b3c4d5e6f", "/r/:id"],
-    ["/order/12345678", "/order/:id"],
-    ["/u/jane%40example.com", "/u/:id"],
+    ["/api/x/unsub_0123456789abcdef0123456789abcdef", "/api/:id/:id"],
+    ["/assets/index-B1x2Yz.js", "/assets/:id"],
+    ["/u/jane%40example.com", "/:id/:id"],
     ["/", "/"],
   ];
   for (const [input, expected] of cases) assert.equal(redactPath(input), expected, input);
+});
+
+test("the path allowlist is exactly the literal segments of the route strings in worker/index.js", async () => {
+  const source = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const fromRouter = new Set();
+  for (const match of source.matchAll(/["`](\/[A-Za-z0-9._~\/-]*)["`?]/g)) {
+    for (const segment of match[1].split("/")) if (segment) fromRouter.add(segment);
+  }
+  const missing = [...fromRouter].filter((segment) => !ROUTE_SEGMENTS.has(segment));
+  const extra = [...ROUTE_SEGMENTS].filter((segment) => !fromRouter.has(segment));
+  assert.deepEqual({ missing, extra }, { missing: [], extra: [] }, "update worker/sentry-route-segments.js to match the router");
+});
+
+test("exception messages go out only in a known safe shape", () => {
+  const kept = [
+    "Payment ledger is not configured yet.",
+    "Dodo checkout returned 502.",
+    "Dodo product is not configured for growth.",
+    "Cannot read properties of undefined (reading 'botId')",
+    "store.bots.map is not a function",
+    "Network connection lost.",
+    "D1_ERROR: UNIQUE constraint failed: payment_links.reference_id: SQLITE_CONSTRAINT",
+    "D1_ERROR: no such table: dodo_checkout_sessions",
+  ];
+  for (const message of kept) assert.equal(safeMessage(message), message, message);
+  const withheld = [
+    "lead from Jane Visitor",
+    "Dodo checkout returned Jane Visitor.",
+    `Unexpected token 'J', "Jane Visitor" is not valid JSON`,
+    "Cannot create property 'x' on string 'Jane Visitor'",
+    "D1_TYPE_ERROR: Type 'object' not supported for value 'Jane'",
+    "Payment was not found. Jane",
+  ];
+  for (const message of withheld) assert.equal(safeMessage(message), "[message withheld]", message);
 });
