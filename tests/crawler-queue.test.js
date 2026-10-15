@@ -6,8 +6,6 @@ test("worker queues crawler jobs instead of crawling inside the train request", 
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
   assert.match(worker, /async alarm\(\)\s*{\s*try\s*{\s*await this\.processCrawlQueue\(\);/);
-  // Chunked crawls keep each alarm invocation under the subrequest cap and
-  // resume across alarms via R2-persisted state.
   assert.match(worker, /const CRAWL_CHUNK_PAGES = 400/);
   assert.match(worker, /const CRAWL_JOB_MAX_ATTEMPTS = 3/);
   assert.match(worker, /hasResumeState/);

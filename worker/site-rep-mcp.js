@@ -127,9 +127,6 @@ export async function handleSiteRepMcp(request, response, url, deps) {
 
   const id = message.id;
   if (message.method === "initialize") {
-    // Server-derived MCP-origin attribution: only reachable after the
-    // server-verified API-key check above, so a browser hitting the public
-    // discovery URL can never fabricate a connection counter.
     noteMcpEvent(deps, "mcp_connected");
     sendMcpJsonRpcResult(response, id, {
       protocolVersion: MCP_PROTOCOL_VERSION,
@@ -162,9 +159,6 @@ export async function handleSiteRepMcp(request, response, url, deps) {
   if (message.method === "tools/call") {
     const toolName = String(message.params?.name || "");
     const result = await callSiteRepMcpTool(authorization, message.params, deps);
-    // Any authenticated tools/call is agent-native activity; the receipt read
-    // additionally marks first value (the receipt is the first-value evidence
-    // surface). Both counters are server-derived, never client-supplied.
     noteMcpEvent(deps, "mcp_tool_called");
     if (!result.ok) {
       sendMcpJsonRpcError(response, id, -32602, result.message);
@@ -292,19 +286,11 @@ async function failedMcpAuth(request, deps, requiredScopes) {
   };
 }
 
-// Best-effort MCP-origin attribution: hands a server-derived event name to
-// the caller-wired recorder (worker/index.js writes it to KV fire-and-forget
-// via ctx.waitUntil). Synchronous dispatch, never awaited, never throws, and
-// never changes the MCP response — attribution must not affect the protocol.
-// With no recorder wired (e.g., unit harnesses or a future caller), recording
-// simply degrades to a no-op.
 function noteMcpEvent(deps, eventName) {
   if (!deps || typeof deps.recordMcpEvent !== "function") return;
   try {
     deps.recordMcpEvent(eventName);
-  } catch {
-    // Attribution failures are swallowed by design.
-  }
+  } catch {}
 }
 
 async function callSiteRepMcpTool(authorization, params, deps) {

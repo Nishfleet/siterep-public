@@ -2,9 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// Regression guard for research-desk item 4eb0457f0b: the /terms page must
-// carry an explicit no-warranty and limitation of liability section so the
-// product has AI-chatbot liability limitation parity with competitor terms.
 test("the /terms page includes a no-warranty and limitation of liability section", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const termsMarkdown = worker.slice(

@@ -12,9 +12,6 @@ const DEMO_SOURCES = PUBLIC_DEMO_SOURCES.map((source) => ({
   indexedAt: "2026-05-30T00:00:00.000Z",
 }));
 
-// Extract the renderHonestyMarkdown function body from the worker source so we
-// can exercise it without a Wrangler runtime — same pattern as
-// tests/honesty-check.test.js.
 async function loadRenderer() {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const renderFn = worker.slice(worker.indexOf("function renderHonestyMarkdown"), worker.indexOf("\nconst TRUST_PAGES"));
@@ -29,20 +26,16 @@ test("honesty page includes a liability-safe positioning section with court ruli
   const evals = runHonestyEvals(answerFromSources, DEMO_SOURCES);
   const markdown = renderHonestyMarkdown(evals);
 
-  // The section header is present.
   assert.match(markdown, /## Why this matters: your business is liable for what your chatbot says/);
 
-  // Air Canada 2024 case is cited with the correct case reference.
   assert.match(markdown, /Air Canada/i);
   assert.match(markdown, /2024 BCCRT 149/);
   assert.match(markdown, /Moffatt v\. Air Canada/);
   assert.match(markdown, /British Columbia Civil Resolution Tribunal/);
 
-  // OLG Hamm May 2026 case is cited with the correct case reference.
   assert.match(markdown, /Hamm/);
   assert.match(markdown, /4 UKl 3\/25/);
 
-  // The liability defense is connected to Site Rep's source-backed behavior.
   assert.match(markdown, /source-backed/i);
   assert.match(markdown, /approved pages/i);
   assert.match(markdown, /hands off/i);
@@ -62,7 +55,6 @@ test("honesty page liability copy does NOT overclaim liability protection", asyn
   const evals = runHonestyEvals(answerFromSources, DEMO_SOURCES);
   const markdown = renderHonestyMarkdown(evals);
 
-  // No false guarantees.
   assert.doesNotMatch(markdown, /100% liability/i);
   assert.doesNotMatch(markdown, /liability-free/i);
   assert.doesNotMatch(markdown, /guaranteed.*liability/i);
@@ -74,7 +66,6 @@ test("honesty page liability copy does NOT overclaim liability protection", asyn
 test("honesty page liability section interpolates live eval counts, not literals", async () => {
   const { renderHonestyMarkdown } = await loadRenderer();
 
-  // Feed a synthetic eval result to prove the counts are interpolated.
   const synthetic = { shouldAnswer: { passed: 3, total: 7 }, shouldRefuse: { passed: 2, total: 5 } };
   const markdown = renderHonestyMarkdown(synthetic);
 
@@ -89,9 +80,6 @@ test("honesty page liability section renders through the markdown-to-HTML pipeli
     `"use strict";\n${renderFn}\nreturn { renderHonestyMarkdown };`,
   )();
 
-  // Run through the Worker's own markdown -> HTML pipeline so assertions hold
-  // against emitted HTML, not raw markdown — same pattern as
-  // tests/honesty-check.test.js.
   const escapeHtmlFn = worker.slice(worker.indexOf("function escapeHtml"), worker.indexOf("\nfunction withVaryAccept"));
   const renderInlineHtmlFn = worker.slice(worker.indexOf("function renderInlineHtml"), worker.indexOf("\nfunction jsonLdScript"));
   const markdownBodyToHtmlFn = worker.slice(worker.indexOf("function markdownBodyToHtml"), worker.indexOf("\nfunction renderInlineHtml"));
@@ -100,12 +88,9 @@ test("honesty page liability section renders through the markdown-to-HTML pipeli
   const evals = runHonestyEvals(answerFromSources, DEMO_SOURCES);
   const html = markdownBodyToHtml(renderHonestyMarkdown(evals));
 
-  // The liability section header renders as an <h2>.
   assert.match(html, /<h2[^>]*>Why this matters: your business is liable for what your chatbot says<\/h2>/);
-  // Court citations survive the HTML pipeline.
   assert.match(html, /Air Canada/i);
   assert.match(html, /2024 BCCRT 149/);
   assert.match(html, /4 UKl 3\/25/);
-  // The disclaimer is present in the rendered HTML.
   assert.match(html, /This is not legal advice/i);
 });

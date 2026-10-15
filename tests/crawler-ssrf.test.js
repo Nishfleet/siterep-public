@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isBlockedCrawlHost, normalizeUrl } from "../server/crawler.js";
 
-// SSRF guard: every host that resolves to a private, loopback, link-local,
-// ULA, or cloud-metadata address must be blocked — in every encoding. Hosts
-// arrive here already canonicalized by the WHATWG URL parser, so the cases
-// below use the canonical form the parser produces (verified separately).
+// WHATWG URL parser canonicalization (https://url.spec.whatwg.org/): hosts arrive canonicalized, so these fixtures use the parser's form.
 
 test("blocks loopback, private, link-local, and metadata IPv4", () => {
   for (const host of [
@@ -64,7 +61,6 @@ test("blocks localhost name variants", () => {
 });
 
 test("normalizeUrl rejects encoded-IP forms of loopback and metadata end to end", () => {
-  // The URL parser folds these to dotted-decimal, which the guard then blocks.
   for (const raw of [
     "http://2130706433/", // decimal 127.0.0.1
     "http://0x7f000001/", // hex 127.0.0.1

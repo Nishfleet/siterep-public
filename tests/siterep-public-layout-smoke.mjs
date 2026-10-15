@@ -188,14 +188,6 @@ function collectLayout() {
       text: (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160),
     };
   };
-  // First-viewport buyer qualifier: the public hero must state who Site Rep
-  // is for ("For small business sites") inside the first mobile viewport, so
-  // the buying site owner stays explicit behind the visitor-focused h1. This
-  // is a rendered-DOM check on the exact phrase's Range rect (not the whole
-  // paragraph box): a hero rewrite that drops the qualifier, a stale deploy
-  // serving pre-#114 copy, or a layout change that pushes the phrase below
-  // the fold all fail here while a paragraph that merely wraps around the
-  // phrase still passes.
   const heroQualifier = (() => {
     const hero = document.querySelector(".public-hero");
     if (!hero) return null;
@@ -237,10 +229,6 @@ function collectLayout() {
     accessNotice: pick(".field-notice"),
     signIn: pick(".signin-card"),
     horizontalOverflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-    // Rendered word count, counted exactly like the SEO Fix Kit audit engine's
-    // "Thin rendered content" rule (document.body textContent split on
-    // whitespace). Kept on the public home so the dogfood finding below has a
-    // rendered-DOM guard instead of a source-slice approximation.
     renderedWords: (document.body.textContent || "").split(/\s+/).filter(Boolean).length,
   };
 }
@@ -261,22 +249,11 @@ function assertPublicLayout(data, label) {
   if (!data.pricing?.visible || data.pricing.top >= height * 2.5) fail(`${label}: pricing is still buried too deep`, data);
   if (data.horizontalOverflow !== 0) fail(`${label}: page has horizontal overflow`, data);
   if (label === "small-mobile" && data.proofPanel.bottom > height) fail(`${label}: proof and pricing links must fit in the first viewport`, data);
-  // First-viewport audience regression: the "For small business sites"
-  // qualifier must render fully inside the 390x844 first viewport (the
-  // product-live detector's exact surface). Scoped to the mobile viewport:
-  // the small-mobile (320x568) hero intentionally hides the paragraph via a
-  // media query, and desktop is not the packet's surface.
   if (label === "mobile") {
     if (!data.heroQualifier?.visible || data.heroQualifier.top < 0 || data.heroQualifier.bottom > height) {
       fail(`${label}: the "For small business sites" qualifier must be fully readable inside the first viewport`, data);
     }
   }
-  // Dogfood "Thin rendered content on /" (patternKey 845f5442d5a7): the home
-  // measured only 79 rendered words on 2026-08-08, under the SEO Fix Kit
-  // engine's 250-word thin-content threshold. The content resolution merged
-  // via #106/#107/#114 brought the rendered home to ~1.2k words; this floor
-  // pins the engine's exact threshold into the rendered-DOM smoke so the
-  // public page cannot silently regress to a thin surface again.
   if (data.renderedWords < 250) fail(`${label}: public home renders too few words (${data.renderedWords} < 250)`, data);
 }
 
@@ -285,11 +262,6 @@ function assertPrivateSurface(data, label) {
   if (data.counts.proofPanel !== 0) fail(`${label}: proof panel leaked into private surface`, data);
 }
 
-// Resource contract for guest surfaces (dogfood "Slow resource requests on
-// home", patternKey 077b7d7781d8): the owner deep-health probe measured ~1.4s
-// on the live edge and renders nothing on guest pages, so it must never be
-// requested; the localized public pricing preview is product truth and must
-// still load.
 function trackApiRequests(page) {
   const paths = [];
   const requests = [];
@@ -319,11 +291,6 @@ function assertGuestResourceContract(apiPaths, label, requests = null) {
   if (pricingHits < 1) fail(`${label}: guest surface must still request localized public pricing (/api/public/pricing)`, { apiPaths, requests });
 }
 
-// When the live target hands back a page that never boots the SPA (for
-// example an edge challenge or block page to a datacenter egress), the guest
-// resource contract above would fail with an empty request list and no hint
-// why. Dump the observable page state so the failure is diagnosable from the
-// workflow log instead of looking like a product regression.
 async function assertGuestResourceContractWithDiagnostics(page, tracked, label) {
   try {
     assertGuestResourceContract(tracked.paths, label, tracked.requests);
@@ -347,12 +314,7 @@ async function pageState(page) {
   }));
 }
 
-// The live edge can hand a datacenter egress a challenge or block document
-// instead of the SPA shell on a cold session (observed on the first canary
-// run: the Firefox leg got zero /api requests in under a second and aborted
-// with no hint). Re-navigating once distinguishes that transient condition
-// from a real regression: a genuinely broken SPA stays broken on retry, so
-// the retry never masks a product failure — it only absorbs the edge blip.
+// The live edge can hand a datacenter egress a challenge or block document instead of the SPA shell; re-navigating once absorbs that transient edge blip without masking a real SPA regression.
 async function gotoBootedSpa(page, path) {
   await goto(page, path);
   const booted = await page.evaluate(() => Boolean(document.querySelector("#root")?.children.length)).catch(() => false);
@@ -390,13 +352,6 @@ async function main() {
     await page.setViewportSize({ width: 320, height: 568 });
     assertPublicLayout(await layout(page), "small-mobile");
 
-    // The site shell must collapse to the viewport at any width, including
-    // sub-320 phones. The outer `body { min-width: 320px }` floor that lived
-    // on this layout before #fix-siterep-shell-below-320 forced the document
-    // to scroll horizontally at viewport widths < 320; this regression
-    // re-asserts the shell stays inside the viewport at 240, 260, and 280
-    // px. Runs at viewport==content-width so the shell containers' right
-    // edge must equal the viewport, not just clip under `overflow-x: hidden`.
     step("checking sub-320 mobile layout");
     for (const width of [240, 260, 280]) {
       await page.setViewportSize({ width, height: 568 });
@@ -423,12 +378,6 @@ async function main() {
       }
     }
 
-    // The hero "See plans" control must show the four-plan public pricing
-    // section instead of opening paid checkout, in both the checkout-ready
-    // (live site) and checkout-unavailable (local preview) states. Only the
-    // explicit plan-card setup buttons may open paid checkout. This runs in
-    // both states so a live-ready regression cannot hide behind the local
-    // unavailable-checkout path again.
     step("checking See plans scrolls to public pricing");
     await page.setViewportSize({ width: 390, height: 844 });
     await gotoBootedSpa(page, "/");
@@ -460,19 +409,9 @@ async function main() {
     if (seePlansResult.dialogs !== 0) fail("See plans must not open a checkout dialog", { seePlansResult });
     if (!seePlansResult.focused) fail("See plans must move focus to the public pricing section", { seePlansResult });
 
-    // Comparison CTA handoff (SPA half): Worker-rendered /vs pages link their
-    // free-start control to the durable /?surface=free-start entry, which the
-    // app must turn into the existing FreeStartModal. The Worker-side control
-    // rendering is covered by tests/comparison-pages.test.js; here we prove the
-    // public entry behavior: the query entry opens the real signup modal,
-    // keyboard focus lands inside it, and closing clears the sticky entry. The
-    // legacy /#free-start hash entry is covered as a backward-compatible path
-    // for already-cached comparison pages.
     step("checking comparison free-start CTA handoff");
     await page.setViewportSize({ width: 1366, height: 768 });
     await goto(page, "/?surface=free-start");
-    // The entry opens the modal and the dialog lifecycle moves keyboard focus
-    // into the form on a microtask; wait for that handoff instead of racing it.
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 });
     await page.waitForFunction(
       () => {
@@ -490,8 +429,6 @@ async function main() {
         dialogOpen: Boolean(dialog),
         heading: title?.textContent || "",
         focusInsideDialog: Boolean(dialog?.contains(document.activeElement)),
-        // The dialog promises "no card, no time limit", so its submit action
-        // must name the free start — never a time-limited "trial".
         submitLabel: submit?.textContent || "",
         submitHasTrial: /trial/i.test(submit?.textContent || ""),
       };
@@ -507,12 +444,8 @@ async function main() {
     const freeStartClosed = await page.evaluate(() => !document.querySelector('[role="dialog"][aria-modal="true"]'));
     if (!freeStartClosed) fail("free-start CTA: Escape must close the signup modal");
 
-    // Closing the entry must clear the sticky ?surface=free-start query: the
-    // URL would otherwise claim a signup flow that is no longer open.
     const freeStartParamsAfterClose = await page.evaluate(() => new URLSearchParams(window.location.search).get("surface"));
     if (freeStartParamsAfterClose === "free-start") fail("free-start CTA: closing must clear the sticky ?surface=free-start query", { surface: freeStartParamsAfterClose });
-    // Re-entering the durable entry must reopen the modal: the comparison link
-    // has to finish the signup handoff on every visit, not just the first.
     await goto(page, "/?surface=free-start");
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 });
     await page.waitForFunction(
@@ -536,7 +469,6 @@ async function main() {
     await page.keyboard.press("Escape");
     await delay(100);
 
-    // Legacy hash entry: already-cached comparison pages still link /#free-start.
     await goto(page, "/#free-start");
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 });
     await page.waitForFunction(
@@ -562,16 +494,6 @@ async function main() {
     const freeStartHashAfterClose = await page.evaluate(() => window.location.hash);
     if (freeStartHashAfterClose === "#free-start") fail("free-start CTA: closing must clear the sticky #free-start hash", { hash: freeStartHashAfterClose });
 
-    // End-to-end comparison CTA click-through: the live-delivery defect behind
-    // scout 2026-08-08 05:34 IST lived in the Worker-rendered /vs/* pages —
-    // activation was a no-op on the live comparison pages for days while the
-    // SPA half of the handoff passed every local check. When the smoke target
-    // serves those Worker pages (live site or cf:dev via
-    // SITEREP_LAYOUT_SMOKE_BASE_URL), click the real CTA anchor on every /vs/*
-    // page and prove the signup modal arrives with keyboard focus. The local
-    // Vite preview cannot render Worker /vs pages, so there the step is
-    // skipped; the Worker-side anchor rendering is pinned by
-    // tests/comparison-pages.test.js, which executes the real renderer.
     step("checking comparison free-start CTA click-through");
     const vsProbe = await page.evaluate(async (target) => {
       const response = await fetch(`${target}/vs/chatbase`);
@@ -606,10 +528,6 @@ async function main() {
         if (!freeStartE2e.focusInsideDialog) fail(`comparison CTA: ${path} click must move keyboard focus into the signup modal`, freeStartE2e);
         await page.keyboard.press("Escape");
         await delay(100);
-        // Closing must clear the sticky ?surface=free-start query on the live
-        // path too: the URL would otherwise claim a signup flow that is no
-        // longer open, and the comparison link has to stay reusable on the
-        // next visit.
         const freeStartE2eAfterClose = await page.evaluate(() => ({
           url: location.href,
           surface: new URLSearchParams(window.location.search).get("surface"),
@@ -636,9 +554,6 @@ async function main() {
     await goto(page, "/admin");
     assertPrivateSurface(await layout(page), "admin");
 
-    // The pre-auth sign-in page (?surface=customer) is the second measured
-    // scope of the same finding (performance-2, /api/health/deep at 1037ms);
-    // a fresh guest navigation there must also stay free of the deep probe.
     step("checking guest sign-in resource contract");
     const signInRequests = trackApiRequests(page);
     await goto(page, "/?surface=customer");

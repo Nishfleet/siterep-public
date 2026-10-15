@@ -1,0 +1,21 @@
+name: Lighthouse
+# Audits the live page against the fleet speed budget after each production deploy, and weekly.
+on:
+  workflow_run:
+    workflows: [Deploy production]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  lighthouse:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    uses: Nishfleet/fleet-ops/.github/workflows/lighthouse.yml@main
+    permissions:
+      contents: read
+    with:
+      urls: |
+        https://siterep.net/

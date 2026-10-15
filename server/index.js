@@ -1,8 +1,5 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-// Legacy local API only. Product routes that touch payments, customer activation,
-// owner inbox, notification queues, or private exports are Worker-only.
-// Use `npm run cf:dev` for local product testing so behavior matches Cloudflare.
 import { createServer } from "node:http";
 import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1655,9 +1652,7 @@ function externalAllowedOriginsFor(bot) {
   const allowed = new Set();
   try {
     if (bot.siteUrl) allowed.add(new URL(bot.siteUrl).origin);
-  } catch {
-    // Ignore invalid local prototype state.
-  }
+  } catch {}
   for (const origin of bot.allowedOrigins || []) {
     allowed.add(origin);
   }
