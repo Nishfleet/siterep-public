@@ -54,18 +54,24 @@ on:
     types: [completed]
   schedule:
     - cron: '17 */6 * * *'
-# One running and one pending run per commented issue, and per PR and PR
-# action; GitHub replaces the pending run, so a burst of comments, pushes or
-# labels cannot fan out. Nothing is cancelled mid-run, so a callee job never
-# stops between two writes; the callee reads the PR's current state, so a
-# replaced pending run loses nothing. A PR close and every other event get
-# their own group and never queue (the callee owns the sweep's own group).
-# Every group here is prefixed so it never equals the callee's
-# agent-dispatch-<run_id>: a caller and callee sharing a group deadlock, and
-# GitHub fails the run as a workflow file issue with no jobs.
+# One running and one pending run per commented issue, and per PR for the
+# six actions that only feed hold-risky (opened, reopened, synchronize,
+# labeled, ready_for_review, auto_merge_enabled): hold-risky reads the live
+# PR and review-risky reviews its current head, so one group per PR means
+# those events never reach them in parallel, and a replaced pending run
+# loses nothing. dequeued and auto_merge_disabled feed other callee jobs
+# (ejected, paused), so each keeps its own per-PR group and is never
+# replaced by a push or label. GitHub replaces the pending run, so a burst
+# of comments, pushes or labels cannot fan out. Nothing is cancelled
+# mid-run, so a callee job never stops between two writes. A PR close and
+# every other event get their own group and never queue (the callee owns
+# the sweep's own group). Every group here is prefixed so it never equals
+# the callee's agent-dispatch-<run_id>: a caller and callee sharing a group
+# deadlock, and GitHub fails the run as a workflow file issue with no jobs.
 concurrency:
   group: >-
     ${{ github.event_name == 'issue_comment' && format('agent-dispatch-comment-{0}-{1}', github.repository, github.event.issue.number) ||
+    (github.event_name == 'pull_request_target' && contains(fromJSON('["opened","reopened","synchronize","labeled","ready_for_review","auto_merge_enabled"]'), github.event.action)) && format('agent-dispatch-pr-{0}-{1}', github.repository, github.event.pull_request.number) ||
     (github.event_name == 'pull_request_target' && github.event.action != 'closed') && format('agent-dispatch-pr-{0}-{1}-{2}', github.repository, github.event.pull_request.number, github.event.action) ||
     format('agent-dispatch-stub-{0}', github.run_id) }}
   cancel-in-progress: false

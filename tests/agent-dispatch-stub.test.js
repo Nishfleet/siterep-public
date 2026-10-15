@@ -23,9 +23,18 @@ test("dispatch stub concurrency groups never equal the callee's agent-dispatch-<
   const group = stub.match(/concurrency:\n\s+group: >-\n([\s\S]+?)\n\s+cancel-in-progress: (\w+)/);
   assert.ok(group, "concurrency block present");
   const names = [...group[1].matchAll(/format\('([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(names, ["agent-dispatch-comment-{0}-{1}", "agent-dispatch-pr-{0}-{1}-{2}", "agent-dispatch-stub-{0}"]);
+  assert.deepEqual(names, [
+    "agent-dispatch-comment-{0}-{1}",
+    "agent-dispatch-pr-{0}-{1}",
+    "agent-dispatch-pr-{0}-{1}-{2}",
+    "agent-dispatch-stub-{0}",
+  ]);
   for (const name of names) assert.doesNotMatch(name, /^agent-dispatch-\{0\}$/);
   assert.equal(group[2], "false", "nothing is cancelled mid-run");
+  // The six hold-risky actions share one group per PR, so they never run
+  // hold-risky and review-risky in parallel on one head.
+  const shared = JSON.parse(group[1].match(/fromJSON\('(\[[^']+\])'\)/)[1]);
+  assert.deepEqual(shared.sort(), ["auto_merge_enabled", "labeled", "opened", "ready_for_review", "reopened", "synchronize"]);
 });
 
 test("dispatch stub dispatches PR events only for a same-repo head", () => {
