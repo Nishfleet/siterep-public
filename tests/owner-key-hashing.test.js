@@ -146,3 +146,55 @@ test("admin key use is logged and repeated wrong admin keys are rate limited per
     console.info = originalInfo;
   }
 });
+
+test("a queued access email keeps the key through the first sign-in and drops it once delivered", async () => {
+  const key = "own_0123456789abcdef0123456789abcdef";
+  const bot = makeBot("paidbot", { ownerAccessKey: key });
+  bot.notifications = [
+    {
+      id: "note_access",
+      type: "workspace_access",
+      title: "Your Site Rep dashboard access",
+      detail: `Site ID: paidbot\nDashboard access key: ${key}`,
+      priority: "high",
+      channel: "email",
+      deliveryStatus: "pending",
+      attempts: 0,
+      lastError: "",
+      nextAttemptAt: "",
+      dedupeKey: "workspace-access:paidbot:ref_1",
+      meta: { botId: "paidbot" },
+      createdAt: NOW,
+      updatedAt: NOW,
+      sentAt: "",
+    },
+  ];
+  const storage = fakeStorage({ store: { bots: { paidbot: bot } } });
+  const sent = [];
+  const env = {
+    CITEREP_ADMIN_KEY: ADMIN_KEY,
+    CITEREP_STORE: null,
+    SITEREP_NOTIFY_ENABLED: "true",
+    SITEREP_NOTIFY_PROVIDER: "cloudflare",
+    EMAIL_FROM_EMAIL: "noreply@siterep.test",
+    EMAIL: { send: async (message) => { sent.push(message); return { messageId: "m1" }; } },
+  };
+  const coordinator = new CiteRepCoordinator({ storage }, env);
+  const note = () => storage._map.get("store:bot:paidbot").notifications.find((item) => item.id === "note_access");
+
+  assert.equal((await login(coordinator, "paidbot", key, "203.0.113.40")).status, 200);
+  assert.equal(storage._map.get("store:bot:paidbot").ownerAccessKey, undefined);
+  assert.ok(note().detail.includes(key), "the queued access email still carries the key");
+
+  const outbox = await coordinator.fetch(
+    new Request("https://siterep.test/api/internal/notifications/process", {
+      method: "POST",
+      headers: { "x-citerep-admin-key": ADMIN_KEY, "cf-connecting-ip": "203.0.113.40" },
+    }),
+  );
+  assert.equal(outbox.status, 200);
+  assert.equal(sent.length, 1);
+  assert.ok(JSON.stringify(sent[0]).includes(key), "the delivered email contains the key");
+  assert.equal(note().deliveryStatus, "sent");
+  assert.ok(!note().detail.includes(key), "the stored copy drops the key after delivery");
+});

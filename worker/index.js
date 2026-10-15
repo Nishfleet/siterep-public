@@ -2887,12 +2887,29 @@ function migrateOwnerAccessKeyToHash(bot, key, keyHash) {
   if (!bot || !bot.ownerAccessKey || !timingSafeEqual(key, bot.ownerAccessKey)) return false;
   bot.ownerAccessKeyHash = keyHash;
   delete bot.ownerAccessKey;
+  // Only delivered copies are rewritten; queued emails keep the key and are scrubbed after delivery.
   for (const notification of bot.notifications || []) {
+    if (!["sent", "skipped"].includes(notification?.deliveryStatus)) continue;
     if (typeof notification?.detail === "string" && notification.detail.includes(key)) {
       notification.detail = notification.detail.split(key).join(OWNER_ACCESS_KEY_REDACTED);
     }
   }
   return true;
+}
+
+// Hashes of owner-key-shaped tokens in a notification, so a delivered copy can drop a key whose bot keeps only the hash.
+async function ownerKeyTokenHashes(detail) {
+  const tokens = [...new Set(String(detail || "").match(/own_[0-9a-f]{32}/g) || [])];
+  return await Promise.all(tokens.map(async (token) => [token, await sha256Hex(token)]));
+}
+
+function scrubDeliveredOwnerKey(bot, notification, tokenHashes) {
+  if (!bot?.ownerAccessKeyHash || bot.ownerAccessKey || typeof notification?.detail !== "string") return;
+  for (const [token, tokenHash] of tokenHashes || []) {
+    if (timingSafeEqual(tokenHash, bot.ownerAccessKeyHash)) {
+      notification.detail = notification.detail.split(token).join(OWNER_ACCESS_KEY_REDACTED);
+    }
+  }
 }
 
 function defaultBillingForPlan(plan = "Starter") {
@@ -10846,12 +10863,14 @@ async function processNotificationOutbox(options = {}) {
   summary.checked = claimed.length;
   const results = [];
   for (const item of claimed) {
-    results.push({ ...item, delivery: await deliverOwnerNotification(item.bot, item.notification) });
+    const delivery = await deliverOwnerNotification(item.bot, item.notification);
+    const tokenHashes = ["sent", "skipped"].includes(delivery.status) ? await ownerKeyTokenHashes(item.notification.detail) : [];
+    results.push({ ...item, delivery, tokenHashes });
   }
 
   if (results.length) {
     await updateStore((store) => {
-      for (const { botId, notification, delivery } of results) {
+      for (const { botId, notification, delivery, tokenHashes } of results) {
         const bot = store.bots?.[botId];
         const live = bot ? (bot.notifications || []).find((item) => item.id === notification.id) : null;
         if (!live) continue;
@@ -10884,6 +10903,7 @@ async function processNotificationOutbox(options = {}) {
         } else {
           summary.failed += 1;
         }
+        if (delivery.status === "sent" || delivery.status === "skipped") scrubDeliveredOwnerKey(bot, live, tokenHashes);
         bot.updatedAt = new Date().toISOString();
       }
     });
