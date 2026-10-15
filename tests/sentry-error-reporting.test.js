@@ -102,11 +102,11 @@ test("Sentry options use the SDK off switch and keep PII, tracing, and console b
   assert.equal(options.enabled, true);
   assert.equal(options.dsn, TEST_DSN);
   assert.equal(options.sendDefaultPii, false);
-  assert.equal(options.tracesSampleRate, 0);
+  assert.equal("tracesSampleRate" in options, false);
   assert.deepEqual(options.tracePropagationTargets, []);
   assert.equal(typeof options.beforeSend, "function");
   assert.equal(typeof options.beforeBreadcrumb, "function");
-  assert.equal(options.beforeSendTransaction, undefined);
+  assert.equal(options.beforeSendTransaction({ type: "transaction", transaction: "GET /bots/acme?email=a@b.co" }), null);
   // Only a real deploy (which sets SITEREP_RELEASE_DEPLOYED_AT) reports as production.
   assert.equal(options.environment, "development");
   assert.equal(sentryOptions({ SENTRY_DSN: TEST_DSN, SITEREP_RELEASE_DEPLOYED_AT: "2026-10-15T00:00:00Z" }).environment, "production");

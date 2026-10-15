@@ -23,7 +23,10 @@ export function sentryOptions(env) {
     // SITEREP_RELEASE_DEPLOYED_AT; a local `wrangler dev` run does not.
     environment: env?.SENTRY_ENVIRONMENT || (env?.SITEREP_RELEASE_DEPLOYED_AT ? "production" : "development"),
     sendDefaultPii: false,
-    tracesSampleRate: 0,
+    // Tracing stays off: no tracesSampleRate (even 0 lets an incoming
+    // sentry-trace header sample a request), and any transaction that still
+    // gets built is dropped, since transactions skip beforeSend's scrubber.
+    beforeSendTransaction: () => null,
     // No sentry-trace/baggage headers on outgoing fetches to third parties.
     tracePropagationTargets: [],
     integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
