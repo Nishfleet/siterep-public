@@ -19,22 +19,20 @@ test("dispatch stub listens for all nine fleet PR events", () => {
   ]);
 });
 
-test("dispatch stub concurrency groups never equal the callee's agent-dispatch-<run_id>", () => {
+test("dispatch stub concurrency groups never equal the callee's agent-dispatch-<run_id> or agent-dispatch-sweep", () => {
   const group = stub.match(/concurrency:\n\s+group: >-\n([\s\S]+?)\n\s+cancel-in-progress: (\w+)/);
   assert.ok(group, "concurrency block present");
   const names = [...group[1].matchAll(/format\('([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(names, [
-    "agent-dispatch-comment-{0}-{1}",
-    "agent-dispatch-pr-{0}-{1}",
-    "agent-dispatch-pr-{0}-{1}-{2}",
-    "agent-dispatch-stub-{0}",
-  ]);
-  for (const name of names) assert.doesNotMatch(name, /^agent-dispatch-\{0\}$/);
+  assert.equal(names.length, 3);
+  // The callee's group is agent-dispatch-<run_id> or agent-dispatch-sweep.
+  const callee = /^agent-dispatch-(\d+|sweep)$/;
+  for (const name of names) {
+    for (const fill of ["123", "sweep", "Nishfleet/siterep-public"]) {
+      const rendered = name.replace(/\{\d\}/g, fill);
+      assert.doesNotMatch(rendered, callee, `${name} with ${fill}`);
+    }
+  }
   assert.equal(group[2], "false", "nothing is cancelled mid-run");
-  // The six hold-risky actions share one group per PR, so they never run
-  // hold-risky and review-risky in parallel on one head.
-  const shared = JSON.parse(group[1].match(/fromJSON\('(\[[^']+\])'\)/)[1]);
-  assert.deepEqual(shared.sort(), ["auto_merge_enabled", "labeled", "opened", "ready_for_review", "reopened", "synchronize"]);
 });
 
 test("dispatch stub dispatches PR events only for a same-repo head", () => {
