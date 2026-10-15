@@ -1,27 +1,8 @@
-// Behavioral coverage for the crawl outbox (worker/index.js processCrawlQueue),
-// driven through a REAL CiteRepCoordinator over seeded Durable-Object storage
-// with failures injected at the network boundary:
-//
-//   - a fresh crawl whose fetches all fail must mark the job failed with a
-//     customer-facing error, clear bot.activeCrawlJobId, queue the
-//     `training_failed` owner notification, open the install_issue ticket with
-//     proofState training_failed, and leave NO pending job behind;
-//   - a mid-chunk resume failure (running job with hasResumeState + persisted
-//     resume state, failure during the resumed chunk) must do the same AND
-//     delete the orphaned resume state from the source-content bucket so a
-//     later alarm never re-attempts a dead job.
-//
-// Regression surface: sol-sweep product-tests finding
-// `siterep-crawler-failure-swallow-survives` — a mutation that swallows the
-// crawl failure (skips failCrawlJob in the processCrawlQueue catch, leaving
-// the job running and the owner un-notified) must turn this suite red.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 
-// The worker bundle imports "cloudflare:workers" for its Durable Object base
-// class; the Node test runner has no Workers runtime, so supply the minimal
-// shim. Must be registered before the worker module is loaded.
+// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -61,8 +42,6 @@ function fakeStorage(seed = {}) {
   };
 }
 
-// In-memory stand-in for the SITEREP_SOURCE_CONTENT R2 bucket, tracking keys
-// so the test can prove resume-state cleanup after a mid-chunk failure.
 function fakeBucket(seed = {}) {
   const map = new Map(Object.entries(seed));
   return {
@@ -121,9 +100,6 @@ function makeCrawlJob(overrides = {}) {
   };
 }
 
-// Drive the real crawl alarm once with the network failing every fetch.
-// `fetchError` is thrown by the injected fetch stub; returns the persisted
-// bot record, the crawl job, the storage, the bucket, and the coordinator.
 async function runFailingCrawl({ bots, bucket, fetchError }) {
   const storage = fakeStorage({ store: { bots } });
   const coordinator = new CiteRepCoordinator({ storage }, { SITEREP_SOURCE_CONTENT: bucket || null });

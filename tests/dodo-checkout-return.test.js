@@ -2,12 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// D6 UX flow: buyers who abandon Dodo checkout land on
-// ?checkout=dodo&referenceId=...&surface=customer. claimDodoReturn polls
-// payment_pending up to five times, then must scrub the return URL, fire
-// checkout_failed, and show a clear not-charged message — not leave stale
-// "still confirming" copy with checkout params stuck in the address bar.
-
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 

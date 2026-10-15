@@ -20,8 +20,6 @@ test("public config, widget, and dashboard expose the same plan limits", async (
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
   assert.match(worker, /planLimits: bot \? publicPlanLimitsFor\(bot\) : publicPlanLimitsFor\("Starter"\)/);
-  // Live usage/limitStatus are private: any visitor can read the public
-  // config response, and it must not reveal how close the owner is to caps.
   assert.doesNotMatch(worker, /limitStatus: bot \? limitStatusFor\(bot\) : null/);
   assert.match(worker, /brandingRequired: bot \? planLimitsFor\(bot\)\.brandingLocked : true/);
   assert.match(widget, /let brandingRequired = true/);

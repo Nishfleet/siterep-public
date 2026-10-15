@@ -1,13 +1,5 @@
 import { applyLiveDemoPricingAnswer } from "./demo-sources.js";
 
-// The cited-or-refuse honesty evals, in one place so the test suite and the
-// public /api/public/honesty-check endpoint run the EXACT same questions
-// against the EXACT same demo sources. The public endpoint is the proof: any
-// visitor can see the live pass counts and reproduce every question in the
-// demo widget.
-
-// Covered topics — natural phrasings (typos, slang, buying intent) that the
-// demo bot must answer from its sources.
 export const SHOULD_ANSWER = [
   "What does Site Rep cost?",
   "how much is the starter plan",
@@ -30,8 +22,6 @@ export const SHOULD_ANSWER = [
   "What trust controls are confirmed?",
 ];
 
-// Off-topic or adjacent-but-unsupported — the bot must refuse rather than
-// invent an answer, even when a stray keyword overlaps its sources.
 export const SHOULD_REFUSE = [
   "can you file my taxes",
   "Can Site Rep manage my warehouse payroll?",
@@ -42,7 +32,6 @@ export const SHOULD_REFUSE = [
   "is there a phone app",
 ];
 
-// Answered questions must cite the topically correct source first.
 export const CITATION_EXPECTATIONS = [
   ["how much is the starter plan", ["demo-starter-pricing", "demo-plan-pricing", "demo-pricing", "demo-get-started"]],
   ["How do I install the Site Rep widget on my website?", ["demo-install"]],
@@ -57,19 +46,7 @@ export const CITATION_EXPECTATIONS = [
   ["What trust controls are confirmed?", ["demo-trust-controls"]],
 ];
 
-// Run every eval against the provided sources using the given retrieval fn
-// (answerFromSources). Pure and runtime-agnostic so both Node tests and the
-// Worker can call it. Returns counts plus the questions that fell the wrong way.
-//
-// `pricingCatalog` is OPTIONAL. When null, the pricing-accuracy dimension is
-// reported as `{ total: 0, passed: 0, skipped: true }` so existing callers and
-// tests that don't pass a catalog are unaffected. When provided, the eval
-// checks that the demo bot's answer to each pricing question quotes the
-// exact `displayPrice` strings from the live catalog — proving the demo's
-// pricing matches what the live checkout would render.
 export function runHonestyEvals(answerFromSources, sources, pricingCatalog = null) {
-  // Match public demo chat: named-plan and generic price questions are
-  // rewritten onto the live #public-pricing sources before scoring.
   const retrieve = (question, srcs) =>
     applyLiveDemoPricingAnswer(question, answerFromSources(question, srcs), pricingCatalog);
   const falselyRefused = [];
@@ -83,12 +60,6 @@ export function runHonestyEvals(answerFromSources, sources, pricingCatalog = nul
   const misCited = [];
   for (const [question, allowed] of CITATION_EXPECTATIONS) {
     const result = retrieve(question, sources);
-    // A citation passes only when the topically correct source is cited AND
-    // that source's URL actually backs the answer: a homepage fragment must
-    // resolve to a section whose rendered text contains the answer's key
-    // nouns. Without this, a pricing or cancellation answer can cite the
-    // start form (#invitation) — which contains none of the answer text —
-    // and still report as passed. See citationUrlSupportsAnswer below.
     if (result.unknown || !allowed.includes(result.sources[0]?.id) || !citationUrlSupportsAnswer(result.sources[0])) {
       misCited.push(question);
     }
@@ -102,13 +73,6 @@ export function runHonestyEvals(answerFromSources, sources, pricingCatalog = nul
   };
 }
 
-// The rendered text of each homepage section a demo source can cite, keyed by
-// URL fragment (without the leading #). This is the text a buyer sees when
-// they click a citation, transcribed from the section bodies in src/App.tsx.
-// A citation that points at a fragment resolves to the section text here; a
-// citation that points at a standalone page (no fragment, e.g. /terms or
-// /docs/install) is outside this detector — those pages are not homepage
-// sections and verifying their rendered text is a separate concern.
 const HOMEPAGE_SECTION_CONTENT = {
   invitation:
     "Start with your website. Start free or choose a paid plan, train from your site, and install only after one cited answer looks right.",
@@ -131,8 +95,6 @@ const HOMEPAGE_SECTION_CONTENT = {
     "Source-backed chat with clear controls. Site Rep answers from approved website sources, keeps visitor data limited, and shows your team what needs human follow-up. Answers from approved sources and says when it does not know. Payment unlock, rate limits, access checks, and source storage stay server-side.",
 };
 
-// Words that carry no topical signal: grammar glue, the brand's own name, and
-// the Question/Answer labels that structure every demo source's content.
 const URL_CHECK_STOP_WORDS = new Set([
   "question",
   "answer",
@@ -294,20 +256,8 @@ const URL_CHECK_STOP_WORDS = new Set([
   "why",
 ]);
 
-// The minimum share of the answer's key nouns that must appear in the cited
-// section's rendered text for the citation to count as backed. A section that
-// contains fewer than half of the answer's key nouns does not actually back
-// the answer — a buyer who clicks it lands on a page that lacks the words the
-// bot recited.
 const CITATION_URL_SUPPORT_THRESHOLD = 0.5;
 
-// True when the cited source's URL resolves to a homepage section whose
-// rendered text contains a meaningful share of the answer's key nouns.
-//
-// Standalone pages (no URL fragment, e.g. /terms or /docs/install) are not
-// homepage sections, so this detector does not verify their rendered text —
-// that is a separate concern. A fragment that does not map to a known section
-// fails closed: an unverified section cannot back an answer.
 export function citationUrlSupportsAnswer(source) {
   if (!source || !source.url) return false;
   const fragmentIndex = String(source.url).indexOf("#");
@@ -341,27 +291,11 @@ function normalizeForMatch(text) {
     .trim();
 }
 
-// Questions that exercise the demo bot's pricing answers. Each one must
-// surface at least one of the catalog plan's `displayPrice` strings when the
-// live checkout preview is reachable — that proves the demo's quoted prices
-// come from the live Dodo checkout, not from model memory.
 export const PRICING_QUESTIONS = [
   "What does Site Rep cost?",
   "how much is the starter plan",
 ];
 
-// A pricing question passes when:
-//   - the live catalog returned `ok: true`,
-//   - every named plan (Starter, Growth, Pro, Agency) has
-//     `source === "dodo_checkout_preview"` (so the prices are buyer-local
-//     and tax-inclusive, the same values the #public-pricing section
-//     renders), AND
-//   - each plan's `displayPrice` string is a non-empty, parseable currency
-//     string (the same field the demo bot quotes in its pricing answer).
-//
-// Skipped when the catalog is missing, returns `ok: false`, or has no
-// `dodo_checkout_preview` plans — so a transient checkout outage never
-// causes the public honesty check to report failure.
 export function runPricingAccuracyEval(pricingCatalog = null) {
   if (!pricingCatalog || pricingCatalog.ok !== true) {
     return { total: 0, passed: 0, skipped: true, questions: PRICING_QUESTIONS };

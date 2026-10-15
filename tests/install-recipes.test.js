@@ -49,9 +49,6 @@ test("install markdown includes snippets, validation, domain lock, and source ma
 test("install markdown leads readers to the activation surface, not a dead end", () => {
   const markdown = renderInstallRecipesMarkdown();
 
-  // The guide must hand readers the bot id, widget key, and allowed-domain
-  // lock path: dashboard values come from the free-start signup or the
-  // customer sign-in, and the placeholders must not be publishable as-is.
   assert.match(markdown, /\[Start free\]\(\/\?surface=free-start\)/);
   assert.match(markdown, /\[sign in\]\(\/\?surface=customer\)/);
   assert.match(markdown, /dashboard shows your bot ID, public widget key, allowed install domains/);
@@ -89,7 +86,7 @@ test("docs install page renders anchored host sections with a jump nav", async (
   const escapeHtmlFn = extractBlock("function escapeHtml", ["\nfunction withVaryAccept"]);
   const renderInlineHtmlFn = extractBlock("function renderInlineHtml", ["\nfunction jsonLdScript"]);
   const markdownBodyToHtmlFn = extractBlock("function markdownBodyToHtml", ["\nfunction renderInlineHtml"]);
-  const slugifyFn = extractBlock("function slugify", ["\n// The Docs Mode install guide"]);
+  const slugifyFn = extractBlock("function slugify", ["\nfunction docsInstallBody"]);
   const docsInstallBodyFn = extractBlock("function docsInstallBody", ["\nfunction escapeHtml"]);
   const { docsInstallBody } = new Function(
     `"use strict";\n${escapeHtmlFn}\n${renderInlineHtmlFn}\n${markdownBodyToHtmlFn}\n${slugifyFn}\n${docsInstallBodyFn}\nreturn { docsInstallBody };`,
@@ -98,20 +95,17 @@ test("docs install page renders anchored host sections with a jump nav", async (
   const markdown = renderInstallRecipesMarkdown();
   const html = docsInstallBody(markdown);
 
-  // Every host section is an anchored h2 (id from the human label).
   for (const label of ["Mintlify", "Docusaurus", "GitBook", "Static docs", "Webflow", "Framer", "Generic sites", "WordPress"]) {
     const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     assert.ok(html.includes(`<h2 id="${id}">${label}</h2>`), `host section ${label} must carry its anchor id`);
   }
 
-  // The jump nav lists every host as a same-page anchor link.
   assert.match(html, /<nav class="host-jump" aria-label="Jump to a host">/);
   assert.match(html, /Jump to a host:/);
   for (const label of ["Mintlify", "Docusaurus", "Webflow", "WordPress"]) {
     const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     assert.ok(html.includes(`<a href="#${id}">${label}</a>`), `jump nav must link ${label}`);
   }
-  // The nav sits right after the h1, before the first host section.
   assert.ok(html.indexOf("<nav class=\"host-jump\"") > html.indexOf("<h1>"), "jump nav must come after the h1");
   assert.ok(html.indexOf("<nav class=\"host-jump\"") < html.indexOf("<h2 id=\"mintlify\">"), "jump nav must come before the first host section");
 });
@@ -119,8 +113,6 @@ test("docs install page renders anchored host sections with a jump nav", async (
 test("docs install page wraps long snippets instead of overflowing the viewport", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  // The canonical single-line snippet must wrap on narrow screens: pre and code
-  // get pre-wrap + anywhere overflow, and the jump nav is styled for readability.
   assert.match(worker, /pre\{background:#111614;color:white;border-radius:8px;overflow:auto;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere\}/);
   assert.match(worker, /code\{font-family:"SFMono-Regular",Consolas,monospace;font-size:\.88rem;white-space:pre-wrap;overflow-wrap:anywhere\}/);
   assert.match(worker, /\.host-jump\{background:#eef4f0/);

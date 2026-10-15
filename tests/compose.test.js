@@ -28,12 +28,9 @@ test("compose is disabled without the AI binding or when flagged off", () => {
 });
 
 test("default answering model is a current Workers AI model, env-overridable", () => {
-  // Default is the latest flagship; upgrading is a one-line change here.
   assert.equal(AI_COMPOSE_MODEL, "@cf/meta/llama-4-scout-17b-16e-instruct");
   assert.equal(aiComposeModel({}), AI_COMPOSE_MODEL);
-  // An env override rolls onto a newer model with no deploy...
   assert.equal(aiComposeModel({ SITEREP_AI_MODEL: "@cf/meta/llama-5" }), "@cf/meta/llama-5");
-  // ...but a blank override can never blank out the model id.
   assert.equal(aiComposeModel({ SITEREP_AI_MODEL: "   " }), AI_COMPOSE_MODEL);
 });
 
@@ -77,7 +74,6 @@ test("errors, timeouts, and missing excerpts report unavailable so the extractiv
 });
 
 test("narrated non-answers are classified as unsupported, never shipped with citations", async () => {
-  // The exact live-bug phrasing from the public demo bot.
   const composed = await composeGroundedAnswer(
     fakeEnv("Unfortunately, the provided excerpts do not mention the installation process for the Site Rep widget."),
     "How do I install the Site Rep widget on my website?",
