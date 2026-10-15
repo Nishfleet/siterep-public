@@ -310,7 +310,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
-- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report (error type, stack trace, request method, and the request path with ids replaced) is sent; request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only when they come from Site Rep's own code, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
@@ -3543,6 +3543,12 @@ function publicTrustStatusPayload(env = activeEnv) {
 	        purpose: "Verify checkout, activation, billing portal access, renewals, and plan state.",
 	        customerControl: "Billing portal when linked; manual support fallback through hello@siterep.net.",
 	        ownerControl: "Billing portal when linked; manual support fallback through hello@siterep.net.",
+	      },
+      {
+	        data: "Error reports",
+	        purpose: "Find and fix service errors. A scrubbed report (error type, stack trace, request method and path with ids replaced) goes to Sentry; visitor text, emails, bodies, query strings, cookies and headers are removed first.",
+	        customerControl: "Not stored in the dashboard; ask hello@siterep.net to have reports about your workspace deleted.",
+	        ownerControl: "Sentry project settings and retention.",
 	      },
       {
 	        data: "Operational events",

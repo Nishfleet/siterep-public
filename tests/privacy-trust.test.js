@@ -34,6 +34,7 @@ test("privacy page, trust page and trust-status payload name the same sub-proces
     for (const vendor of vendors) assert.ok(text.toLowerCase().includes(vendor.toLowerCase()), `${name} must name ${vendor}`);
   }
   assert.match(worker, /- Scrubbed error reports when the service hits an error/);
+  assert.match(worker, /data: "Error reports",/);
 });
 
 test("widget lead form shows a point-of-capture consent line", async () => {
