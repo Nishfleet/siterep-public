@@ -37,9 +37,12 @@ npm run dev      # Vite dashboard on http://127.0.0.1:5173
 R2, Durable Objects, Workers AI) defined in `wrangler.jsonc`; `wrangler dev`
 provides local equivalents.
 
-Error reporting uses the Sentry Cloudflare SDK and stays off unless the
-`SENTRY_DSN` Worker secret is set; reports drop request bodies, query strings,
-cookies, headers, and email addresses before they leave the Worker.
+Error reporting uses the Sentry Cloudflare SDK and stays off (`enabled: false`)
+unless the `SENTRY_DSN` Worker secret is set. Reports keep the exception type,
+stack, and a redacted message; they drop request bodies, query strings,
+cookies, headers, console lines, breadcrumb text, extra data, and custom
+contexts, redact emails, phone-like numbers, and ids or tokens in the path, and
+each isolate sends at most 20 events a minute.
 
 ## Test, build, and check
 

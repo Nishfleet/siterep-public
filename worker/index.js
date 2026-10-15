@@ -14,7 +14,8 @@ import { enforceSelfServeReadinessInvariant } from "./readiness.js";
 import { handleSiteRepMcp } from "./site-rep-mcp.js";
 import { collectFunnelEvent, readFunnelStats } from "./funnel-events.js";
 import { readMcpStats, recordMcpEvent } from "./mcp-events.js";
-import { reportError, withOptionalSentry } from "./sentry.js";
+import { withSentry } from "@sentry/cloudflare";
+import { reportError, sentryOptions } from "./sentry.js";
 import {
   answeringMode,
   defaultOverageSettings,
@@ -1239,16 +1240,17 @@ const workerHandler = {
     }
   },
 
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(handleScheduled(event, env));
+  // Cron work is awaited, not handed to ctx.waitUntil: the invocation ends
+  // only when every task has run, so a failing task is reported before the
+  // Sentry SDK flushes, and the run is the same with or without a DSN.
+  async scheduled(event, env) {
+    await handleScheduled(event, env);
   },
 };
 
-export default withOptionalSentry(workerHandler, {
-  // With Sentry on, cron work is awaited inside the wrapper so a failing task
-  // is reported before the SDK flushes at the end of the invocation.
-  scheduled: (event, env) => handleScheduled(event, env),
-});
+// sentryOptions sets `enabled: false` when SENTRY_DSN is unset, so with no DSN
+// the SDK sends nothing and the handlers behave as before.
+export default withSentry(sentryOptions, workerHandler);
 
 function wantsMarkdown(request) {
   const accept = request.headers.get("Accept") || "";
