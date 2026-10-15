@@ -305,7 +305,7 @@ These notes describe the current Site Rep product behavior and should not be rea
 - Customers can delete a visitor's lead from the dashboard lead inbox or the authenticated owner API. Deletion runs immediately on live data: it removes the lead, the conversations tied to that visitor's email or lead, related follow-up tickets, notifications, queued webhook payloads, and activity entries from the live store and the record ledger, and scrubs them from Site Rep's KV recovery mirror and daily backups. Anonymous questions from the same browser session are removed too, unless that session also holds another visitor's email or lead. An audit entry records that a deletion happened, without the visitor's details.
 - Questions that other visitors also asked stay in the shared unanswered-question and escalation lists as a count. The entry is unlinked from the deleted visitor, and their exact wording is replaced with another visitor's wording or a lowercase form of the question.
 - Cloudflare's point-in-time recovery for the record database (D1 Time Travel) and the live store (Durable Object point-in-time recovery) can still restore an earlier state for up to 30 days, so deleted data stays in those recovery copies until that window passes. A KV backup that cannot be scrubbed expires within 30 days, and the deletion result says when that happened.
-- Lead and visitor deletion requests are completed through the same self-serve path. Whole-account deletion requests can still be opened from the customer dashboard and are tracked for review. Export requests can use the dashboard exports or hello@siterep.net.
+- Lead and visitor deletion requests are completed through the same self-serve path. A completed request keeps the lead id and a salted one-way hash of the visitor's email, never the address itself. Whole-account deletion requests can still be opened from the customer dashboard and are tracked for review. Export requests can use the dashboard exports or hello@siterep.net.
 - Deletion cannot recall copies already delivered outside Site Rep, such as lead emails already sent to the team or payloads already sent to a configured webhook.
 
 ## Visitor-facing behavior
@@ -11016,13 +11016,16 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     await resolveSessions(db, normalizedBotId, current, targets);
     await scrubCopies();
   } catch (error) {
-    console.warn(JSON.stringify({
-      type: "lead_deletion_failed",
-      botId: normalizedBotId,
-      message: error instanceof Error ? error.message : "Unknown lead deletion failure",
-    }));
+    // Name and code only: a driver message could one day echo bound values.
+    console.warn(JSON.stringify({ type: "lead_deletion_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
     return { status: 503, body: { error: "Lead deletion did not finish. Try again; repeating it is safe." } };
   }
+
+  // A privacy request that named the visitor's email keeps a salted one-way
+  // hash of it instead, so the record proves which request was done without
+  // holding the address. The salt is random per bot and never leaves the store.
+  const privacySalt = current.privacySalt || bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+  for (const email of targets.emails) targets.emailHashes.set(email, await privacyEmailHash(privacySalt, email));
 
   const now = new Date().toISOString();
   let storeCounts = null;
@@ -11032,9 +11035,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   // own writer, so the mirror never holds the visitor after this point.
   await updateStore((store) => {
     const record = ensureBot(store, normalizedBotId);
-    // Sessions were decided against the live record and the ledger above;
-    // the live erase follows exactly those, never a session judged alone.
-    storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
+    record.privacySalt ||= privacySalt;
     if (options.newPrivacyRequest) {
       privacyRequestId = `privacy_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
       const requesterEmail = String(options.newPrivacyRequest.requesterEmail || options.newPrivacyRequest.email || record.ownerEmail || "").trim().toLowerCase();
@@ -11066,6 +11067,10 @@ async function deleteLeadData(botId, input = {}, options = {}) {
         completedRequestIds.push(item.id);
       }
     }
+    // Last, so the requests just matched by email are hashed too. Sessions
+    // were decided against the live record and the ledger above; the live
+    // erase follows exactly those, never a session judged alone.
+    storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
     record.updatedAt = now;
     return record;
   }, { forceMirror: true });
@@ -11076,25 +11081,21 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     await scrubCopies();
   } catch (error) {
     recheckFailed = true;
-    console.warn(JSON.stringify({
-      type: "lead_deletion_recheck_failed",
-      botId: normalizedBotId,
-      message: error instanceof Error ? error.message : "Unknown lead deletion failure",
-    }));
+    console.warn(JSON.stringify({ type: "lead_deletion_recheck_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
   }
-  // Read-only check that the mirror rewrite landed (it fails soft on a KV error).
-  let mirrorStale = false;
+  // Read-only check of every KV copy (the mirror and each daily backup), so
+  // the result says complete only when none of them still holds the visitor.
+  let staleCopies = [];
   try {
-    const mirror = await activeEnv?.CITEREP_STORE?.get(STORE_KEY);
-    if (mirror) {
-      const check = eraseLeadFromStoreSnapshot(mirror, normalizedBotId, targets);
-      if (check.unreadable) unreadableSnapshots.add(STORE_KEY);
-      else if (check.json) mirrorStale = true;
-    }
-  } catch {
-    mirrorStale = true;
+    const check = await kvCopiesHoldingTarget(normalizedBotId, targets);
+    staleCopies = check.stale;
+    for (const name of check.unreadable) unreadableSnapshots.add(name);
+  } catch (error) {
+    staleCopies = ["(check failed)"];
+    console.warn(JSON.stringify({ type: "lead_deletion_check_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
   }
-  if (mirrorStale) console.warn(JSON.stringify({ type: "lead_deletion_mirror_stale", botId: normalizedBotId }));
+  const mirrorStale = staleCopies.length > 0;
+  if (mirrorStale) console.warn(JSON.stringify({ type: "lead_deletion_copy_stale", botId: normalizedBotId, keys: staleCopies }));
   if (unreadableSnapshots.size) {
     console.warn(JSON.stringify({
       type: "lead_deletion_snapshot_unreadable",
@@ -11115,7 +11116,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   if (unreadableSnapshots.size) {
     warnings.push(`${unreadableSnapshots.size} recovery snapshot${unreadableSnapshots.size === 1 ? " was" : "s were"} in an unexpected format and could not be checked for this visitor.`);
   }
-  if (mirrorStale) warnings.push("The KV recovery mirror could not be refreshed yet. The next store write replaces it; it expires within 30 days at most.");
+  if (mirrorStale) warnings.push("A KV recovery copy still held this visitor after the scrub. It is replaced on the next store write or backup scrub, and expires within 30 days at most.");
   if (recheckFailed) warnings.push("The final check of recovery backups did not finish. A backup that still holds this visitor expires within 30 days.");
   if (targets.blockedSessions.size) {
     warnings.push("Some anonymous questions came from a browser session shared with another lead, so they were kept.");
@@ -11125,7 +11126,11 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   const bot = await updateStore((store) => {
     const record = ensureBot(store, normalizedBotId);
     for (const id of completedRequestIds) {
-      completePrivacyRequest(record, id, summary, now, id === privacyRequestId ? options.completedTarget : null);
+      const chosen = id === privacyRequestId ? options.completedTarget : null;
+      const chosenTarget = chosen
+        ? { leadId: chosen.leadId, emailHash: chosen.email ? targets.emailHashes.get(normalizeLeadEmail(chosen.email)) : "" }
+        : null;
+      completePrivacyRequest(record, id, summary, now, chosenTarget);
     }
     pushEvent(
       record,
@@ -11147,19 +11152,20 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, complete, warnings, privacyRequestId, counts: summary } } };
 }
 
-// Marks a deletion request done with counts. It keeps the target it names
-// (or, for one that named none, the target it was completed for), so the
-// record shows who the completion covered. Its review ticket closes once no
-// other open request shares it.
+// Marks a deletion request done with counts. It keeps the lead id it names
+// and, for an email, only the salted hash eraseLeadFromBot left in its place
+// (a request that named none records the target it was completed for, the
+// same way), so the record shows who the completion covered without holding
+// the address. Its review ticket closes once no other open request shares it.
 function completePrivacyRequest(bot, privacyRequestId, counts, now, completedTarget = null) {
   let completed = null;
   bot.privacyRequests = (bot.privacyRequests || []).map((item) => {
     if (item.id !== privacyRequestId) return item;
-    const named = item.targetLeadId || item.targetEmail;
+    const named = item.targetLeadId || item.targetEmail || item.targetEmailHash;
     completed = {
       ...item,
       ...(!named && completedTarget?.leadId ? { targetLeadId: String(completedTarget.leadId) } : {}),
-      ...(!named && completedTarget?.email ? { targetEmail: completedTarget.email } : {}),
+      ...(!named && completedTarget?.emailHash ? { targetEmailHash: completedTarget.emailHash } : {}),
       status: "completed",
       completedAt: now,
       completedBy: "self_serve",
@@ -11180,7 +11186,51 @@ function completePrivacyRequest(bot, privacyRequestId, counts, now, completedTar
   return completed;
 }
 
-// Scrubs the visitor from the KV daily backups. The live mirror at
+function safeErrorFields(error) {
+  return {
+    errorName: error instanceof Error ? error.name : typeof error,
+    ...(error && typeof error === "object" && "code" in error ? { errorCode: String(error.code).slice(0, 40) } : {}),
+  };
+}
+
+async function privacyEmailHash(salt, email) {
+  return `sha256:${await sha256Hex(`siterep-privacy-request:${salt}:${normalizeLeadEmail(email)}`)}`;
+}
+
+// Which KV copies (the live mirror and the daily backups) still hold the
+// visitor, read-only. Unreadable ones are reported separately.
+async function kvCopiesHoldingTarget(botId, targets, env = activeEnv) {
+  const kv = env?.CITEREP_STORE;
+  const result = { stale: [], unreadable: [] };
+  if (!kv) return result;
+  const names = [STORE_KEY, ...(await listStoreBackupKeys(kv)).map((key) => key.name)];
+  for (const name of names) {
+    const raw = await kv.get(name);
+    if (!raw) continue;
+    const check = eraseLeadFromStoreSnapshot(raw, botId, targets);
+    if (check.unreadable) result.unreadable.push(name);
+    else if (check.json) result.stale.push(name);
+  }
+  return result;
+}
+
+async function listStoreBackupKeys(kv) {
+  const keys = [];
+  let cursor;
+  do {
+    const page = await kv.list({ prefix: STORE_BACKUP_KEY_PREFIX, ...(cursor ? { cursor } : {}) });
+    keys.push(...(page?.keys || []));
+    cursor = page && !page.list_complete ? page.cursor : undefined;
+  } while (cursor);
+  return keys;
+}
+
+// Scrubs the visitor from the KV daily backups. Every writer of the backup
+// keys runs inside the single "global-store" coordinator's request queue
+// (enqueue chains each request after the last, KV awaits included): this
+// scrub through handleApi, and the daily backup through its internal route.
+// So two deletions, or a deletion and the backup job, never interleave their
+// read-modify-write of a backup. The live mirror at
 // STORE_KEY is not touched here: it has one writer, the store's own
 // serialized write path, and deleteLeadData's live erase rewrites it from the
 // already-scrubbed store. A second writer here could overwrite a chat or lead
@@ -11192,14 +11242,7 @@ async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
   const result = { scrubbed: 0, unreadable: [] };
   if (!kv) return result;
-  const keys = [];
-  let cursor;
-  do {
-    const page = await kv.list({ prefix: STORE_BACKUP_KEY_PREFIX, ...(cursor ? { cursor } : {}) });
-    keys.push(...(page?.keys || []));
-    cursor = page && !page.list_complete ? page.cursor : undefined;
-  } while (cursor);
-  for (const key of keys) {
+  for (const key of await listStoreBackupKeys(kv)) {
     const raw = await kv.get(key.name);
     if (!raw) continue;
     const { json, unreadable } = eraseLeadFromStoreSnapshot(raw, botId, targets);

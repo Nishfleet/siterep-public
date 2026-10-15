@@ -59,6 +59,9 @@ export function emptyLeadDeletionTargets() {
     questionKeys: new Map(),
     // Rows the ledger held for this visitor (0 without a ledger).
     ledgerRows: 0,
+    // email -> salted one-way hash, filled by the caller (hashing is async).
+    // A privacy request that named the email keeps only this hash.
+    emailHashes: new Map(),
   };
 }
 
@@ -72,6 +75,7 @@ export function cloneTargets(targets) {
     blockedSessions: new Set(targets.blockedSessions),
     questionKeys: new Map(targets.questionKeys),
     ledgerRows: targets.ledgerRows,
+    emailHashes: new Map(targets.emailHashes || []),
   };
 }
 
@@ -280,6 +284,7 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     actions: 0,
     actionsScrubbed: 0,
     events: 0,
+    privacyRequestsScrubbed: 0,
   };
   if (!bot || !targets) return counts;
   expandTargetsInBot(bot, targets, options);
@@ -391,12 +396,44 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   }
 
   keep("events", (event) =>
-    !(metaTouchesTarget(event.meta, targets) || textMentionsTarget(event.title, targets) || textMentionsTarget(event.detail, targets)),
+    !(
+      metaTouchesTarget(event.meta, targets) ||
+      textMentionsTarget(event.title, targets) ||
+      textMentionsTarget(event.detail, targets) ||
+      textMentionsTarget(JSON.stringify(event.meta ?? null), targets)
+    ),
   );
+
+  // Privacy requests stay as the record that a request was made and done,
+  // but never with the visitor's address: a named email becomes its salted
+  // hash, a requester address that is the visitor's is blanked, and a note
+  // that mentions it is masked.
+  if (Array.isArray(bot.privacyRequests)) {
+    bot.privacyRequests = bot.privacyRequests.map((item) => {
+      const named = normalizeLeadEmail(item?.targetEmail);
+      const namesTarget = named !== "" && targets.emails.has(named);
+      const fromTarget = targets.emails.has(normalizeLeadEmail(item?.requesterEmail));
+      const noteMentions = textMentionsTarget(item?.note, targets);
+      if (!namesTarget && !fromTarget && !noteMentions) return item;
+      counts.privacyRequestsScrubbed += 1;
+      const next = { ...item };
+      if (namesTarget) {
+        delete next.targetEmail;
+        const hash = targets.emailHashes?.get(named);
+        if (hash) next.targetEmailHash = hash;
+      }
+      if (fromTarget) next.requesterEmail = "";
+      if (noteMentions) next.note = scrubText(item.note, targets);
+      return next;
+    });
+  }
 
   return counts;
 }
 
+// Any change counts, masked mentions and unlinked shared questions included:
+// a snapshot that changed only that way still holds the visitor until it is
+// rewritten, so it must be rewritten.
 export function totalErased(counts) {
   return Object.values(counts || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
 }

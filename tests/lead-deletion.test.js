@@ -656,6 +656,124 @@ test("deletion routes reject a blank or padded bot id instead of creating a bot"
   assert.equal(h.botRecord("   "), undefined);
 });
 
+// The store record and every KV copy (mirror and backups) of it.
+function assertNoTraceOf(h, pattern, label) {
+  assert.doesNotMatch(JSON.stringify(h.botRecord()), pattern, `${label}: live store`);
+  for (const [name, entry] of h.kv._map) assert.doesNotMatch(entry.value, pattern, `${label}: KV ${name}`);
+}
+
+test("no request path leaves the deleted visitor's email in the store or its KV copies", async () => {
+  const JANE_RE = /jane@visitor\.test/i;
+
+  // Owner path: the request is created and completed in one step.
+  const owner = harness();
+  const ownerResponse = await owner.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE, note: `Erase ${JANE} please.` });
+  assert.equal(ownerResponse.status, 200);
+  const ownerBody = await ownerResponse.json();
+  assert.doesNotMatch(JSON.stringify(ownerBody), JANE_RE);
+  assert.doesNotMatch(JSON.stringify(ownerBody), /privacySalt/, "the salt never leaves the store");
+  assertNoTraceOf(owner, JANE_RE, "owner path");
+  const ownerDone = owner.botRecord().privacyRequests[0];
+  assert.equal(ownerDone.status, "completed");
+  assert.equal(ownerDone.targetEmail, undefined);
+  assert.match(ownerDone.targetEmailHash, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(ownerDone.note, "Erase [deleted] please.");
+
+  // Queue path: an editor logs a request naming the email, the owner completes it.
+  const queued = harness();
+  const logged = await queued.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE, requesterEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const request = (await logged.json()).privacyRequests[0];
+  assert.equal(request.targetEmail, JANE, "an open request still names who it is about");
+  assert.equal((await queued.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id })).status, 200);
+  assertNoTraceOf(queued, JANE_RE, "queue path");
+  const queuedDone = queued.botRecord().privacyRequests.find((item) => item.id === request.id);
+  assert.equal(queuedDone.status, "completed");
+  assert.match(queuedDone.targetEmailHash, /^sha256:/);
+  assert.equal(queuedDone.requesterEmail, "", "a requester address that is the visitor's goes too");
+
+  // An unnamed request completed for a chosen email records only the hash.
+  const chosen = harness();
+  const open = await chosen.post("/api/privacy/deletion-request", { scope: "visitor" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const unnamed = (await open.json()).privacyRequests[0];
+  assert.equal((await chosen.post("/api/privacy/deletion-request/complete", { privacyRequestId: unnamed.id, visitorEmail: JANE })).status, 200);
+  assertNoTraceOf(chosen, JANE_RE, "chosen target");
+  assert.match(chosen.botRecord().privacyRequests.find((item) => item.id === unnamed.id).targetEmailHash, /^sha256:/);
+
+  // The lead inbox delete hashes an older open request that named the email.
+  const inbox = harness();
+  await inbox.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  assert.equal((await inbox.post("/api/leads/delete", { leadId: 11 })).status, 200);
+  assertNoTraceOf(inbox, JANE_RE, "lead inbox delete");
+  assert.equal(inbox.botRecord().privacyRequests[0].status, "completed");
+});
+
+test("the same email hashes the same way within a bot, so a completed request can be matched later", async () => {
+  const h = harness();
+  await h.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: "nobody-yet@visitor.test" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  await h.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const [first] = h.botRecord().privacyRequests;
+  assert.equal((await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: first.id })).status, 200);
+  const salt = h.botRecord().privacySalt;
+  assert.match(salt, /^[0-9a-f]{32}$/);
+  const expected = `sha256:${createHash("sha256").update(`siterep-privacy-request:${salt}:${JANE}`).digest("hex")}`;
+  assert.equal(h.botRecord().privacyRequests.find((item) => item.id === first.id).targetEmailHash, expected);
+});
+
+test("a backup that still holds the visitor after the scrub makes the result incomplete", async () => {
+  const h = harness();
+  const put = h.kv.put;
+  // The backup write is lost (as if an older copy landed after it).
+  h.kv.put = async (name, value, options) => {
+    if (name === h.backupKey) return;
+    await put(name, value, options);
+  };
+  const response = await h.post("/api/leads/delete", { leadId: 11 });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.deletion.complete, false);
+  assert.match(body.deletion.warnings.join(" "), /still held this visitor/);
+});
+
+test("two deletions running at once on different bots both stay erased in the shared backup", async () => {
+  const OTHER_KEY = "own_otherbotownerkey00000000000000000";
+  const otherBot = { ...seededBot(), botId: "otherbot", label: "otherbot", ownerAccessKeyHash: sha256(OTHER_KEY) };
+  const h = harness({ extraBots: { otherbot: otherBot } });
+  await h.kv.put(h.backupKey, JSON.stringify({ bots: { deletebot: seededBot(), otherbot: { ...seededBot(), botId: "otherbot" } } }), { expirationTtl: 3600 });
+  const [first, second] = await Promise.all([
+    h.post("/api/leads/delete", { leadId: 11 }),
+    h.rawPost("/api/leads/delete", { botId: "otherbot", leadId: 22 }, { "x-citerep-owner-key": OTHER_KEY }),
+  ]);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  const backup = JSON.parse(h.kv._map.get(h.backupKey).value);
+  assert.doesNotMatch(JSON.stringify(backup.bots.deletebot), /jane@visitor\.test/);
+  assert.doesNotMatch(JSON.stringify(backup.bots.otherbot), /omar@visitor\.test/);
+});
+
+test("a failed deletion logs the error's name and code, never its message", async () => {
+  const h = harness();
+  h.kv.list = async () => {
+    const error = new Error(`D1 rejected bound value ${JANE}`);
+    error.code = "SQLITE_ERROR";
+    throw error;
+  };
+  const warn = console.warn;
+  const logged = [];
+  console.warn = (line) => logged.push(String(line));
+  let response;
+  try {
+    response = await h.post("/api/leads/delete", { leadId: 11 });
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(response.status, 503);
+  const line = logged.find((item) => item.includes("lead_deletion_failed"));
+  assert.ok(line);
+  assert.doesNotMatch(line, /jane|bound value/i);
+  assert.match(line, /"errorName":"Error"/);
+  assert.match(line, /"errorCode":"SQLITE_ERROR"/);
+});
+
 test("the dashboard and public trust copy describe self-serve deletion, not ticket-only erasure", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
