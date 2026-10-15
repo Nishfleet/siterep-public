@@ -33,8 +33,10 @@ on:
         description: 'miss-review to replay a miss on issue, orchestrate to hand a parked issue to the orchestrator, empty for a normal sweep'
         required: false
         type: string
+  # All nine PR events the fleet's review and merge gates listen for
+  # (fleet-ops README, Intake enrolment, precondition 3).
   pull_request_target:
-    types: [dequeued, auto_merge_disabled, closed]
+    types: [dequeued, auto_merge_disabled, closed, auto_merge_enabled, synchronize, labeled, opened, reopened, ready_for_review]
   workflow_run:
     workflows: [CI]
     types: [completed]
