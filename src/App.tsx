@@ -1127,6 +1127,19 @@ type PrivacyRequest = {
   completedAt?: string;
 };
 
+type LeadDeletionResult = {
+  ok: boolean;
+  complete?: boolean;
+  warnings?: string[];
+};
+
+// The deletion result names anything it could not finish (an unreadable
+// backup, a session shared with another lead) instead of a bare success.
+function leadDeletionNotice(done: string, deletion?: LeadDeletionResult) {
+  const warnings = deletion?.warnings || [];
+  return [done, ...warnings, "An audit entry records that a deletion happened."].join(" ");
+}
+
 type CommandCenter = {
   generatedAt: string;
   billing?: BillingState;
@@ -4407,13 +4420,13 @@ function App() {
     if (!confirmed) return;
     setLeadNotice("");
     try {
-      const bot = await api<BotState>("/api/leads/delete", {
+      const bot = await api<BotState & { deletion?: LeadDeletionResult }>("/api/leads/delete", {
         method: "POST",
         body: JSON.stringify({ botId, leadId: item.id }),
       });
       applyBotState(bot);
       setLeadError("");
-      setLeadNotice("Lead deleted. An audit entry records that a deletion happened.");
+      setLeadNotice(leadDeletionNotice("Lead deleted.", bot.deletion));
     } catch (error) {
       setLeadError(error instanceof Error ? error.message : "Lead deletion failed.");
     }
@@ -4429,13 +4442,13 @@ function App() {
     if (!confirmed) return;
     setLeadNotice("");
     try {
-      const bot = await api<BotState>("/api/privacy/deletion-request/complete", {
+      const bot = await api<BotState & { deletion?: LeadDeletionResult }>("/api/privacy/deletion-request/complete", {
         method: "POST",
         body: JSON.stringify({ botId, privacyRequestId: request.id, ...(chosenLeadId ? { leadId: chosenLeadId } : {}) }),
       });
       applyBotState(bot);
       setLeadError("");
-      setLeadNotice("Deletion request completed.");
+      setLeadNotice(leadDeletionNotice("Deletion request completed.", bot.deletion));
     } catch (error) {
       setLeadError(error instanceof Error ? error.message : "Could not complete the deletion request.");
     }

@@ -1,18 +1,33 @@
 // Self-serve erasure of one visitor's lead data inside a workspace.
 //
-// A lead is keyed by email, links to the conversation it was captured from,
-// and that conversation shares a browser session id with the visitor's other
-// questions. Deleting a lead removes all of those, plus every copy the
-// workspace keeps of them: follow-up tickets, escalations, owner
-// notifications, queued webhook payloads, activity entries, the D1 record
-// ledger, and the KV recovery snapshots.
+// A lead is keyed by email and links to the conversation it was captured
+// from. Deleting a lead removes the lead, every conversation tied to that
+// identity, plus every copy the workspace keeps of them: follow-up tickets,
+// escalations, owner notifications, queued webhook payloads, activity
+// entries, the D1 record ledger, and the KV recovery snapshots.
+//
+// Browser session ids are visitor-supplied and can be shared (one tab, two
+// people). A session only widens the deletion to its anonymous questions
+// when nothing in it belongs to another email or lead; otherwise it is
+// skipped and reported, so a deletion never crosses into another lead.
 
 export const LEAD_DELETION_SCOPES = Object.freeze(["lead", "visitor"]);
 
 const LEDGER_ID_CHUNK = 50;
+const SCRUBBED_EMAIL = "[deleted]";
 
 export function normalizeLeadEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+// Same grouping key the worker uses for shared questions (unknowns and
+// escalations): case and punctuation do not matter.
+export function normalizeQuestionKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function idKey(value) {
@@ -28,12 +43,42 @@ function conversationEmail(conversation) {
 }
 
 export function emptyLeadDeletionTargets() {
-  return { emails: new Set(), leadIds: new Set(), conversationIds: new Set(), sessionIds: new Set() };
+  return {
+    emails: new Set(),
+    leadIds: new Set(),
+    // Every conversation to delete.
+    conversationIds: new Set(),
+    // The subset reached through the lead or email itself, not a session.
+    identityConversationIds: new Set(),
+    // Candidate sessions seen on the visitor's own conversations.
+    sessionIds: new Set(),
+    // Sessions that also hold another email or lead: never followed.
+    blockedSessions: new Set(),
+    // conversation id -> normalized question, to tell the visitor's shared
+    // questions apart from unrelated entries.
+    questionKeys: new Map(),
+    // Rows the ledger held for this visitor (0 without a ledger).
+    ledgerRows: 0,
+  };
+}
+
+export function cloneTargets(targets) {
+  return {
+    emails: new Set(targets.emails),
+    leadIds: new Set(targets.leadIds),
+    conversationIds: new Set(targets.conversationIds),
+    identityConversationIds: new Set(targets.identityConversationIds),
+    sessionIds: new Set(targets.sessionIds),
+    blockedSessions: new Set(targets.blockedSessions),
+    questionKeys: new Map(targets.questionKeys),
+    ledgerRows: targets.ledgerRows,
+  };
 }
 
 // Resolves a lead id or email to everything that belongs to that visitor in
 // the in-store bot record. Returns null when nothing identifies a visitor.
-export function leadDeletionTargets(bot, input = {}, targets = emptyLeadDeletionTargets()) {
+export function leadDeletionTargets(bot, input = {}, options = {}) {
+  const targets = emptyLeadDeletionTargets();
   const leadId = idKey(input.leadId);
   const requestedEmail = normalizeLeadEmail(input.email);
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
@@ -42,55 +87,101 @@ export function leadDeletionTargets(bot, input = {}, targets = emptyLeadDeletion
   if (leadId) targets.leadIds.add(leadId);
   if (email) targets.emails.add(email);
   if (!targets.emails.size && !targets.leadIds.size) return null;
-  expandTargetsInBot(bot, targets);
+  expandTargetsInBot(bot, targets, options);
   return targets;
 }
 
+function addConversation(targets, id, question, { identity = false } = {}) {
+  const key = idKey(id);
+  if (!key) return;
+  targets.conversationIds.add(key);
+  if (identity) targets.identityConversationIds.add(key);
+  if (question !== undefined && question !== null && !targets.questionKeys.has(key)) {
+    targets.questionKeys.set(key, normalizeQuestionKey(question));
+  }
+}
+
 // Folds the in-store copies into the target sets until nothing new appears:
-// a lead pulls in its conversation, a conversation pulls in its session, and
-// a session pulls in the visitor's other conversations.
-export function expandTargetsInBot(bot, targets) {
+// the visitor's leads pull in the conversations they were captured in, and
+// conversations carrying the visitor's email are theirs. Emails never come
+// from a conversation or session, so the set of people never grows. With
+// followSessions, each candidate session then adds
+// its other (anonymous) conversations, but only when every conversation and
+// lead in it belongs to this visitor.
+export function expandTargetsInBot(bot, targets, { followSessions = true } = {}) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
   let size = -1;
-  while (size !== targetSize(targets)) {
-    size = targetSize(targets);
+  while (size !== identitySize(targets)) {
+    size = identitySize(targets);
     for (const lead of leads) {
       if (!leadMatches(lead, targets)) continue;
       if (idKey(lead.id)) targets.leadIds.add(idKey(lead.id));
       if (normalizeLeadEmail(lead.email)) targets.emails.add(normalizeLeadEmail(lead.email));
-      if (idKey(lead.conversationId)) targets.conversationIds.add(idKey(lead.conversationId));
+      if (idKey(lead.conversationId)) addConversation(targets, lead.conversationId, undefined, { identity: true });
     }
     for (const conversation of conversations) {
-      if (!conversationMatches(conversation, targets)) continue;
-      targets.conversationIds.add(idKey(conversation.id));
+      if (!identityConversationMatches(conversation, targets)) continue;
+      addConversation(targets, conversation.id, conversation.question, { identity: true });
       const sessionId = conversationSessionId(conversation);
       if (sessionId) targets.sessionIds.add(sessionId);
+    }
+  }
+  if (followSessions) {
+    for (const sessionId of targets.sessionIds) {
+      if (targets.blockedSessions.has(sessionId)) continue;
+      const members = conversations.filter((conversation) => conversationSessionId(conversation) === sessionId);
+      if (sessionHasOtherVisitor(members, leads, targets)) {
+        targets.blockedSessions.add(sessionId);
+        continue;
+      }
+      for (const conversation of members) addConversation(targets, conversation.id, conversation.question);
+    }
+  }
+  // Question text of conversations reached by id only.
+  for (const conversation of conversations) {
+    const key = idKey(conversation?.id);
+    if (targets.conversationIds.has(key) && !targets.questionKeys.has(key)) {
+      targets.questionKeys.set(key, normalizeQuestionKey(conversation.question));
     }
   }
   return targets;
 }
 
-function targetSize(targets) {
-  return targets.emails.size + targets.leadIds.size + targets.conversationIds.size + targets.sessionIds.size;
+function sessionHasOtherVisitor(members, leads, targets) {
+  const memberIds = new Set(members.map((conversation) => idKey(conversation.id)));
+  return (
+    members.some((conversation) => isForeignEmail(conversationEmail(conversation), targets)) ||
+    leads.some((lead) => memberIds.has(idKey(lead.conversationId)) && !isTargetLead(lead, targets))
+  );
 }
 
+function isForeignEmail(email, targets) {
+  return email !== "" && !targets.emails.has(email);
+}
+
+function isTargetLead(lead, targets) {
+  return targets.leadIds.has(idKey(lead?.id)) || targets.emails.has(normalizeLeadEmail(lead?.email));
+}
+
+function identitySize(targets) {
+  return targets.emails.size + targets.leadIds.size + targets.identityConversationIds.size + targets.sessionIds.size;
+}
+
+// Leads match by id or email only. A lead with another email is another
+// person's record even when it points at one of this visitor's
+// conversations, so it is never pulled in.
 function leadMatches(lead, targets) {
-  return (
-    targets.leadIds.has(idKey(lead?.id)) ||
-    targets.emails.has(normalizeLeadEmail(lead?.email)) ||
-    (idKey(lead?.conversationId) !== "" && targets.conversationIds.has(idKey(lead.conversationId)))
-  );
+  return isTargetLead(lead, targets);
+}
+
+function identityConversationMatches(conversation, targets) {
+  const email = conversationEmail(conversation);
+  return targets.identityConversationIds.has(idKey(conversation?.id)) || (email !== "" && targets.emails.has(email));
 }
 
 function conversationMatches(conversation, targets) {
-  const sessionId = conversationSessionId(conversation);
-  const email = conversationEmail(conversation);
-  return (
-    targets.conversationIds.has(idKey(conversation?.id)) ||
-    (email !== "" && targets.emails.has(email)) ||
-    (sessionId !== "" && targets.sessionIds.has(sessionId))
-  );
+  return targets.conversationIds.has(idKey(conversation?.id)) || identityConversationMatches(conversation, targets);
 }
 
 function textMentionsTarget(text, targets) {
@@ -107,6 +198,36 @@ function withoutTargetSegments(text, targets) {
   const segments = String(text || "").split(" · ");
   const kept = segments.filter((segment) => !textMentionsTarget(segment, targets));
   return kept.length === segments.length ? null : kept.join(" · ");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Removes the visitor from free text that also covers other people: their
+// " · " segment goes, and any remaining mention of their email is masked.
+function scrubText(text, targets) {
+  if (!textMentionsTarget(text, targets)) return text;
+  // A single-subject text has no other segment to keep, so it is masked.
+  let next = withoutTargetSegments(text, targets) || String(text);
+  for (const email of targets.emails) {
+    if (email) next = next.replace(new RegExp(escapeRegExp(email), "gi"), SCRUBBED_EMAIL);
+  }
+  return next;
+}
+
+function scrubValue(value, targets) {
+  if (typeof value === "string") return scrubText(value, targets);
+  if (Array.isArray(value)) return value.map((item) => scrubValue(item, targets));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        key === "email" && targets.emails.has(normalizeLeadEmail(item)) ? "" : scrubValue(item, targets),
+      ]),
+    );
+  }
+  return value;
 }
 
 function metaTouchesTarget(meta, targets) {
@@ -126,21 +247,76 @@ function dedupeKeyTouchesTarget(key, targets) {
   return false;
 }
 
+// Wording for a shared question once the deleted visitor's own text goes:
+// another remaining visitor's wording when there is one, otherwise the
+// normalized question every asker shares.
+function sharedQuestionWording(bot, key, targets) {
+  const other = (Array.isArray(bot?.conversations) ? bot.conversations : []).find(
+    (conversation) => !conversationMatches(conversation, targets) && normalizeQuestionKey(conversation.question) === key,
+  );
+  return other ? String(other.question) : key;
+}
+
 // Removes the visitor's records from one bot record in place and returns
 // counts only, so callers can log what happened without logging who.
-export function eraseLeadFromBot(bot, targets) {
+export function eraseLeadFromBot(bot, targets, options = {}) {
   const counts = {
     leads: 0,
     conversations: 0,
     tickets: 0,
     escalations: 0,
+    escalationsUnlinked: 0,
     unknowns: 0,
+    unknownsUnlinked: 0,
     notifications: 0,
     actions: 0,
+    actionsScrubbed: 0,
     events: 0,
   };
   if (!bot || !targets) return counts;
-  expandTargetsInBot(bot, targets);
+  expandTargetsInBot(bot, targets, options);
+
+  // Shared questions first, while the visitor's conversations are still
+  // there to read question text from.
+  // Escalations and unknowns are grouped by question across visitors. One
+  // asked only by this visitor goes; a shared one stays as a count, unlinked
+  // from them and without their wording.
+  if (Array.isArray(bot.escalations)) {
+    const next = [];
+    for (const item of bot.escalations) {
+      const linked = idKey(item.conversationId) !== "" && targets.conversationIds.has(idKey(item.conversationId));
+      if (!linked) {
+        next.push(item);
+      } else if (Number(item.count || 1) <= 1) {
+        counts.escalations += 1;
+      } else {
+        counts.escalationsUnlinked += 1;
+        const key = normalizeQuestionKey(item.question);
+        next.push({ ...item, conversationId: null, count: Number(item.count) - 1, question: sharedQuestionWording(bot, key, targets) });
+      }
+    }
+    bot.escalations = next;
+  }
+  // An unknown's id is the conversation id of its first asker for chat
+  // gaps, but a timestamp for feedback and QA-run gaps, so an id match alone
+  // is not proof. It is the visitor's only when the question matches too.
+  if (Array.isArray(bot.unknowns)) {
+    const next = [];
+    for (const item of bot.unknowns) {
+      const id = idKey(item.id);
+      const key = normalizeQuestionKey(item.question);
+      const linked = targets.conversationIds.has(id) && targets.questionKeys.get(id) === key;
+      if (!linked) {
+        next.push(item);
+      } else if (Number(item.count || 1) <= 1) {
+        counts.unknowns += 1;
+      } else {
+        counts.unknownsUnlinked += 1;
+        next.push({ ...item, count: Number(item.count) - 1, question: sharedQuestionWording(bot, key, targets) });
+      }
+    }
+    bot.unknowns = next;
+  }
 
   const keep = (field, predicate) => {
     if (!Array.isArray(bot[field])) return;
@@ -159,22 +335,6 @@ export function eraseLeadFromBot(bot, targets) {
       dedupeKeyTouchesTarget(ticket.dedupeKey, targets)
     ),
   );
-
-  // Escalations and unknowns are shared by every visitor who asked the same
-  // question; only drop the ones that came from this visitor alone.
-  if (Array.isArray(bot.escalations)) {
-    const next = [];
-    for (const item of bot.escalations) {
-      const linked = idKey(item.conversationId) !== "" && targets.conversationIds.has(idKey(item.conversationId));
-      if (linked && Number(item.count || 1) <= 1) {
-        counts.escalations += 1;
-        continue;
-      }
-      next.push(linked ? { ...item, conversationId: null } : item);
-    }
-    bot.escalations = next;
-  }
-  keep("unknowns", (item) => !(targets.conversationIds.has(idKey(item.id)) && Number(item.count || 1) <= 1));
 
   if (Array.isArray(bot.notifications)) {
     const next = [];
@@ -197,15 +357,29 @@ export function eraseLeadFromBot(bot, targets) {
     bot.notifications = next;
   }
 
+  // Each queued webhook carries one subject (lead, conversation, ticket or
+  // source). An action about this visitor goes; one about someone else that
+  // only mentions them in its text is kept with the mention scrubbed, so
+  // other leads' deliveries are never dropped.
   if (Array.isArray(bot.actionQueue)) {
-    const before = bot.actionQueue.length;
-    bot.actionQueue = bot.actionQueue.filter(
-      (action) =>
-        !metaTouchesTarget(action.payload, targets) &&
-        !metaTouchesTarget(action.payloadSummary, targets) &&
-        !textMentionsTarget(JSON.stringify(action.payload || {}), targets),
-    );
-    counts.actions += before - bot.actionQueue.length;
+    const next = [];
+    for (const action of bot.actionQueue) {
+      if (metaTouchesTarget(action.payload, targets) || metaTouchesTarget(action.payloadSummary, targets)) {
+        counts.actions += 1;
+        continue;
+      }
+      if (textMentionsTarget(JSON.stringify([action.payload ?? null, action.payloadSummary ?? null]), targets)) {
+        counts.actionsScrubbed += 1;
+        next.push({
+          ...action,
+          ...(action.payload ? { payload: scrubValue(action.payload, targets) } : {}),
+          ...(action.payloadSummary ? { payloadSummary: scrubValue(action.payloadSummary, targets) } : {}),
+        });
+        continue;
+      }
+      next.push(action);
+    }
+    bot.actionQueue = next;
   }
 
   keep("events", (event) =>
@@ -220,29 +394,26 @@ export function totalErased(counts) {
 }
 
 // Applies the same erasure to a JSON snapshot of the whole store (the KV
-// recovery mirror and daily backups). Returns the new JSON, or null when the
-// snapshot holds nothing for this visitor.
+// recovery mirror and daily backups). Returns { json, unreadable }: json is
+// the scrubbed snapshot, or null when it holds nothing for this visitor;
+// unreadable is true when the snapshot is not a store this code can scrub,
+// so the caller reports it instead of claiming success.
 export function eraseLeadFromStoreSnapshot(raw, botId, targets) {
   let store;
   try {
     store = typeof raw === "string" ? JSON.parse(raw) : raw;
   } catch {
-    return null;
+    return { json: null, unreadable: true };
   }
-  const bot = store?.bots?.[botId];
-  if (!bot) return null;
-  const snapshotTargets = cloneTargets(targets);
-  const counts = eraseLeadFromBot(bot, snapshotTargets);
-  return totalErased(counts) > 0 ? JSON.stringify(store) : null;
-}
-
-export function cloneTargets(targets) {
-  return {
-    emails: new Set(targets.emails),
-    leadIds: new Set(targets.leadIds),
-    conversationIds: new Set(targets.conversationIds),
-    sessionIds: new Set(targets.sessionIds),
-  };
+  if (!store || typeof store !== "object" || !store.bots || typeof store.bots !== "object" || Array.isArray(store.bots)) {
+    return { json: null, unreadable: true };
+  }
+  const bot = store.bots[botId];
+  if (!bot) return { json: null, unreadable: false };
+  // Snapshots never follow sessions on their own: the live store and the
+  // ledger decided which sessions are safe, and those ids are in targets.
+  const counts = eraseLeadFromBot(bot, cloneTargets(targets), { followSessions: false });
+  return { json: totalErased(counts) > 0 ? JSON.stringify(store) : null, unreadable: false };
 }
 
 function chunks(values, size = LEDGER_ID_CHUNK) {
@@ -267,7 +438,9 @@ function parseJson(value) {
 
 // Widens the targets with D1 ledger rows the in-store record no longer holds
 // (the store keeps the newest 200 leads and 1000 conversations; the ledger
-// keeps everything). Errors propagate so a deletion never half-succeeds.
+// keeps everything). Identity only: sessions are checked separately by
+// resolveSessionsInLedger. Errors propagate so a deletion never
+// half-succeeds.
 export async function expandTargetsInLedger(db, botId, targets) {
   for (const email of targets.emails) {
     const leads = await db
@@ -275,8 +448,9 @@ export async function expandTargetsInLedger(db, botId, targets) {
       .bind(botId, email)
       .all();
     for (const row of leads.results || []) {
+      targets.ledgerRows += 1;
       if (idKey(row.lead_id)) targets.leadIds.add(idKey(row.lead_id));
-      if (idKey(row.conversation_id)) targets.conversationIds.add(idKey(row.conversation_id));
+      if (idKey(row.conversation_id)) addConversation(targets, row.conversation_id, undefined, { identity: true });
     }
   }
   for (const ids of chunks(targets.leadIds)) {
@@ -285,41 +459,97 @@ export async function expandTargetsInLedger(db, botId, targets) {
       .bind(botId, ...ids)
       .all();
     for (const row of leads.results || []) {
+      targets.ledgerRows += 1;
       if (normalizeLeadEmail(row.email)) targets.emails.add(normalizeLeadEmail(row.email));
-      if (idKey(row.conversation_id)) targets.conversationIds.add(idKey(row.conversation_id));
+      if (idKey(row.conversation_id)) addConversation(targets, row.conversation_id, undefined, { identity: true });
     }
   }
 
   const absorb = (rows) => {
     for (const row of rows || []) {
-      if (idKey(row.conversation_id)) targets.conversationIds.add(idKey(row.conversation_id));
-      const conversation = parseJson(row.conversation_json);
-      const sessionId = conversationSessionId(conversation);
+      targets.ledgerRows += 1;
+      addConversation(targets, row.conversation_id, row.question, { identity: true });
+      const sessionId = conversationSessionId(parseJson(row.conversation_json));
       if (sessionId) targets.sessionIds.add(sessionId);
     }
   };
   for (const email of targets.emails) {
     const rows = await db
-      .prepare("SELECT conversation_id, conversation_json FROM siterep_conversations WHERE bot_id = ? AND visitor_email = ?")
+      .prepare("SELECT conversation_id, question, conversation_json FROM siterep_conversations WHERE bot_id = ? AND visitor_email = ?")
       .bind(botId, email)
       .all();
     absorb(rows.results);
   }
-  for (const ids of chunks(targets.conversationIds)) {
+  for (const ids of chunks(targets.identityConversationIds)) {
     const rows = await db
-      .prepare(`SELECT conversation_id, conversation_json FROM siterep_conversations WHERE bot_id = ? AND conversation_id IN (${placeholders(ids.length)})`)
+      .prepare(
+        `SELECT conversation_id, question, conversation_json FROM siterep_conversations WHERE bot_id = ? AND conversation_id IN (${placeholders(ids.length)})`,
+      )
       .bind(botId, ...ids)
       .all();
     absorb(rows.results);
   }
+  return targets;
+}
+
+// Decides each candidate session once, against both the live bot record and
+// the ledger: a session is followed only when none of its conversations
+// carries another email and no other lead was captured in it. Followed
+// sessions add their conversations; the rest are blocked and counted.
+export async function resolveSessions(db, botId, bot, targets) {
+  const leads = Array.isArray(bot?.leads) ? bot.leads : [];
+  const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
   for (const sessionId of [...targets.sessionIds]) {
-    const rows = await db
-      .prepare("SELECT conversation_id, conversation_json FROM siterep_conversations WHERE bot_id = ? AND instr(conversation_json, ?) > 0")
-      .bind(botId, `"sessionId":${JSON.stringify(sessionId)}`)
-      .all();
-    absorb(rows.results);
+    if (targets.blockedSessions.has(sessionId)) continue;
+    const members = conversations
+      .filter((conversation) => conversationSessionId(conversation) === sessionId)
+      .map((conversation) => ({ id: idKey(conversation.id), question: conversation.question, email: conversationEmail(conversation) }));
+    if (db) {
+      const rows = await db
+        .prepare(
+          "SELECT conversation_id, question, visitor_email, conversation_json FROM siterep_conversations WHERE bot_id = ? AND instr(conversation_json, ?) > 0",
+        )
+        .bind(botId, `"sessionId":${JSON.stringify(sessionId)}`)
+        .all();
+      for (const row of rows.results || []) {
+        const conversation = parseJson(row.conversation_json);
+        if (conversationSessionId(conversation) !== sessionId) continue;
+        members.push({
+          id: idKey(row.conversation_id),
+          question: row.question,
+          email: normalizeLeadEmail(row.visitor_email) || conversationEmail(conversation),
+        });
+      }
+    }
+    const memberIds = new Set(members.map((member) => member.id).filter(Boolean));
+    let foreign =
+      members.some((member) => isForeignEmail(member.email, targets)) ||
+      leads.some((lead) => memberIds.has(idKey(lead.conversationId)) && !isTargetLead(lead, targets));
+    if (!foreign && db) {
+      for (const ids of chunks(memberIds)) {
+        const rows = await db
+          .prepare(`SELECT lead_id, email FROM siterep_leads WHERE bot_id = ? AND conversation_id IN (${placeholders(ids.length)})`)
+          .bind(botId, ...ids)
+          .all();
+        if ((rows.results || []).some((row) => !isTargetLead({ id: row.lead_id, email: row.email }, targets))) foreign = true;
+      }
+    }
+    if (foreign) {
+      targets.blockedSessions.add(sessionId);
+      continue;
+    }
+    for (const member of members) addConversation(targets, member.id, member.question);
   }
   return targets;
+}
+
+// Whether anything stored still identifies this visitor: a lead or a
+// conversation in the live record, or a ledger row.
+export function targetsFoundAnything(bot, targets) {
+  if (targets.ledgerRows > 0) return true;
+  const leads = Array.isArray(bot?.leads) ? bot.leads : [];
+  const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
+  return leads.some((lead) => leadMatches(lead, targets)) || conversations.some((conversation) => conversationMatches(conversation, targets));
 }
 
 export async function deleteLeadLedgerRows(db, botId, targets) {
