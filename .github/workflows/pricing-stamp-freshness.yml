@@ -1,0 +1,55 @@
+name: Pricing stamp freshness
+
+# Weekly check that every /vs leaf pricing stamp is under 60 days old. Kept off
+# the PR gate (#147): a literal date compared to now() fails every PR once it ages.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - id: check
+        run: node --test tests/pricing-stamp-freshness.check.js 2>&1 | tee freshness.log
+        continue-on-error: true
+      - name: Open or update the stale-stamp issue
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "A comparison-page pricing stamp is older than 60 days. Re-check the vendor pricing pages, update the stamps and sitemap lastmod, then close this issue."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            head -c 6000 freshness.log
+            echo '```'
+          } > body.md
+          gh label create pricing-stamp-stale -R "$GITHUB_REPOSITORY" --color D93F0B --description "Comparison pricing stamp older than 60 days" 2>/dev/null || true
+          existing="$(gh issue list -R "$GITHUB_REPOSITORY" --label pricing-stamp-stale --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --label pricing-stamp-stale --title "Comparison pricing stamps are older than 60 days" --body-file body.md
+          fi
+      - if: steps.check.outcome == 'failure'
+        run: exit 1
