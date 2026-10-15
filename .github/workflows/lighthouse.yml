@@ -11,31 +11,7 @@ on:
 permissions:
   contents: read
 jobs:
-  warm:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
-    permissions:
-      contents: read
-    steps:
-      - name: Let the new deploy settle
-        if: github.event_name == 'workflow_run'
-        run: sleep 150
-      - name: Warm the edge
-        run: |
-          ua='Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36'
-          accept='text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
-          for _ in 1 2 3 4 5 6 7 8; do
-            page=$(curl -fsS -A "$ua" -H "accept: $accept" -H 'accept-encoding: gzip, deflate, br, zstd' https://siterep.net/)
-            asset=$(printf '%s' "$page" | grep -o '/assets/[A-Za-z0-9_-]*\.js' | head -n 2)
-            for path in $asset; do
-              curl -fsS -A "$ua" -H 'accept-encoding: gzip, deflate, br, zstd' -o /dev/null "https://siterep.net${path}"
-            done
-            curl -fsS -A "$ua" -o /dev/null https://siterep.net/api/public/pricing
-            sleep 3
-          done
   lighthouse:
-    needs: warm
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     uses: Nishfleet/fleet-ops/.github/workflows/lighthouse.yml@main
     permissions:
