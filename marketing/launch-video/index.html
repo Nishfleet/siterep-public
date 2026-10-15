@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #111614; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #f6f7f9; }
+      .scene { position: absolute; inset: 0; overflow: hidden; }
+      .shot { position: absolute; width: 1920px; height: 1080px; object-fit: cover; transform-origin: 50% 30%; }
+      .shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(17,22,20,1) 0%, rgba(17,22,20,.98) 46%, rgba(17,22,20,0) 62%); }
+      .copy { position: absolute; left: 96px; top: 0; bottom: 0; width: 820px; display: flex; flex-direction: column; justify-content: center; gap: 28px; }
+      .eyebrow { font-size: 30px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #5fd3a0; }
+      .big { font-size: 92px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+      .sub { font-size: 40px; font-weight: 500; line-height: 1.3; color: #dfe5e1; }
+      .card { position: absolute; left: 1010px; top: 60px; width: 820px; height: 960px; border-radius: 14px; overflow: hidden; box-shadow: 0 40px 120px rgba(0,0,0,.5); background: #fff; }
+      .card img { position: absolute; left: -550px; top: 0; width: 1920px; height: 1080px; }
+      .cta { display: inline-block; align-self: flex-start; padding: 22px 44px; border-radius: 12px; background: #126342; color: #fff; font-size: 44px; font-weight: 800; }
+      .end { background: #111614; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; text-align: center; }
+      .url { font-size: 120px; font-weight: 800; letter-spacing: -0.03em; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="62" data-width="1920" data-height="1080">
+
+      <!-- 0-14s: who it is for + what it does, over the real siterep.net hero -->
+      <div id="s1" class="scene clip" data-start="0" data-duration="14" data-track-index="0">
+        <img class="shot" id="s1img" src="assets/siterep-home.png" />
+        <div class="shade"></div>
+        <div class="copy" id="s1copy">
+          <div class="eyebrow">For small business websites</div>
+          <div class="big">Answers from your approved pages.</div>
+          <div class="sub">Site Rep cites the source under every answer, and captures leads.</div>
+        </div>
+      </div>
+
+      <!-- 14-30s: the headline from the live site -->
+      <div id="s2" class="scene clip" data-start="14" data-duration="16" data-track-index="0">
+        <img class="shot" id="s2img" src="assets/siterep-home.png" />
+        <div class="shade"></div>
+        <div class="copy" id="s2copy">
+          <div class="eyebrow">The problem</div>
+          <div class="big">A private rep for the people your site almost loses.</div>
+          <div class="sub">It refuses to guess, and collects the visitor's details for your private follow-up queue.</div>
+        </div>
+      </div>
+
+      <!-- 30-46s: honesty page -->
+      <div id="s3" class="scene clip" data-start="30" data-duration="16" data-track-index="0">
+        <img class="shot" id="s3img" src="assets/siterep-honesty.png" style="filter:brightness(.55)" />
+        <div class="shade" style="background:rgba(17,22,20,.7)"></div>
+        <div class="copy" id="s3copy" style="left:96px;width:760px">
+          <div class="eyebrow">The honesty page</div>
+          <div class="big">It says when it does not know.</div>
+          <div class="sub">When your pages do not cover a question, Site Rep says so and asks for follow-up.</div>
+        </div>
+        <div class="card" id="s3card"><img data-layout-allow-overflow src="assets/siterep-honesty.png" style="left:-550px" /></div>
+      </div>
+
+      <!-- 46-54s: trust page -->
+      <div id="s4" class="scene clip" data-start="46" data-duration="8" data-track-index="0">
+        <img class="shot" id="s4img" src="assets/siterep-trust.png" style="filter:brightness(.55)" />
+        <div class="shade" style="background:rgba(17,22,20,.7)"></div>
+        <div class="copy" id="s4copy" style="width:760px">
+          <div class="eyebrow">Trust and data handling</div>
+          <div class="big">What it does today, stated plainly.</div>
+        </div>
+        <div class="card" id="s4card"><img data-layout-allow-overflow src="assets/siterep-trust.png" style="left:-550px" /></div>
+      </div>
+
+      <!-- 54-62s: the one next action -->
+      <div id="s5" class="scene end clip" data-start="54" data-duration="8" data-track-index="0">
+        <div class="eyebrow">Your next step</div>
+        <div class="url" id="s5url">siterep.net</div>
+        <div class="cta" id="s5cta" style="align-self:center">Start free — no card</div>
+      </div>
+
+      <audio id="music" src="assets/music.mp3" data-start="0" data-duration="62" data-volume="0.35" data-fade-in="1" data-fade-out="3" data-track-index="9"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const slide = (id, t, d) => tl.fromTo(id, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7 }, t);
+      slide("#s1copy", 0.3);
+      tl.fromTo("#s1img", { scale: 1.0 }, { scale: 1.08, duration: 14, ease: "none" }, 0);
+      slide("#s2copy", 14.3);
+      tl.fromTo("#s2img", { scale: 1.08, x: 0 }, { scale: 1.0, x: -30, duration: 16, ease: "none" }, 14);
+      slide("#s3copy", 30.3);
+      tl.fromTo("#s3card", { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.8 }, 30.5);
+      slide("#s4copy", 46.3);
+      tl.fromTo("#s4card", { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.8 }, 46.5);
+      tl.fromTo("#s5url", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.8 }, 54.4);
+      tl.fromTo("#s5cta", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6 }, 55.4);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
