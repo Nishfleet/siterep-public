@@ -3,12 +3,6 @@ import { test } from "node:test";
 
 import { enforceSelfServeReadinessInvariant, requiredReadinessComponents } from "../worker/readiness.js";
 
-// Behavioral tests for the one enforced readiness invariant behind scout
-// 2026-08-09: required storage components (recordLedger, sourceContent,
-// accountRbac) can never report `ready: false` while the aggregate
-// self-serve readiness reports green — that would tell agents, monitors,
-// and trust-conscious buyers two contradictory truths at once.
-
 function greenSelfServe() {
   return {
     ready: true,

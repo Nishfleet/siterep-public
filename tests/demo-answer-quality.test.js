@@ -2,10 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// Guards the demo-bot answer-quality fixes: a cited public answer must never
-// be a narrated non-answer, never cite the same source twice, and the
-// hydration merge must key on source identity rather than URL.
-
 test("hydration merges by source id so same-URL sources stay distinct", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
@@ -30,9 +26,6 @@ test("demo pricing answers are never handed to the compose model", async () => {
 
   const handler = worker.slice(worker.indexOf("async function handleComposedPublicChat"));
   const handlerBody = handler.slice(0, handler.indexOf("\n}"));
-  // The compose step must short-circuit when the answer cites the dedicated
-  // demo pricing sources — a model rewrite drops the plan names the live
-  // quote guarantees.
   assert.match(handlerBody, /isExactDemoPricingAnswer\(prep\.answer\)/);
   assert.match(handlerBody, /&& prep\.eligible/);
 });
@@ -55,7 +48,6 @@ test("live monitor asserts cited answers are honest and citations are unique", a
   assert.match(monitor, /function assertHonestCitedAnswer/);
   assert.match(monitor, /cited the same source more than once/);
   assert.match(monitor, /non-answer dressed as a cited answer/);
-  // All cited probes (pricing, install, and trust demo questions) go through the shared assertion.
   assert.match(monitor, /assertHonestCitedAnswer\("pricing demo", data\)/);
   assert.match(monitor, /assertHonestCitedAnswer\("install demo", data\)/);
   assert.match(monitor, /assertHonestCitedAnswer\("trust demo", data\)/);
@@ -75,10 +67,8 @@ test("live monitor covers every public demo CTA question", async () => {
   assert.ok(workerMatch, "PUBLIC_DEMO_WIDGET_SETTINGS.suggestedQuestions not found in worker/index.js");
   const workerQuestions = [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 
-  // The homepage and the public demo bot must agree on the CTA list.
   assert.deepStrictEqual(appQuestions, workerQuestions);
 
-  // Every public demo CTA must be exercised by at least one canary probe.
   for (const question of appQuestions) {
     assert.ok(
       monitor.includes(question),
@@ -86,7 +76,6 @@ test("live monitor covers every public demo CTA question", async () => {
     );
   }
 
-  // New chat probes get a response-time budget.
   assert.match(monitor, /"widget trust chat": 9000/);
 });
 
@@ -139,7 +128,6 @@ test("public demo lead-capture source cites the product page that describes lead
   assert.doesNotMatch(lead.url, /#how-it-works/);
   assert.match(lead.url, /\/ai-website-chatbot-for-small-business/);
 
-  // Answer text and source id stay put. Only the citation target moves.
   assert.match(lead.content, /What happens when a visitor leaves their email\?/);
   assert.match(lead.content, /captures the visitor's question and contact details as a lead/);
   assert.match(lead.content, /notifies your team/);
@@ -180,19 +168,13 @@ test("demo-pricing citation points at a page that contains the free-trial text",
 test("widget first impression is honest and visitor-voiced", async () => {
   const widget = await readFile(new URL("../public/widget.js", import.meta.url), "utf8");
 
-  // No fabricated source chips in the welcome bubble, ever — citations only
-  // appear on real answers.
   assert.doesNotMatch(widget, /<span>Pricing<\/span><span>Security<\/span>/);
-  // The status pill starts hidden and hides itself when there is nothing to say.
   assert.match(widget, /data-cr-status hidden/);
   assert.match(widget, /status\.hidden = !text/);
-  // Visitor-voiced labels — visitors are not "leads" and don't run review queues.
   assert.doesNotMatch(widget, />Send lead</);
   assert.doesNotMatch(widget, />Needs review</);
   assert.match(widget, /Not helpful/);
   assert.doesNotMatch(widget, /placeholder="Work email"/);
-  // One session per visit, double-submit guard, and answers announced to
-  // screen readers.
   assert.match(widget, /sessionStorage\.getItem\("siterep-session"\)/);
   assert.match(widget, /submitButton\.disabled = true/);
   assert.match(widget, /aria-live="polite"/);

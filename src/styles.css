@@ -29,7 +29,6 @@
   --shadow: 0 24px 70px rgba(24, 37, 31, 0.12);
 }
 
-/* Mobbin-backed console direction: Intercom-style shell, Site Rep colors. */
 .site-header {
   background: rgba(250, 251, 249, 0.94);
 }
@@ -841,12 +840,6 @@ body {
   background: #f6f7f9;
 }
 
-/* Site Rep shell must collapse to the viewport at any width, including sub-320
-   mobile devices. The earlier `body { min-width: 320px }` floor forced the
-   document to scroll horizontally on phones narrower than 320 px. Long words
-   must still wrap inside their containers — `overflow-wrap: anywhere` lets
-   them break across lines instead of pushing the shell wider than the
-   viewport. */
 main,
 .site-header,
 .public-hero,
@@ -1152,9 +1145,6 @@ h1 {
   font-weight: 650;
 }
 
-/* AI disclosure strip: sits between the chat header and the transcript, so it
-   is read before the first bot message and never scrolls out of view with the
-   message list. */
 .chat-disclosure {
   background: #f7f8f4;
   border-bottom: 1px solid var(--line);
@@ -6811,7 +6801,6 @@ footer a {
   }
 }
 
-/* Final console overrides: keep these after legacy page rules. */
 .site-header {
   background: rgba(250, 251, 249, 0.94);
 }
@@ -6900,7 +6889,6 @@ h1 {
   margin-top: 0;
 }
 
-/* Sign-in surface: visible, extractable detail below the dashboard entry card. */
 .signin-surface-info {
   background: #f6f7f9;
   padding: clamp(28px, 5vw, 64px) clamp(20px, 6vw, 88px);
@@ -7790,9 +7778,6 @@ h1 {
     height: 260px;
   }
 
-  /* Keep the sticky header inside the viewport at sub-360 widths. The
-     default site-header uses `gap: 32px` and 20px side padding, which
-     pushes the brand + sign-in + ghost-button row wider than 280 px. */
   .site-header {
     gap: 10px;
     height: 60px;
@@ -7817,7 +7802,6 @@ h1 {
   }
 }
 
-/* Payment verification takeover */
 .claim-overlay {
   position: fixed;
   inset: 0;
@@ -7840,7 +7824,6 @@ h1 {
 .claim-overlay-card h2 { margin: 14px 0 8px; font-size: 22px; }
 .claim-overlay-card p { margin: 0; color: #4c554f; line-height: 1.5; }
 
-/* Customer welcome steps */
 .welcome-steps { padding: 26px clamp(20px, 6vw, 72px) 0; }
 .welcome-steps-card {
   background: #f2f7f2;
@@ -7857,18 +7840,12 @@ h1 {
 .welcome-steps-card li span { color: #4c554f; font-size: 14px; }
 .welcome-steps-card li a { font-weight: 600; color: #1f8f5f; font-size: 14px; }
 
-/* Access form hints */
 .access-hint { margin: 2px 0 6px; font-size: 13px; color: #5a635d; line-height: 1.45; }
 
-/* Public pricing spacing */
 .public-pricing { padding-top: 10px; }
 
-/* Checkout fine print */
 .checkout-fineprint { font-size: 12.5px; color: #5a635d; line-height: 1.5; margin-top: -4px; }
 
-/* The desktop nav and header button are hidden at <=720px, which removed the
-   only path into the customer dashboard on phones. Keep sign-in and the
-   primary CTA reachable on mobile. */
 .mobile-signin {
   display: none;
 }
@@ -7889,7 +7866,6 @@ h1 {
   }
 }
 
-/* 50 visible leads need a bounded, scrollable inbox. */
 .lead-inbox ul {
   max-height: 460px;
   overflow-y: auto;

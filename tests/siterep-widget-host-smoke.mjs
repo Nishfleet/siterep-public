@@ -160,9 +160,6 @@ async function runDocsFlow(viewport, screenshotName) {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
   await page.locator("#citerep-panel.cr-open").waitFor({ state: "visible" });
   await page.getByRole("button", { name: "How do I install it?" }).click();
-  // Scope answer assertions to the bot message bubble: the widget's screen-reader
-  // live region (div.cr-hp[data-cr-announcer]) echoes every bot answer verbatim
-  // and is never cleared, so a bare getByText strict-mode-resolves to two elements.
   await expectBotAnswer("Paste the script before the closing body tag");
   const sourceToggle = page.getByRole("button", { name: /Used 1 source/ });
   await sourceToggle.click();

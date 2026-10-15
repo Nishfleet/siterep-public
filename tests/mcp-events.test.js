@@ -117,9 +117,6 @@ function makeDeps(options = {}) {
     touchDeveloperApiKey: async (botId, keyId) => {
       state.touches.push({ botId, keyId });
     },
-    // Production wiring (worker/index.js) always passes a recorder; tests
-    // mirror that by default. options.noRecorder simulates an unwired harness
-    // and options.recorder customizes the callback behavior (e.g. throwing).
     ...(options.noRecorder
       ? {}
       : {
@@ -160,17 +157,11 @@ function fakeKv(initial = {}) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Module: allow-list and spoof-resistant boundary
-// ---------------------------------------------------------------------------
-
 test("MCP attribution allow-list covers connection, call, and first value and nothing else", () => {
   assert.deepEqual([...MCP_EVENT_NAMES].sort(), ["mcp_connected", "mcp_customer_receipt_read", "mcp_tool_called"]);
   for (const name of MCP_EVENT_NAMES) {
     assert.equal(isValidMcpEventName(name), true, name);
   }
-  // Arbitrary or unsupported event names must fail — including lookalikes and
-  // every public funnel event, which live in a separate allow-list.
   for (const junk of [
     "mcp_pageview",
     "mcp_connected_x",
@@ -191,8 +182,6 @@ test("MCP attribution allow-list covers connection, call, and first value and no
 });
 
 test("public funnel beacon cannot record MCP-origin events (spoof-resistant boundary)", async () => {
-  // The unauthenticated public endpoint parses only the twelve-event funnel
-  // allow-list, so a visitor POSTing mcp_* names gets nothing recorded.
   for (const name of MCP_EVENT_NAMES) {
     assert.equal(parseFunnelEventPayload(JSON.stringify({ event: name })).ok, false, name);
   }
@@ -206,8 +195,6 @@ test("public funnel beacon cannot record MCP-origin events (spoof-resistant boun
   }
   assert.equal(kv.puts.length, 0, "MCP event names must never reach KV via the public beacon");
 
-  // Even a foreign writer cannot smuggle MCP counts into the funnel stats
-  // view: the funnel read path scrubs unknown keys.
   const funnelKv = fakeKv({
     "funnel-events:2026-08-06": JSON.stringify({ demo_opened: 2, mcp_connected: 999 }),
   });
@@ -216,10 +203,6 @@ test("public funnel beacon cannot record MCP-origin events (spoof-resistant boun
   assert.deepEqual(stats.totals, { demo_opened: 2 });
   assert.equal("mcp_connected" in stats.totals, false);
 });
-
-// ---------------------------------------------------------------------------
-// Module: bounded aggregation
-// ---------------------------------------------------------------------------
 
 test("MCP aggregates are scrubbed to the three-event allow-list", () => {
   assert.deepEqual(scrubMcpAggregate({ mcp_connected: 2, ignored_junk: 999 }), { mcp_connected: 2 });
@@ -333,10 +316,6 @@ test("readMcpStats is queryable by date and outcome, scrubbed, and bounded", asy
   assert.deepEqual(range.keys, []);
 });
 
-// ---------------------------------------------------------------------------
-// Handler: server-derived recording only after server-verified auth
-// ---------------------------------------------------------------------------
-
 test("MCP handler records connection, call, and first value after auth — and nothing before it", async () => {
   const connected = makeDeps();
   const init = await dispatch({
@@ -362,8 +341,6 @@ test("MCP handler records connection, call, and first value after auth — and n
     assert.equal(response.json().result.isError, false);
     if (kind) assert.ok(calls.state.mcpEvents.includes(kind), `${tool} must record ${kind}`);
   }
-  // Every authenticated tool call records the call counter exactly once, and
-  // the receipt read records first value in addition.
   assert.deepEqual(calls.state.mcpEvents, [
     "mcp_tool_called",
     "mcp_tool_called",
@@ -371,7 +348,6 @@ test("MCP handler records connection, call, and first value after auth — and n
     "mcp_customer_receipt_read",
   ]);
 
-  // Unknown tools still count as authenticated call attempts.
   const unknown = makeDeps();
   const badTool = await dispatch({
     deps: unknown.deps,
@@ -383,7 +359,6 @@ test("MCP handler records connection, call, and first value after auth — and n
 });
 
 test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-rejected traffic", async () => {
-  // No token at all.
   const anonymous = makeDeps();
   await dispatch({
     deps: anonymous.deps,
@@ -392,7 +367,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   });
   assert.deepEqual(anonymous.state.mcpEvents, []);
 
-  // Invalid token.
   const invalid = makeDeps();
   await dispatch({
     deps: invalid.deps,
@@ -401,7 +375,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   });
   assert.deepEqual(invalid.state.mcpEvents, []);
 
-  // Missing scopes.
   const scoped = makeDeps({ scopes: ["bot:read"] });
   await dispatch({
     deps: scoped.deps,
@@ -410,7 +383,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   });
   assert.deepEqual(scoped.state.mcpEvents, []);
 
-  // Pre-auth rate limited.
   const limited = makeDeps({ preAuthLimited: true });
   await dispatch({
     deps: limited.deps,
@@ -419,7 +391,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   });
   assert.deepEqual(limited.state.mcpEvents, []);
 
-  // Unsupported protocol version is rejected before auth ever runs.
   const version = makeDeps();
   await dispatch({
     deps: version.deps,
@@ -428,7 +399,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   });
   assert.deepEqual(version.state.mcpEvents, []);
 
-  // Browser discovery (GET) is not a connection: no attribution at all.
   const discovery = makeDeps();
   const get = await dispatch({
     deps: discovery.deps,
@@ -438,7 +408,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
   assert.equal(get.status, 200);
   assert.deepEqual(discovery.state.mcpEvents, []);
 
-  // Malformed initialize (invalid id) is rejected before method dispatch.
   const malformedId = makeDeps();
   await dispatch({
     deps: malformedId.deps,
@@ -449,8 +418,6 @@ test("MCP attribution never fires for unauthenticated, unverified, or pre-auth-r
 });
 
 test("MCP responses are byte-for-byte unchanged by attribution", async () => {
-  // Two independent wired harnesses; recording fires in both, so any change
-  // to status or body caused by attribution would show up as a mismatch.
   const harnessA = makeDeps();
   const harnessB = makeDeps();
   const requests = [
@@ -471,9 +438,6 @@ test("MCP responses are byte-for-byte unchanged by attribution", async () => {
 });
 
 test("MCP attribution degrades cleanly: absent or throwing recorders never break the handler", async () => {
-  // No recorder wired at all (deps without recordMcpEvent) — the protocol
-  // keeps working exactly as before, exactly like the pre-attribution harness
-  // used by the existing site-rep-mcp tests.
   const plain = makeDeps({ noRecorder: true });
   const response = await dispatch({
     deps: plain.deps,
@@ -483,7 +447,6 @@ test("MCP attribution degrades cleanly: absent or throwing recorders never break
   assert.equal(response.status, 200);
   assert.equal(response.json().result.serverInfo.name, "siterep");
 
-  // Recorder throws synchronously — still no effect on the response.
   const throwing = makeDeps({
     recorder: () => {
       throw new Error("recorder exploded");
@@ -498,10 +461,6 @@ test("MCP attribution degrades cleanly: absent or throwing recorders never break
   assert.equal(tough.json().result.protocolVersion, "2025-06-18");
 });
 
-// ---------------------------------------------------------------------------
-// Worker wiring: fire-and-forget recording and admin-gated stats read
-// ---------------------------------------------------------------------------
-
 test("worker wires fire-and-forget MCP attribution through the Durable Object context", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   assert.match(worker, /import \{ readMcpStats, recordMcpEvent \} from "\.\/mcp-events\.js"/);
@@ -513,8 +472,6 @@ test("worker wires fire-and-forget MCP attribution through the Durable Object co
   assert.match(mcpWiring, /\.catch\(\(\) => \{\}\)/, "recording must never reject");
   assert.doesNotMatch(mcpWiring, /await recordMcpEvent/, "recording must never delay the MCP response");
 
-  // The event names always come from the server-derived allow-list in the
-  // handler, never from the request: the wiring itself must not parse bodies.
   const handler = await readFile(new URL("../worker/site-rep-mcp.js", import.meta.url), "utf8");
   assert.match(handler, /noteMcpEvent\(deps, "mcp_connected"\)/);
   assert.match(handler, /noteMcpEvent\(deps, "mcp_tool_called"\)/);
@@ -531,6 +488,5 @@ test("worker exposes admin-gated MCP attribution stats queryable by date", async
   const mcpStatsIndex = worker.indexOf('url.pathname === "/api/mcp/stats"');
   const mcpRouteIndex = worker.indexOf('url.pathname === "/api/mcp"');
   assert.ok(funnelStatsIndex > -1 && mcpStatsIndex > -1 && mcpRouteIndex > -1);
-  // Exact-match stats route must not be swallowed by the MCP route handler.
   assert.ok(mcpStatsIndex < mcpRouteIndex, "the stats route must be matched before the exact /api/mcp route");
 });

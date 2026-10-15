@@ -2,12 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// The public homepage hero is the buyer's first rendered screen, so its copy
-// must carry product-verifiable specifics instead of generic marketing words:
-// what Site Rep does, for whom, how source citations work, what happens when
-// a source cannot prove an answer, and the free first-value path. These tests
-// pin those specifics and guard the claim boundary so the first screen cannot
-// drift back into generic or unsupported language.
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
 const heroParagraphStart = app.indexOf("Site Rep answers sales and service questions from approved sources and shows the exact source page");
@@ -62,11 +56,6 @@ test("free-answer count in the hero matches the actual free-start offer", () => 
 });
 
 test("free-start dialog submit button matches the no-time-limit offer", () => {
-  // The dialog's central trust line is "no card, no time limit"; a "trial"
-  // label on the very button that completes the signup would imply a
-  // time-limited evaluation and undercut that promise. The submit action must
-  // name the free start, and no "trial" token may appear anywhere in the
-  // dialog (button, heading, or body copy).
   assert.match(freeStartModal, /Start free — no card/, "dialog heading must name the no-card free start");
   assert.match(freeStartModal, /No credit card\. No time limit\./, "dialog must keep the no-time-limit promise");
   assert.match(freeStartModal, /\{saving \? "Setting up your rep" : "Start free"\}/, "submit button must say Start free (never Start free trial)");

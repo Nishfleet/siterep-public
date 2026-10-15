@@ -1,16 +1,6 @@
-// Webhook-event idempotency and ledger-entry statements. Extracted from the
-// worker entry so the retry/dedupe semantics are unit-testable in Node against
-// a real SQLite database (worker/index.js imports cloudflare:workers and
-// cannot be imported outside the Workers runtime).
-
 export async function reserveWebhookEvent(db, event) {
-  // Derive a deterministic id from the payload when the provider omits the
-  // event-id header, so replays still dedupe.
   const eventId = event.eventId || `evt_sha_${String(event.payloadSha256 || "").slice(0, 40)}` || `evt_${crypto.randomUUID()}`;
   const existing = await db.prepare(`SELECT event_id, status FROM payment_webhook_events WHERE event_id = ?`).bind(eventId).first();
-  // Only fully processed events are duplicates. Events whose first attempt
-  // failed mid-flight (e.g. activation error) must reprocess on provider retry,
-  // otherwise a paid customer stays locked out forever.
   if (existing && String(existing.status || "") === "processed") return { duplicate: true, eventId };
   if (existing) {
     await db
@@ -38,9 +28,6 @@ export async function markWebhookEvent(db, eventId, status, error = "") {
 }
 
 export function paymentLedgerEntryStatement(db, entry) {
-  // INSERT OR IGNORE + the unique (reference_id, event_type, event_id) index
-  // keep replayed webhooks and claim/webhook races from double-writing the
-  // money audit trail.
   return db
     .prepare(
       `INSERT OR IGNORE INTO payment_ledger_entries (reference_id, event_type, amount_subunits, currency, provider_id, event_id, created_at)

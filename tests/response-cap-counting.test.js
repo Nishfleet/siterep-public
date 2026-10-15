@@ -2,13 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { registerHooks } from "node:module";
 
-// The worker entry imports `cloudflare:workers`, which only exists inside the
-// Workers runtime. Serve a minimal DurableObject stub for that one specifier so
-// the REAL handler in worker/index.js — recordConversation, driven through the
-// POST /api/chat route of the exported CiteRepCoordinator — runs here in Node
-// with stubbed storage, exactly as the sibling behavioral tests (payment,
-// usage, overage) drive their extracted modules. This is a behavior test of
-// customer-visible money behavior, not a source-shape check.
+// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -22,8 +16,6 @@ registerHooks({
   },
 });
 
-// Durable Object storage shim: get/put/delete/list over an in-memory Map.
-// put() accepts both (key, value) and the object-map form the worker uses.
 function fakeStorage(seed = {}) {
   const map = new Map(Object.entries(seed));
   return {
@@ -101,9 +93,6 @@ function defaultSources() {
   ];
 }
 
-// Boot the real coordinator with a seeded store, and POST to the real /api/chat
-// route. Every request round-trips through updateStore → Durable Object storage
-// writes, so the persisted bot record is the ground truth for the count.
 async function bootBot(botId, options = {}) {
   const { CiteRepCoordinator } = await import("../worker/index.js");
   const storage = fakeStorage({
@@ -133,9 +122,7 @@ test("a cited answer increments the monthly response count by exactly one", asyn
   const result = await ask(ANSWERABLE);
   assert.equal(result.unknown, false, "question backed by a source must be answered");
   assert.equal(result.conversation.refused, false);
-  // Customer-visible count in the response payload…
   assert.equal(result.responseCount, 1);
-  // …and the persisted record the cap gate reads next time.
   assert.equal(storedBot().responseCount, 1);
 });
 
@@ -148,8 +135,6 @@ test("a refusal increments the count by zero — charging for refusals is not al
   assert.equal(refused.responseCount, 0, "a refusal must never consume the plan cap");
   assert.equal(storedBot().responseCount, 0);
 
-  // Refusals stay free even when repeated, and an answer that follows still
-  // consumes exactly one.
   await ask(UNANSWERABLE);
   await ask(UNANSWERABLE);
   assert.equal(storedBot().responseCount, 0, "repeated refusals must not count");
@@ -171,8 +156,6 @@ test("counting is cumulative across repeated calls", async () => {
 });
 
 test("the cap is enforced at the boundary: last allowed response served, past it refused, count never exceeds it", async () => {
-  // Starter: 1000 responses + the product's 10% goodwill grace buffer = 1100
-  // answered responses before the answering gate locks (see overage.js).
   const { ask, storedBot } = await bootBot("bot-boundary", { sources: defaultSources(), count: 1099 });
 
   const lastAllowed = await ask(ANSWERABLE);
@@ -187,19 +170,12 @@ test("the cap is enforced at the boundary: last allowed response served, past it
   assert.equal(pastCap.usage.locked, true);
   assert.equal(storedBot().responseCount, 1100);
 
-  // Still refused and still pinned — the count never exceeds the cap.
   const again = await ask(ANSWERABLE);
   assert.equal(again.unknown, true);
   assert.equal(again.responseCount, 1100);
   assert.equal(storedBot().responseCount, 1100);
 });
 
-// The public demo bot (site-rep-demo) is Nish's marketing surface on
-// siterep.net, not a customer bot. It must always answer real visitor
-// questions — it can never be allowed to hit the response cap and degrade
-// into lead-capture mode, or the live demo (and the synthetic monitor that
-// pins it) breaks. Regression: 2026-08-25, the demo bot burned through its
-// Starter 1000/month cap and started refusing every question.
 test("the public demo bot is exempt from the response cap — it always answers", async () => {
   const { CiteRepCoordinator } = await import("../worker/index.js");
   const PUBLIC_DEMO_BOT_ID = "site-rep-demo";
@@ -215,8 +191,6 @@ test("the public demo bot is exempt from the response cap — it always answers"
       indexedAt: new Date().toISOString(),
     },
   ];
-  // Seed the demo bot already past the Starter cap + grace (1100) — the
-  // exact state that locked the live site. It must STILL answer.
   const storage = fakeStorage({
     store: {
       bots: {

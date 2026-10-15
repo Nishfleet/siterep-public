@@ -24,8 +24,6 @@ test("live canary fails when public honesty-check reports allPass false or citat
   assert.match(monitor, /citations\.passed === citations\.total/);
   assert.match(monitor, /data\.allPass/);
 
-  // monitor:live and monitor:launch must count this failure. --health must not
-  // be the only path: the probe sits inside `if (!healthOnly)`.
   const healthOnlyBlock = monitor.indexOf("if (!healthOnly)");
   const probe = monitor.indexOf('await probe("honesty check"');
   assert.ok(healthOnlyBlock !== -1, "health-only skip is missing");
@@ -35,13 +33,9 @@ test("live canary fails when public honesty-check reports allPass false or citat
 test("launch monitor pins per-page sitemap lastmod floors so stale deploys fail loudly", async () => {
   const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
 
-  // The sitemap probe must exist and run against /sitemap.xml.
   assert.match(monitor, /await probe\("sitemap", "\/sitemap\.xml"/);
   assert.match(monitor, /assertSitemapFreshness\("sitemap", body\)/);
 
-  // Per-page floors: lastmod tracks real content change, so privacy
-  // legitimately stays at 2026-08-03 while terms moved to 2026-08-22.
-  // These exact pins keep the monitor contract from silently weakening.
   assert.match(monitor, /"\/": "2026-08-09"/);
   assert.match(monitor, /"\/ai-website-chatbot-for-small-business": "2026-08-09"/);
   assert.match(monitor, /"\/privacy": "2026-08-03"/);
@@ -56,7 +50,6 @@ test("launch monitor pins per-page sitemap lastmod floors so stale deploys fail 
   assert.match(monitor, /"\/vs\/intercom-fin": "2026-08-11"/);
   assert.match(monitor, /"\/vs\/tidio-lyro": "2026-08-11"/);
 
-  // The guard must fail on stale dates and on missing pinned URLs.
   assert.match(monitor, /advertises stale lastmod dates/);
   assert.match(monitor, /is missing pinned URLs/);
 });
