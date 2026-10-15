@@ -486,10 +486,12 @@ function parseJson(value) {
 // keeps everything). Identity only: sessions are checked separately by
 // resolveSessionsInLedger. Errors propagate so a deletion never
 // half-succeeds.
+// Emails are matched with lower() because rows written before the ledger
+// lowercased addresses can still hold mixed case.
 export async function expandTargetsInLedger(db, botId, targets) {
   for (const email of targets.emails) {
     const leads = await db
-      .prepare("SELECT lead_id, conversation_id FROM siterep_leads WHERE bot_id = ? AND email = ?")
+      .prepare("SELECT lead_id, conversation_id FROM siterep_leads WHERE bot_id = ? AND lower(email) = ?")
       .bind(botId, email)
       .all();
     for (const row of leads.results || []) {
@@ -520,7 +522,7 @@ export async function expandTargetsInLedger(db, botId, targets) {
   };
   for (const email of targets.emails) {
     const rows = await db
-      .prepare("SELECT conversation_id, question, conversation_json FROM siterep_conversations WHERE bot_id = ? AND visitor_email = ?")
+      .prepare("SELECT conversation_id, question, conversation_json FROM siterep_conversations WHERE bot_id = ? AND lower(visitor_email) = ?")
       .bind(botId, email)
       .all();
     absorb(rows.results);
@@ -610,9 +612,9 @@ export async function deleteLeadLedgerRows(db, botId, targets) {
   const removed = { leads: 0, conversations: 0 };
   const changes = (result) => Number(result?.meta?.changes || 0);
   for (const email of targets.emails) {
-    removed.leads += changes(await db.prepare("DELETE FROM siterep_leads WHERE bot_id = ? AND email = ?").bind(botId, email).run());
+    removed.leads += changes(await db.prepare("DELETE FROM siterep_leads WHERE bot_id = ? AND lower(email) = ?").bind(botId, email).run());
     removed.conversations += changes(
-      await db.prepare("DELETE FROM siterep_conversations WHERE bot_id = ? AND visitor_email = ?").bind(botId, email).run(),
+      await db.prepare("DELETE FROM siterep_conversations WHERE bot_id = ? AND lower(visitor_email) = ?").bind(botId, email).run(),
     );
   }
   for (const ids of chunks(targets.leadIds)) {

@@ -359,7 +359,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 
 - Source-backed answer behavior: the public bot answers from approved sources and asks for follow-up when source backing is missing.
 - Customer dashboard: leads, conversations, unknown questions, source gaps, install health, exports, notifications, and deletion-review requests are visible in the private dashboard.
-- Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Live data and Site Rep's KV backups are scrubbed at once; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.
+- Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.
 - Visitor data minimization: visitor records store only the question and any name, email, or need the visitor chooses to submit. Visitor IP addresses are used only transiently in memory for rate limiting and are not written to conversations or leads.
 - No tracking cookies: the chat widget sets no cookies and no persistent local storage; it uses session-only storage (cleared when the tab closes) for a random session id.
 - Access control: admin routes require server-side admin access, customer routes use scoped session access, and public widget routes do not return private access material.
@@ -3617,7 +3617,7 @@ function publicTrustStatusPayload(env = activeEnv) {
     ],
     support: {
       email: "hello@siterep.net",
-      deletionReview: "Workspace owners delete a visitor's lead data from the dashboard or owner API, and lead deletion requests complete the same way. Live data and Site Rep's KV backups are scrubbed at once; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.",
+      deletionReview: "Workspace owners delete a visitor's lead data from the dashboard or owner API, and lead deletion requests complete the same way. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.",
     },
     configuredSignals: {
       dodoProductsConfigured: Boolean(env?.DODO_SITEREP_PRODUCT_STARTER_ID),

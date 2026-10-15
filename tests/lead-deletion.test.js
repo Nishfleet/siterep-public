@@ -369,11 +369,12 @@ async function seedLedger(h) {
   const insertLead = h.d1._db.prepare(
     "INSERT INTO siterep_leads (bot_id, lead_id, email, name, status, score, heat, conversation_id, lead_json, created_at, updated_at) VALUES (?, ?, ?, ?, '', 0, '', ?, ?, ?, ?)",
   );
-  insertLead.run("deletebot", "9", JANE, "Jane", "90", JSON.stringify({ id: 9, email: JANE, conversationId: 90, createdAt: NOW }), NOW, NOW);
+  // Mixed case, as rows written before the ledger lowercased addresses can be.
+  insertLead.run("deletebot", "9", "Jane@Visitor.TEST", "Jane", "90", JSON.stringify({ id: 9, email: JANE, conversationId: 90, createdAt: NOW }), NOW, NOW);
   const insertConversation = h.d1._db.prepare(
     "INSERT INTO siterep_conversations (bot_id, conversation_id, question, answer, visitor_email, conversation_json, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, ?)",
   );
-  insertConversation.run("deletebot", "90", "Old question", JANE, JSON.stringify({ id: 90, sessionId: "sess_old", visitor: { email: JANE } }), NOW, NOW);
+  insertConversation.run("deletebot", "90", "Old question", "JANE@visitor.test", JSON.stringify({ id: 90, sessionId: "sess_old", visitor: { email: JANE } }), NOW, NOW);
   insertConversation.run("deletebot", "91", "Same old session", "", JSON.stringify({ id: 91, sessionId: "sess_old" }), NOW, NOW);
 }
 
@@ -406,7 +407,7 @@ test("an owner deletes a lead and every Site Rep copy of it, with a PII-free aud
       .prepare("SELECT conversation_id FROM siterep_conversations WHERE bot_id = 'deletebot' AND conversation_id IN ('90', '91', '100', '101')")
       .all();
     assert.deepEqual(leftovers, [], "ledger-only conversations from the same visitor are deleted");
-    assert.deepEqual(h.d1._db.prepare("SELECT lead_id FROM siterep_leads WHERE email = ?").all(JANE), []);
+    assert.deepEqual(h.d1._db.prepare("SELECT lead_id FROM siterep_leads WHERE lower(email) = ?").all(JANE), [], "mixed-case ledger rows go too");
     const auditRows = h.d1._db.prepare("SELECT action, actor, details_json FROM siterep_privacy_audit").all();
     assert.equal(auditRows.length, 1);
     assert.equal(auditRows[0].action, "lead_data_deleted");
@@ -672,6 +673,9 @@ test("no request path leaves the deleted visitor's email in the store or its KV 
   const ownerBody = await ownerResponse.json();
   assert.doesNotMatch(JSON.stringify(ownerBody), JANE_RE);
   assert.doesNotMatch(JSON.stringify(ownerBody), /privacySalt/, "the salt never leaves the store");
+  const backupExport = await (await owner.get("/api/export/bot.json?botId=deletebot")).text();
+  assert.doesNotMatch(backupExport, /privacySalt/, "the bot backup export leaves the salt out");
+  assert.match(owner.botRecord().privacySalt, /^[0-9a-f]{32}$/);
   assertNoTraceOf(owner, JANE_RE, "owner path");
   const ownerDone = owner.botRecord().privacyRequests[0];
   assert.equal(ownerDone.status, "completed");
