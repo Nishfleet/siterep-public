@@ -1,0 +1,27 @@
+name: LH debug
+on:
+  pull_request:
+    paths: ['.github/workflows/lh-debug.yml']
+permissions:
+  contents: read
+jobs:
+  lh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: treosh/lighthouse-ci-action@3e7e23fb74242897f95c0ba9cabad3d0227b9b18
+        continue-on-error: true
+        with:
+          urls: https://siterep.net/
+          runs: 5
+          uploadArtifacts: false
+          temporaryPublicStorage: false
+      - name: Summarize
+        run: |
+          node -e '
+          const fs=require("fs");
+          for (const f of fs.readdirSync(".lighthouseci").filter(f=>f.startsWith("lhr")&&f.endsWith(".json"))) {
+            const r=JSON.parse(fs.readFileSync(".lighthouseci/"+f));
+            const a=r.audits;
+            console.log("RESULT", Math.round(a.interactive.numericValue), Math.round(a["largest-contentful-paint"].numericValue), JSON.stringify(a["network-requests"].details.items.map(i=>i.url.replace("https://siterep.net","")+" "+Math.round(i.networkEndTime-i.networkRequestTime))));
+          }'
