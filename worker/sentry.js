@@ -104,9 +104,10 @@ const SAFE_MESSAGE_RULES = [
   [/^(CITEREP_STORE KV binding|CITEREP_COORDINATOR Durable Object binding) is not configured\.$/, KEEP],
   [/^(Activation failed|Dodo billing status sync failed) with \d{3}\.$/, KEEP],
   [/^(Dodo checkout|Dodo preview|Razorpay) returned \d{3}\.$/, KEEP],
-  // normalizePlan only returns a PLAN_LIMITS key or "Free".
-  [/^Dodo product is not configured for [A-Za-z]{1,32}\.$/, KEEP],
-  [/^Razorpay is missing keys, currency, or [A-Z0-9_]{1,64}\.$/, KEEP],
+  // The variable part is a plan name or an env key name, listed exactly, so
+  // a message built from anything else is withheld.
+  [/^Dodo product is not configured for (Free|Starter|Growth|Pro|Agency)\.$/, KEEP],
+  [/^Razorpay is missing keys, currency, or RAZORPAY_(STARTER|GROWTH|PRO|AGENCY)_AMOUNT_SUBUNITS\.$/, KEEP],
   // Runtime messages: keep the shape, never the key or expression.
   [/^Cannot (read|set) properties of (undefined|null) \((reading|setting) .*\)$/s, (message) => message.replace(/\((reading|setting) .*\)$/s, "($1 '[key]')")],
   [/^.+ is not (a function|a constructor|iterable|defined)$/s, (message) => message.replace(/^.+ (is not (a function|a constructor|iterable|defined))$/s, "[expression] $1")],

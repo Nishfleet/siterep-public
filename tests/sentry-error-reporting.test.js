@@ -315,6 +315,7 @@ test("exception messages go out only in a known safe shape", () => {
     "Payment ledger is not configured yet.",
     "Dodo checkout returned 502.",
     "Dodo product is not configured for Starter.",
+    "Razorpay is missing keys, currency, or RAZORPAY_AGENCY_AMOUNT_SUBUNITS.",
     "Network connection lost.",
     "D1_ERROR: UNIQUE constraint failed: payment_links.reference_id: SQLITE_CONSTRAINT",
     "D1_ERROR: no such table: dodo_checkout_sessions",
@@ -338,6 +339,8 @@ test("exception messages go out only in a known safe shape", () => {
     "Cannot create property 'x' on string 'Jane Visitor'",
     "D1_TYPE_ERROR: Type 'object' not supported for value 'Jane'",
     "Payment was not found. Jane",
+    "Dodo product is not configured for Jane.",
+    "Razorpay is missing keys, currency, or JANE_VISITOR.",
   ];
   for (const message of withheld) assert.equal(safeMessage(message), "[message withheld]", message);
 });

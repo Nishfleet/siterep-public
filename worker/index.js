@@ -312,7 +312,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
-- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only when they come from Site Rep's own code, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only in fixed shapes from Site Rep's own code or the Cloudflare platform, with any names or values in them replaced, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
