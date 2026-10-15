@@ -14,6 +14,7 @@ import { enforceSelfServeReadinessInvariant } from "./readiness.js";
 import { handleSiteRepMcp } from "./site-rep-mcp.js";
 import { collectFunnelEvent, readFunnelStats } from "./funnel-events.js";
 import { readMcpStats, recordMcpEvent } from "./mcp-events.js";
+import { reportError, withOptionalSentry } from "./sentry.js";
 import {
   answeringMode,
   defaultOverageSettings,
@@ -1135,7 +1136,7 @@ let recordLedgerSchemaReady = false;
 let accountRbacSchemaReady = false;
 let dodoBillingSchemaReady = false;
 
-export default {
+const workerHandler = {
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -1232,6 +1233,7 @@ export default {
       const fallback = new ApiResponse();
       setCors(fallback, request, env);
       console.error("Worker request failed", error);
+      reportError(error);
       sendJson(fallback, 500, { error: "Server error." });
       return fallback.toResponse();
     }
@@ -1241,6 +1243,12 @@ export default {
     ctx.waitUntil(handleScheduled(event, env));
   },
 };
+
+export default withOptionalSentry(workerHandler, {
+  // With Sentry on, cron work is awaited inside the wrapper so a failing task
+  // is reported before the SDK flushes at the end of the invocation.
+  scheduled: (event, env) => handleScheduled(event, env),
+});
 
 function wantsMarkdown(request) {
   const accept = request.headers.get("Accept") || "";
@@ -3713,6 +3721,7 @@ async function runScheduledTask(task, operation) {
   try {
     return await operation();
   } catch (error) {
+    reportError(error);
     console.warn(JSON.stringify({
       type: "scheduled_task_failed",
       task,

@@ -3,6 +3,7 @@
   "name": "siterep",
   "main": "worker/index.js",
   "compatibility_date": "2026-05-03",
+  "compatibility_flags": ["nodejs_als"],
   "observability": {
     "enabled": true
   },
