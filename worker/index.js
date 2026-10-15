@@ -15,6 +15,16 @@ import { handleSiteRepMcp } from "./site-rep-mcp.js";
 import { collectFunnelEvent, readFunnelStats } from "./funnel-events.js";
 import { readMcpStats, recordMcpEvent } from "./mcp-events.js";
 import {
+  LEAD_DELETION_SCOPES,
+  deleteLeadLedgerRows,
+  eraseLeadFromBot,
+  eraseLeadFromStoreSnapshot,
+  expandTargetsInBot,
+  expandTargetsInLedger,
+  leadDeletionTargets,
+  normalizeLeadEmail,
+} from "./lead-deletion.js";
+import {
   answeringMode,
   defaultOverageSettings,
   sanitizeOverageSettings,
@@ -269,7 +279,7 @@ description: What Site Rep collects, how customer controls work, and which priva
 
 # Site Rep Privacy and Data Handling
 
-Last updated: 2026-08-03.
+Last updated: 2026-10-15.
 
 These notes describe the current Site Rep product behavior and should not be read as a compliance certification.
 
@@ -290,7 +300,9 @@ These notes describe the current Site Rep product behavior and should not be rea
 
 - Customers can export bot backup data, leads, conversations, and answer reports from the dashboard.
 - Source edits create rollback snapshots where the source set is small enough to restore safely.
-- Deletion review requests can be opened from the customer dashboard and are tracked for follow-up. Export requests can use the dashboard exports or hello@siterep.net.
+- Customers can delete a visitor's lead from the dashboard lead inbox or the authenticated owner API. Deletion runs immediately: it removes the lead, its linked conversations and transcripts, related follow-up tickets, notifications, queued webhook payloads, and activity entries from Site Rep storage, including the record ledger and recovery backups. An audit entry records that a deletion happened, without the visitor's details.
+- Lead and visitor deletion requests are completed through the same self-serve path. Whole-account deletion requests can still be opened from the customer dashboard and are tracked for review. Export requests can use the dashboard exports or hello@siterep.net.
+- Deletion cannot recall copies already delivered outside Site Rep, such as lead emails already sent to the team or payloads already sent to a configured webhook.
 
 ## Visitor-facing behavior
 
@@ -319,7 +331,7 @@ The chat widget sets no cookies and no persistent local storage. It uses session
 
 Site Rep does not currently include SOC 2, GDPR, HIPAA, zero-retention, or no-training-on-data certification. Customers who need those commitments should request a written review before buying.
 `;
-const TRUST_STATUS_UPDATED_AT = "2026-08-11";
+const TRUST_STATUS_UPDATED_AT = "2026-10-15";
 const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-08-26";
 const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-08-26";
 const RELEASE_STATUS_BRANCH = "main";
@@ -341,6 +353,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 
 - Source-backed answer behavior: the public bot answers from approved sources and asks for follow-up when source backing is missing.
 - Customer dashboard: leads, conversations, unknown questions, source gaps, install health, exports, notifications, and deletion-review requests are visible in the private dashboard.
+- Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Whole-account deletion requests are still tracked for review.
 - Visitor data minimization: visitor records store only the question and any name, email, or need the visitor chooses to submit. Visitor IP addresses are used only transiently in memory for rate limiting and are not written to conversations or leads.
 - No tracking cookies: the chat widget sets no cookies and no persistent local storage; it uses session-only storage (cleared when the tab closes) for a random session id.
 - Access control: admin routes require server-side admin access, customer routes use scoped session access, and public widget routes do not return private access material.
@@ -364,7 +377,7 @@ Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments
 
 - Approved website sources: used to answer visitors with citations; customers can edit, replace, audit, export, and roll back supported snapshots.
 - Visitor conversations and feedback: used for team follow-up, source repair, lead follow-up, and quality checks.
-- Lead details: submitted by visitors for human follow-up; exported privately for the customer.
+- Lead details: submitted by visitors for human follow-up; exported privately for the customer; deleted on request by the workspace owner.
 - Payment records: used only to verify checkout, activation, billing portal access, renewals, and plan status.
 - Operational events: install checks, source health, quota warnings, notification receipts, and error visibility for reliability work.
 
@@ -3474,7 +3487,7 @@ function publicTrustStatusPayload(env = activeEnv) {
       {
         area: "Customer dashboard",
         status: "confirmed",
-        evidence: "Customer dashboard includes conversations, leads, source gaps, install health, exports, notifications, and deletion-review requests.",
+        evidence: "Customer dashboard includes conversations, leads, source gaps, install health, exports, notifications, self-serve lead deletion, and deletion-review requests.",
       },
       {
         area: "Visitor data minimization",
@@ -3590,7 +3603,7 @@ function publicTrustStatusPayload(env = activeEnv) {
     ],
     support: {
       email: "hello@siterep.net",
-      deletionReview: "Customers can open a deletion-review request in the dashboard; it is tracked for review and is not instant erasure.",
+      deletionReview: "Workspace owners delete a visitor's lead data instantly from the dashboard or owner API, and lead deletion requests complete the same way. Whole-account deletion requests are still tracked for review.",
     },
     configuredSignals: {
       dodoProductsConfigured: Boolean(env?.DODO_SITEREP_PRODUCT_STARTER_ID),
@@ -4384,6 +4397,15 @@ async function ensureRecordLedgerSchema(env = activeEnv) {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_siterep_sources_bot_updated ON siterep_sources (bot_id, updated_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_siterep_sources_url ON siterep_sources (url)`,
+    `CREATE TABLE IF NOT EXISTS siterep_privacy_audit (
+      audit_id TEXT PRIMARY KEY,
+      bot_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_siterep_privacy_audit_bot_created ON siterep_privacy_audit (bot_id, created_at DESC)`,
   ];
 
   for (const statement of statements) {
@@ -5081,10 +5103,29 @@ function isOwnerSetupWriteRoute(method, pathname) {
 function requiredPermissionForRoute(method, pathname) {
   if (method === "POST" && pathname === "/api/billing/dodo/portal") return "billing:read";
   if (pathname === "/api/api-keys" || pathname === "/api/api-keys/revoke") return "bot:admin";
+  if (isLeadDeletionRoute(method, pathname)) return "bot:admin";
   if (method === "GET" && pathname.startsWith("/api/export/")) return "export:read";
   if (method === "GET") return "bot:read";
   if (isOwnerSetupWriteRoute(method, pathname)) return "bot:admin";
   return "bot:write";
+}
+
+// Erasing visitor data is an owner decision: owner key, owner/admin team
+// roles, or the platform admin. Editors and read-only links cannot delete.
+function isLeadDeletionRoute(method, pathname) {
+  return method === "POST" && ["/api/leads/delete", "/api/privacy/deletion-request/complete"].includes(pathname);
+}
+
+function authorizationCanDeleteLeadData(authorization) {
+  if (authorization?.role === "admin" || authorization?.role === "owner") return true;
+  return authorization?.role === "customer" && sessionHasPermission(authorization.session, "bot:admin");
+}
+
+function privacyAuditActor(authorization) {
+  if (authorization?.role === "admin") return "admin";
+  if (authorization?.role === "owner") return "owner_key";
+  const session = authorization?.session;
+  return `${normalizeTeamRole(session?.teamRole || "owner")}${session?.accountId ? `:${session.accountId}` : ""}`;
 }
 
 function isPrivilegedCustomerSession(session) {
@@ -8922,11 +8963,72 @@ async function handleApi(request, response, url) {
 
   if (request.method === "POST" && url.pathname === "/api/privacy/deletion-request") {
     const body = await readJson(request);
+    const botId = body.botId || "starter-demo";
+    const target = privacyRequestTarget(body);
+    // A lead or visitor request from someone allowed to erase data runs the
+    // deletion now; everything else is logged for an owner to complete.
+    if (target && authorizationCanDeleteLeadData(response._siterepAuthorization)) {
+      const result = await deleteLeadData(botId, target, {
+        trigger: "privacy_request",
+        actor: privacyAuditActor(response._siterepAuthorization),
+        newPrivacyRequest: body,
+      });
+      sendJson(response, result.status, result.body);
+      return;
+    }
     const bot = await updateStore((store) => {
-      const record = ensureBot(store, body.botId || "starter-demo");
+      const record = ensureBot(store, botId);
       return queuePrivacyDeletionRequest(record, body);
     });
     sendJson(response, 200, toPublicBot(bot));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/privacy/deletion-request/complete") {
+    const body = await readJson(request);
+    const botId = body.botId || "starter-demo";
+    const privacyRequestId = String(body.privacyRequestId || body.id || "").trim();
+    const existing = (await getBot(botId))?.privacyRequests?.find((item) => item.id === privacyRequestId);
+    if (!existing || existing.type !== "deletion") {
+      sendJson(response, 404, { error: "Deletion request not found." });
+      return;
+    }
+    if (existing.status === "completed") {
+      sendJson(response, 409, { error: "This deletion request is already completed." });
+      return;
+    }
+    if (!LEAD_DELETION_SCOPES.includes(existing.scope)) {
+      sendJson(response, 409, { error: "Account deletion requests stay in review. Only lead and visitor requests complete here." });
+      return;
+    }
+    const target = privacyRequestTarget({ scope: existing.scope, ...body }) ||
+      privacyRequestTarget({ scope: existing.scope, leadId: existing.targetLeadId, visitorEmail: existing.targetEmail });
+    if (!target) {
+      sendJson(response, 400, { error: "Choose the lead or visitor email this request is about." });
+      return;
+    }
+    const result = await deleteLeadData(botId, target, {
+      trigger: "privacy_request",
+      actor: privacyAuditActor(response._siterepAuthorization),
+      privacyRequestId,
+    });
+    sendJson(response, result.status, result.body);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/leads/delete") {
+    const body = await readJson(request);
+    const leadId = body.leadId;
+    if (!leadId && !normalizeLeadEmail(body.email)) {
+      sendJson(response, 400, { error: "Lead id is required." });
+      return;
+    }
+    const result = await deleteLeadData(body.botId || "starter-demo", { leadId, email: body.email }, {
+      trigger: "owner_delete",
+      actor: privacyAuditActor(response._siterepAuthorization),
+      requireExistingLead: true,
+    });
+    sendJson(response, result.status, result.body);
     return;
   }
 
@@ -9617,6 +9719,7 @@ function isOwnerAllowedRoute(method, pathname) {
       "/api/unknowns/retest",
       "/api/leads/status",
       "/api/leads/note",
+      "/api/leads/delete",
       "/api/escalations/status",
 	      "/api/tickets/status",
 	      "/api/notifications/status",
@@ -9626,6 +9729,7 @@ function isOwnerAllowedRoute(method, pathname) {
       "/api/integrations/settings",
       "/api/actions/status",
       "/api/privacy/deletion-request",
+      "/api/privacy/deletion-request/complete",
       "/api/billing/dodo/portal",
       "/api/api-keys",
       "/api/api-keys/revoke",
@@ -10755,10 +10859,15 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
   const requestedScope = String(input.scope || "");
   const scope = requestedScope === "workspace" ? "account" : ["account", "visitor", "lead"].includes(requestedScope) ? requestedScope : "account";
   const day = dayBucket();
+  const target = privacyRequestTarget({ ...input, scope }) || {};
+  const targetLeadId = target.leadId ? String(target.leadId) : "";
+  const targetEmail = target.email || "";
   const current = (bot.privacyRequests || []).find((item) =>
     item.type === "deletion" &&
     item.scope === scope &&
     item.status === "requested" &&
+    (item.targetLeadId || "") === targetLeadId &&
+    (item.targetEmail || "") === targetEmail &&
     item.requestedAt &&
     item.requestedAt.slice(0, 10) === day,
   );
@@ -10770,6 +10879,8 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
     status: "requested",
     requesterEmail: isValidEmail(requesterEmail) ? requesterEmail : "",
     note: String(input.note || current?.note || "").slice(0, 1000),
+    ...(targetLeadId ? { targetLeadId } : {}),
+    ...(targetEmail ? { targetEmail } : {}),
     requestedAt: current?.requestedAt || now,
     updatedAt: now,
   };
@@ -10786,6 +10897,7 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
     replyDraft: "Export backup, confirm deletion scope, then delete or anonymize customer data according to the current policy and legal review.",
     dedupeKey: `privacy-deletion:${bot.botId}:${request.scope}:${day}`,
   });
+  if (ticket?.id) request.ticketId = ticket.id;
   queueOwnerNotification(bot, {
     type: "privacy_deletion_requested",
     title: "Data deletion requested",
@@ -10802,6 +10914,172 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
   });
   bot.updatedAt = now;
   return bot;
+}
+
+// Lead and visitor deletion requests name who they are about by lead id or
+// the visitor's email. `email` stays the requester's address, as before.
+function privacyRequestTarget(input = {}) {
+  if (!LEAD_DELETION_SCOPES.includes(String(input.scope || ""))) return null;
+  const leadId = String(input.leadId ?? input.targetLeadId ?? "").trim();
+  const email = normalizeLeadEmail(input.visitorEmail || input.targetEmail || input.leadEmail);
+  const validEmail = isValidEmail(email) ? email : "";
+  if (!leadId && !validEmail) return null;
+  return { ...(leadId ? { leadId } : {}), ...(validEmail ? { email: validEmail } : {}) };
+}
+
+// Erases one visitor's lead data from every Site Rep store that holds it:
+// the KV recovery mirror and daily backups, the D1 record ledger, and the
+// Durable Object store. Snapshots and the ledger go first so a failure leaves
+// the primary record in place and a retry finds the same targets. Copies
+// already delivered outside Site Rep (sent emails, webhooks) are not recalled.
+async function deleteLeadData(botId, input = {}, options = {}) {
+  const normalizedBotId = String(botId || "").trim();
+  const current = (await readStore()).bots?.[normalizedBotId];
+  if (!current) return { status: 404, body: { error: "Bot not found." } };
+  const targets = leadDeletionTargets(current, input);
+  if (!targets) return { status: 400, body: { error: "Lead id or visitor email is required." } };
+
+  const db = recordLedgerDb();
+  let ledgerRemoved = { leads: 0, conversations: 0 };
+  let snapshotsScrubbed = 0;
+  try {
+    if (db) {
+      await ensureRecordLedgerSchema();
+      await expandTargetsInLedger(db, normalizedBotId, targets);
+      expandTargetsInBot(current, targets);
+    }
+    if (options.requireExistingLead && !targets.emails.size && !targets.conversationIds.size) {
+      return { status: 404, body: { error: "Lead not found." } };
+    }
+    snapshotsScrubbed = await eraseLeadFromKvSnapshots(normalizedBotId, targets);
+    if (db) ledgerRemoved = await deleteLeadLedgerRows(db, normalizedBotId, targets);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      type: "lead_deletion_failed",
+      botId: normalizedBotId,
+      message: error instanceof Error ? error.message : "Unknown lead deletion failure",
+    }));
+    return { status: 503, body: { error: "Lead deletion did not finish. Try again; repeating it is safe." } };
+  }
+
+  const now = new Date().toISOString();
+  let summary = null;
+  let privacyRequestId = String(options.privacyRequestId || "");
+  const bot = await updateStore((store) => {
+    const record = ensureBot(store, normalizedBotId);
+    const counts = eraseLeadFromBot(record, targets);
+    summary = {
+      ...counts,
+      ledgerLeads: ledgerRemoved.leads,
+      ledgerConversations: ledgerRemoved.conversations,
+      snapshots: snapshotsScrubbed,
+    };
+    if (options.newPrivacyRequest) {
+      privacyRequestId = `privacy_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
+      const requesterEmail = String(options.newPrivacyRequest.requesterEmail || options.newPrivacyRequest.email || record.ownerEmail || "").trim().toLowerCase();
+      const scope = LEAD_DELETION_SCOPES.includes(options.newPrivacyRequest.scope) ? options.newPrivacyRequest.scope : "lead";
+      record.privacyRequests = [
+        {
+          id: privacyRequestId,
+          type: "deletion",
+          scope,
+          status: "requested",
+          requesterEmail: isValidEmail(requesterEmail) ? requesterEmail : "",
+          note: String(options.newPrivacyRequest.note || "").slice(0, 1000),
+          requestedAt: now,
+          updatedAt: now,
+        },
+        ...(record.privacyRequests || []),
+      ].slice(0, 50);
+    }
+    if (privacyRequestId) completePrivacyRequest(record, privacyRequestId, summary, now);
+    const matchingRequestIds = (record.privacyRequests || [])
+      .filter((item) =>
+        item.status !== "completed" &&
+        ((item.targetLeadId && targets.leadIds.has(String(item.targetLeadId))) || (item.targetEmail && targets.emails.has(item.targetEmail))),
+      )
+      .map((item) => item.id);
+    for (const id of matchingRequestIds) completePrivacyRequest(record, id, summary, now);
+    pushEvent(
+      record,
+      "privacy",
+      "Lead data deleted",
+      `Deleted ${summary.leads + summary.ledgerLeads ? "a lead" : "visitor data"} with ${summary.conversations} conversation${summary.conversations === 1 ? "" : "s"} and related follow-up records.`,
+      { trigger: options.trigger || "owner_delete", privacyRequestId, counts: summary },
+    );
+    record.updatedAt = now;
+    return record;
+  });
+
+  await recordPrivacyAudit(normalizedBotId, "lead_data_deleted", options.actor || "", {
+    trigger: options.trigger || "owner_delete",
+    privacyRequestId,
+    counts: summary,
+  }, now);
+  return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, privacyRequestId, counts: summary } } };
+}
+
+// Marks a deletion request done and drops the target it named, keeping only
+// counts. Its review ticket closes once no other open request shares it.
+function completePrivacyRequest(bot, privacyRequestId, counts, now) {
+  let completed = null;
+  bot.privacyRequests = (bot.privacyRequests || []).map((item) => {
+    if (item.id !== privacyRequestId) return item;
+    const { targetLeadId, targetEmail, ...rest } = item;
+    completed = { ...rest, status: "completed", completedAt: now, completedBy: "self_serve", result: counts, updatedAt: now };
+    return completed;
+  });
+  const ticketId = completed?.ticketId;
+  const stillOpen = (bot.privacyRequests || []).some((item) => item.ticketId === ticketId && item.status !== "completed");
+  if (ticketId && !stillOpen) {
+    bot.tickets = (bot.tickets || []).map((ticket) =>
+      ticket.id === ticketId
+        ? { ...ticket, status: "resolved", proofState: "deletion_completed", customerVisibleStatus: "Deletion completed", resolutionNote: "Deleted through the self-serve deletion path.", resolvedAt: now, updatedAt: now }
+        : ticket,
+    );
+  }
+  return completed;
+}
+
+async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
+  const kv = env?.CITEREP_STORE;
+  if (!kv) return 0;
+  const keys = [{ name: STORE_KEY }];
+  let cursor;
+  do {
+    const page = await kv.list({ prefix: STORE_BACKUP_KEY_PREFIX, ...(cursor ? { cursor } : {}) });
+    keys.push(...(page?.keys || []));
+    cursor = page && !page.list_complete ? page.cursor : undefined;
+  } while (cursor);
+  let scrubbed = 0;
+  for (const key of keys) {
+    const raw = await kv.get(key.name);
+    if (!raw) continue;
+    const next = eraseLeadFromStoreSnapshot(raw, botId, targets);
+    if (!next) continue;
+    const expiration = Number(key.expiration || 0);
+    await kv.put(
+      key.name,
+      next,
+      expiration > Math.floor(Date.now() / 1000) + 60 ? { expiration } : { expirationTtl: STORE_BACKUP_TTL_SECONDS },
+    );
+    scrubbed += 1;
+  }
+  return scrubbed;
+}
+
+// Durable audit trail for erasures: who acted and how much was removed, never
+// the visitor's details.
+async function recordPrivacyAudit(botId, action, actor, details, createdAt = new Date().toISOString()) {
+  return await writeRecordLedger("privacy_audit", async (db) => {
+    await db
+      .prepare(
+        `INSERT INTO siterep_privacy_audit (audit_id, bot_id, action, actor, details_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(`privacy_audit_${crypto.randomUUID().replace(/-/g, "")}`, botId, action, String(actor || "").slice(0, 120), ledgerJson(details), createdAt)
+      .run();
+  });
 }
 
 async function processNotificationOutbox(options = {}) {

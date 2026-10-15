@@ -26,7 +26,7 @@ const healthOnly = process.argv.includes("--health") || process.env.SITEREP_MONI
 const strictMode = process.argv.includes("--strict") || process.env.SITEREP_MONITOR_STRICT === "true";
 const requestTimeoutMs = Number(process.env.SITEREP_MONITOR_TIMEOUT_MS || 10000);
 const expectedReleaseMarker = process.env.SITEREP_EXPECTED_RELEASE_MARKER || readWorkerReleaseMarker();
-const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || "2026-08-11";
+const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || "2026-10-15";
 const defaultSitemapLastmodFloors = Object.freeze({
   "/": "2026-08-09",
   "/ai-website-chatbot-for-small-business": "2026-08-09",

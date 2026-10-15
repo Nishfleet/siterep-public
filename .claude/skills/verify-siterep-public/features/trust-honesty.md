@@ -51,7 +51,7 @@ curl -fsS http://127.0.0.1:8787/api/public/honesty-check
 ## Notes
 
 - Release freshness (`assertReleaseFreshness`) checks the marker
-  `launch-hygiene-proof-health-2026-08-26`, `publicTrustUpdatedAt:"2026-08-11"`,
+  `launch-hygiene-proof-health-2026-08-26`, `publicTrustUpdatedAt:"2026-10-15"`,
   `stage:"production_hardening"`, a verifiable commit SHA, and a deploy
   timestamp within 31 days. The local `cf:dev` Worker serves the worker-code
   fallback identity (`RELEASE_STATUS_COMMIT` / `RELEASE_STATUS_DEPLOYED_AT`),
