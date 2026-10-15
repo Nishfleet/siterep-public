@@ -642,6 +642,31 @@ test("an owner's deletion request that matches nothing is a 404 with nothing rec
   if (h.d1) assert.equal(h.d1._db.prepare("SELECT COUNT(*) AS n FROM siterep_privacy_audit").get().n, 0);
 });
 
+test("a lead id and an email together are refused, so one person never stands in for another", async () => {
+  const h = harness();
+  const editor = { authorization: `Bearer ${EDITOR_TOKEN}` };
+  // Lead 22 is Omar; the email is Jane's.
+  const cases = [
+    ["/api/leads/delete", { leadId: 22, email: JANE }, undefined],
+    ["/api/privacy/deletion-request", { scope: "lead", leadId: 22, visitorEmail: JANE }, undefined],
+    ["/api/privacy/deletion-request", { scope: "lead", leadId: 22, visitorEmail: JANE }, editor],
+  ];
+  for (const [path, body, headers] of cases) {
+    const response = await h.post(path, body, headers);
+    assert.equal(response.status, 400, `${path} ${headers ? "editor" : "owner"}`);
+    assert.match((await response.json()).error, /not both/);
+  }
+  const open = await h.post("/api/privacy/deletion-request", { scope: "lead" }, editor);
+  const request = (await open.json()).privacyRequests[0];
+  const complete = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id, leadId: 22, visitorEmail: JANE });
+  assert.equal(complete.status, 400);
+
+  const stored = h.botRecord();
+  assert.deepEqual(stored.leads.map((lead) => lead.email).sort(), [JANE, OMAR], "nobody was erased");
+  assert.ok(!(stored.privacyRequests || []).some((item) => item.targetEmail || item.targetLeadId), "no mismatched request was stored");
+  assert.equal(stored.privacyRequests.find((item) => item.id === request.id).status, "requested");
+});
+
 test("deletion routes reject a blank or padded bot id instead of creating a bot", async () => {
   const h = harness();
   const admin = { "x-citerep-admin-key": "test-admin-key" };

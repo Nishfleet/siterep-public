@@ -8983,6 +8983,10 @@ async function handleApi(request, response, url) {
       return;
     }
     const target = privacyRequestTarget(body);
+    if (target?.leadId && target?.email) {
+      sendJson(response, 400, { error: LEAD_AND_EMAIL_ERROR });
+      return;
+    }
     // A lead or visitor request from someone allowed to erase data runs the
     // deletion now; everything else is logged for an owner to complete.
     if (target && authorizationCanDeleteLeadData(response._siterepAuthorization)) {
@@ -10978,6 +10982,10 @@ function privacyRequestTarget(input = {}) {
   return { ...(leadId ? { leadId } : {}), ...(validEmail ? { email: validEmail } : {}) };
 }
 
+// A deletion names one person: a lead id or an email, never both, so a pair
+// that points at two different visitors can never erase the wrong one.
+const LEAD_AND_EMAIL_ERROR = "Name one lead or one visitor email, not both.";
+
 // Erases one visitor's lead data from every Site Rep store that holds it:
 // the Durable Object store, the D1 record ledger, and the KV recovery mirror
 // and daily backups. Copies already delivered outside Site Rep (sent emails,
@@ -10993,6 +11001,9 @@ function privacyRequestTarget(input = {}) {
 // store, so nothing later can capture the visitor again.
 async function deleteLeadData(botId, input = {}, options = {}) {
   const normalizedBotId = String(botId || "").trim();
+  if (String(input.leadId ?? "").trim() && normalizeLeadEmail(input.email)) {
+    return { status: 400, body: { error: LEAD_AND_EMAIL_ERROR } };
+  }
   const current = (await readStore()).bots?.[normalizedBotId];
   if (!current) return { status: 404, body: { error: "Bot not found." } };
   const targets = leadDeletionTargets(current, input, { followSessions: false });
@@ -11041,47 +11052,54 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   const completedRequestIds = [];
   // The live erase also rewrites the KV mirror at once, through the store's
   // own writer, so the mirror never holds the visitor after this point.
-  await updateStore((store) => {
-    const record = ensureBot(store, normalizedBotId);
-    record.privacySalt ||= privacySalt;
-    if (options.newPrivacyRequest) {
-      privacyRequestId = `privacy_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
-      const requesterEmail = String(options.newPrivacyRequest.requesterEmail || options.newPrivacyRequest.email || record.ownerEmail || "").trim().toLowerCase();
-      const scope = LEAD_DELETION_SCOPES.includes(options.newPrivacyRequest.scope) ? options.newPrivacyRequest.scope : "lead";
-      const named = privacyRequestTarget({ ...options.newPrivacyRequest, scope }) || {};
-      record.privacyRequests = [
-        {
-          id: privacyRequestId,
-          type: "deletion",
-          scope,
-          status: "requested",
-          requesterEmail: isValidEmail(requesterEmail) ? requesterEmail : "",
-          note: String(options.newPrivacyRequest.note || "").slice(0, 1000),
-          ...(named.leadId ? { targetLeadId: String(named.leadId) } : {}),
-          ...(named.email ? { targetEmail: named.email } : {}),
-          requestedAt: now,
-          updatedAt: now,
-        },
-        ...(record.privacyRequests || []),
-      ].slice(0, 50);
-    }
-    if (privacyRequestId) completedRequestIds.push(privacyRequestId);
-    for (const item of record.privacyRequests || []) {
-      if (
-        item.status !== "completed" &&
-        item.id !== privacyRequestId &&
-        ((item.targetLeadId && targets.leadIds.has(String(item.targetLeadId))) || (item.targetEmail && targets.emails.has(item.targetEmail)))
-      ) {
-        completedRequestIds.push(item.id);
+  try {
+    await updateStore((store) => {
+      const record = ensureBot(store, normalizedBotId);
+      record.privacySalt ||= privacySalt;
+      if (options.newPrivacyRequest) {
+        privacyRequestId = `privacy_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
+        const requesterEmail = String(options.newPrivacyRequest.requesterEmail || options.newPrivacyRequest.email || record.ownerEmail || "").trim().toLowerCase();
+        const scope = LEAD_DELETION_SCOPES.includes(options.newPrivacyRequest.scope) ? options.newPrivacyRequest.scope : "lead";
+        const named = privacyRequestTarget({ ...options.newPrivacyRequest, scope }) || {};
+        record.privacyRequests = [
+          {
+            id: privacyRequestId,
+            type: "deletion",
+            scope,
+            status: "requested",
+            requesterEmail: isValidEmail(requesterEmail) ? requesterEmail : "",
+            note: String(options.newPrivacyRequest.note || "").slice(0, 1000),
+            ...(named.leadId ? { targetLeadId: String(named.leadId) } : {}),
+            ...(named.email ? { targetEmail: named.email } : {}),
+            requestedAt: now,
+            updatedAt: now,
+          },
+          ...(record.privacyRequests || []),
+        ].slice(0, 50);
       }
-    }
-    // Last, so the requests just matched by email are hashed too. Sessions
-    // were decided against the live record and the ledger above; the live
-    // erase follows exactly those, never a session judged alone.
-    storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
-    record.updatedAt = now;
-    return record;
-  }, { forceMirror: true });
+      if (privacyRequestId) completedRequestIds.push(privacyRequestId);
+      for (const item of record.privacyRequests || []) {
+        if (
+          item.status !== "completed" &&
+          item.id !== privacyRequestId &&
+          ((item.targetLeadId && targets.leadIds.has(String(item.targetLeadId))) || (item.targetEmail && targets.emails.has(item.targetEmail)))
+        ) {
+          completedRequestIds.push(item.id);
+        }
+      }
+      // Last, so the requests just matched by email are hashed too. Sessions
+      // were decided against the live record and the ledger above; the live
+      // erase follows exactly those, never a session judged alone.
+      storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
+      record.updatedAt = now;
+      return record;
+    }, { forceMirror: true });
+  } catch (error) {
+    // The copies scrubbed above stay scrubbed; the live lead is untouched,
+    // so a retry finds the same targets.
+    console.warn(JSON.stringify({ type: "lead_deletion_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
+    return { status: 503, body: { error: "Lead deletion did not finish. Try again; repeating it is safe." } };
+  }
 
   // Second pass: anything a backup or the ledger took before the live erase.
   let recheckFailed = false;
