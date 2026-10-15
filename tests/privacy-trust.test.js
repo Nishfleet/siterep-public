@@ -23,6 +23,19 @@ test("trust status publishes the already-true privacy facts", async () => {
   assert.match(worker, /ownerControl: "Review and export from the private dashboard\."/);
 });
 
+test("privacy page, trust page and trust-status payload name the same sub-processors", async () => {
+  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+  const vendors = ["Cloudflare", "Dodo Payments", "Sentry", "the configured email provider"];
+  const privacy = worker.match(/## Sub-processors\n\nSite Rep relies on[\s\S]*?\n## /)?.[0];
+  const trust = worker.match(/## Sub-processors\n\nData is processed by[^\n]+/)?.[0];
+  const evidence = worker.match(/area: "Sub-processors disclosed",[\s\S]*?evidence: "([^"]+)"/)?.[1];
+  for (const [name, text] of Object.entries({ privacy, trust, evidence })) {
+    assert.ok(text, `${name} sub-processor text must exist`);
+    for (const vendor of vendors) assert.ok(text.toLowerCase().includes(vendor.toLowerCase()), `${name} must name ${vendor}`);
+  }
+  assert.match(worker, /- Scrubbed error reports when the service hits an error/);
+});
+
 test("widget lead form shows a point-of-capture consent line", async () => {
   const widget = await readFile(new URL("../public/widget.js", import.meta.url), "utf8");
   assert.match(widget, /We'll only use your details to follow up on your question\./);

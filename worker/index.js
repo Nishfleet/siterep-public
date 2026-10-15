@@ -269,7 +269,7 @@ description: What Site Rep collects, how customer controls work, and which priva
 
 # Site Rep Privacy and Data Handling
 
-Last updated: 2026-08-03.
+Last updated: 2026-10-15.
 
 These notes describe the current Site Rep product behavior and should not be read as a compliance certification.
 
@@ -279,6 +279,7 @@ These notes describe the current Site Rep product behavior and should not be rea
 - Visitor questions, cited answers, feedback, and unknown-question repair items.
 - Lead details that a visitor chooses to submit, such as name, email, and buying need.
 - Basic install, usage, quota, and source-health events needed to run the service.
+- Scrubbed error reports when the service hits an error, sent to Sentry (see Sub-processors).
 
 ## How Site Rep uses this data
 
@@ -309,7 +310,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
-- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report (request method and path, stack trace) is sent; request bodies, query strings, cookies, headers, and email addresses are removed first.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report (error type, stack trace, request method, and the request path with ids replaced) is sent; request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
@@ -320,7 +321,7 @@ The chat widget sets no cookies and no persistent local storage. It uses session
 
 Site Rep does not currently include SOC 2, GDPR, HIPAA, zero-retention, or no-training-on-data certification. Customers who need those commitments should request a written review before buying.
 `;
-const TRUST_STATUS_UPDATED_AT = "2026-08-11";
+const TRUST_STATUS_UPDATED_AT = "2026-10-15";
 const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-08-26";
 const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-08-26";
 const RELEASE_STATUS_BRANCH = "main";
@@ -334,7 +335,7 @@ description: Site Rep security, privacy, reliability, and what is not included t
 
 # Site Rep Trust and Data Handling
 
-Last updated: 2026-08-11.
+Last updated: 2026-10-15.
 
 This page explains what Site Rep does today, how customer and visitor data is handled, and which larger capabilities are not included today.
 
