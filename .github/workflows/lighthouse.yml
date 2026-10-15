@@ -20,12 +20,16 @@ jobs:
     steps:
       - name: Warm the edge
         run: |
-          for _ in 1 2 3 4 5 6; do
-            page=$(curl -fsS -H 'accept-encoding: br' https://siterep.net/)
-            asset=$(printf '%s' "$page" | grep -o '/assets/mount-[A-Za-z0-9_-]*\.js' | head -n 1)
-            curl -fsS -H 'accept-encoding: br' -o /dev/null "https://siterep.net${asset}"
-            curl -fsS -o /dev/null https://siterep.net/api/public/pricing
-            sleep 2
+          ua='Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36'
+          accept='text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+          for _ in 1 2 3 4 5 6 7 8; do
+            page=$(curl -fsS -A "$ua" -H "accept: $accept" -H 'accept-encoding: gzip, deflate, br, zstd' https://siterep.net/)
+            asset=$(printf '%s' "$page" | grep -o '/assets/[A-Za-z0-9_-]*\.js' | head -n 2)
+            for path in $asset; do
+              curl -fsS -A "$ua" -H 'accept-encoding: gzip, deflate, br, zstd' -o /dev/null "https://siterep.net${path}"
+            done
+            curl -fsS -A "$ua" -o /dev/null https://siterep.net/api/public/pricing
+            sleep 3
           done
   lighthouse:
     needs: warm
