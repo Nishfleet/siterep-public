@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/* The app's own stylesheet, unlayered: it owns the pixels of every existing
+   screen and wins over Tailwind's preflight and utilities regardless of the
+   layer order, because unlayered author CSS beats any @layer. */
+@import "./styles.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Theme tokens for Site Rep, mapped 1:1 from DESIGN.md (which reads them from
+ * src/styles.css). src/styles.css is imported last and stays unlayered, so it
+ * keeps owning the pixels of every existing screen; these tokens exist for
+ * shadcn primitives (src/components/ui) and future screens. The raw palette
+ * values live in the :root block of src/styles.css — the one place colors are
+ * defined. tests/design-md-tokens.test.js fails when DESIGN.md, that :root
+ * block, or these tokens drift apart.
+ */
+@theme inline {
+    /* App palette (raw values in src/styles.css :root). */
+    --color-page: var(--page);
+    --color-surface: var(--surface);
+    --color-surface-strong: var(--surface-strong);
+    --color-soft: var(--soft);
+    --color-line: var(--line);
+    --color-ink: var(--ink);
+    --color-ink-soft: var(--ink-soft);
+    --color-muted-token: var(--muted);
+    --color-green: var(--green);
+    --color-green-dark: var(--green-dark);
+    --color-green-wash: var(--green-wash);
+    --color-green-mid: var(--green-mid);
+    --color-blue: var(--blue);
+    --color-blue-ink: var(--blue-ink);
+    --color-blue-wash: var(--blue-wash);
+    --color-amber: var(--amber);
+    --color-amber-wash: var(--amber-wash);
+    --color-amber-ink: var(--amber-ink);
+    --color-red-ink: var(--red-ink);
+    --color-red-wash: var(--red-wash);
+
+    /* shadcn role aliases mapped from the app palette (DESIGN.md "Colors"). */
+    --color-background: var(--page);
+    --color-foreground: var(--ink);
+    --color-card: var(--surface);
+    --color-card-foreground: var(--ink);
+    --color-popover: var(--surface);
+    --color-popover-foreground: var(--ink);
+    --color-primary: var(--green);
+    --color-primary-foreground: #ffffff;
+    --color-secondary: var(--soft);
+    --color-secondary-foreground: var(--ink);
+    --color-muted: var(--soft);
+    --color-muted-foreground: var(--muted);
+    --color-accent: var(--soft);
+    --color-accent-foreground: var(--ink);
+    --color-destructive: var(--red-ink);
+    --color-border: var(--line);
+    --color-input: var(--line);
+    --color-ring: var(--blue);
+    --color-chart-1: var(--green);
+    --color-chart-2: var(--blue);
+    --color-chart-3: var(--amber);
+    --color-chart-4: var(--muted);
+    --color-chart-5: var(--ink);
+
+    /* Radius steps pinned from DESIGN.md (8px is the app default). */
+    --radius-none: 0px;
+    --radius-xs: 5px;
+    --radius-sm: 7px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 14px;
+    --radius-3xl: 16px;
+    --radius-4xl: 999px;
+
+    /* Type scale from DESIGN.md; family slots point at the app fonts. */
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-heading: var(--font-sans);
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --text-display-xl: clamp(3rem, 7.4vw, 7.4rem);
+    --text-display-xl--line-height: 0.93;
+    --text-display-xl--letter-spacing: 0;
+    --text-display-lg: clamp(2.84rem, 4.45vw, 4.82rem);
+    --text-display-lg--line-height: 0.94;
+    --text-display-lg--letter-spacing: 0;
+    --text-display-md: clamp(2rem, 4vw, 3.4rem);
+    --text-display-md--line-height: 1;
+    --text-display-md--letter-spacing: 0;
+    --text-stat: clamp(2rem, 4.3vw, 4rem);
+    --text-stat--line-height: 0.98;
+    --text-stat--letter-spacing: 0;
+    --text-lead: clamp(1.04rem, 1.45vw, 1.24rem);
+    --text-lead--line-height: 1.6;
+    --text-lead--letter-spacing: 0;
+    --text-title-lg: 1.25rem;
+    --text-title-lg--line-height: 1.35;
+    --text-title-lg--letter-spacing: 0;
+    --text-eyebrow: 0.92rem;
+    --text-eyebrow--line-height: 1.35;
+    --text-eyebrow--letter-spacing: 0;
+    --text-title: 1rem;
+    --text-title--line-height: 1.35;
+    --text-title--letter-spacing: 0;
+    --text-body: 1rem;
+    --text-body--line-height: 1.35;
+    --text-body--letter-spacing: 0;
+    --text-body-sm: 0.9rem;
+    --text-body-sm--line-height: 1.35;
+    --text-body-sm--letter-spacing: 0;
+    --text-body-xs: 0.82rem;
+    --text-body-xs--line-height: 1.35;
+    --text-body-xs--letter-spacing: 0;
+    --text-code: 0.78rem;
+    --text-code--line-height: 1.35;
+    --text-code--letter-spacing: 0;
+    --text-meta: 0.76rem;
+    --text-meta--line-height: 1.35;
+    --text-meta--letter-spacing: 0;
+    --text-micro: 0.72rem;
+    --text-micro--line-height: 1.35;
+    --text-micro--letter-spacing: 0;
+}
+
+/* Role aliases for shadcn utilities live entirely in @theme inline above:
+   raw :root names (--muted, --accent, ...) stay owned by src/styles.css, the
+   one authority the drift test checks. No :root role block here, so defining
+   a theme cannot silently change what any var(--…) in the app CSS resolves
+   to. */
