@@ -1573,10 +1573,6 @@ function escapeHtml(value) {
 function withVaryAccept(response) {
   const headers = new Headers(response.headers);
   headers.append("vary", "Accept");
-  if ((headers.get("content-type") || "").toLowerCase().includes("text/html")) {
-    const cacheControl = headers.get("cache-control") || "";
-    if (!/\bno-transform\b/i.test(cacheControl)) headers.set("cache-control", cacheControl ? `${cacheControl}, no-transform` : "no-transform");
-  }
   return withSecurityHeaders(new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
