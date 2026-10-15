@@ -8,6 +8,6 @@
 | 46-54 s | "What it does today, stated plainly." Over siterep.net/trust. | siterep.net/trust "What is working now" |
 | 54-62 s | "siterep.net" / "Start free — no card". The one next action. | public/llms.txt ("no-card free trial"); siterep.net hero button |
 
-The home, honesty and trust captures show public pages only: no signed-in banner, dashboard or chat transcript.
+The home, honesty and trust captures show public pages only: no signed-in banner, dashboard or chat transcript. All three PNGs were opened and read in full on 2026-10-15: they hold marketing and policy copy only, with no customer name, email, lead or visitor message.
 
 Every screen is a real 1920x1080 capture of the live site taken 2026-10-12. No numbers appear in the video.
