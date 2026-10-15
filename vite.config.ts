@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/vite";
 import Beasties from "beasties";
 
@@ -50,7 +50,7 @@ function inlineBootstrap(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), inlineStylesheet(), inlineBootstrap()],
+  plugins: [preact(), tailwindcss(), inlineStylesheet(), inlineBootstrap()],
   resolve: {
     alias: {
       "@": "/src",
