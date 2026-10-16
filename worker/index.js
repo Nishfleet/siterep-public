@@ -16,6 +16,7 @@ import { collectFunnelEvent, readFunnelStats } from "./funnel-events.js";
 import { readMcpStats, recordMcpEvent } from "./mcp-events.js";
 import { withSentry } from "@sentry/cloudflare";
 import { reportError, sentryOptions } from "./sentry.js";
+import { widgetPreviewCsp } from "./widget-preview-csp.js";
 import {
   answeringMode,
   defaultOverageSettings,
@@ -127,9 +128,7 @@ const SECURITY_HEADERS = Object.freeze({
 });
 const WIDGET_PREVIEW_PATH = "/widget-test.html";
 const WIDGET_PREVIEW_INLINE_SCRIPT_HASH = "sha256-JaS8CcQqwOErAAH+p2YZPHd9JdaV+X9U0uUOrGymexE=";
-const WIDGET_PREVIEW_CSP = SECURITY_HEADERS["content-security-policy"]
-  .replace("frame-ancestors 'none'", "frame-ancestors 'self'")
-  .replace("script-src 'self' ", `script-src 'self' '${WIDGET_PREVIEW_INLINE_SCRIPT_HASH}' `);
+const WIDGET_PREVIEW_CSP = widgetPreviewCsp(SECURITY_HEADERS["content-security-policy"], WIDGET_PREVIEW_INLINE_SCRIPT_HASH);
 const PUBLIC_SITE_URL = "https://siterep.net";
 const SITE_DESCRIPTION =
   "Site Rep answers your visitors from approved pages only, cites the source behind every answer, and captures high-intent leads.";
@@ -1607,6 +1606,7 @@ async function widgetPreviewResponse(request, env) {
   const headers = new Headers(asset.headers);
   headers.set("content-security-policy", WIDGET_PREVIEW_CSP);
   headers.set("x-frame-options", "SAMEORIGIN");
+  headers.set("x-robots-tag", "noindex");
   return withSecurityHeaders(new Response(request.method === "HEAD" ? null : asset.body, {
     status: asset.status,
     statusText: asset.statusText,

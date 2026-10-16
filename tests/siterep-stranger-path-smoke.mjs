@@ -86,6 +86,20 @@ async function ask(frame, question) {
   return frame.locator(".cr-msg.cr-bot:not(.cr-typing)").last().innerText();
 }
 
+async function checkOriginVerification(botId, publicKey) {
+  const url = `${base}/api/public/config?botId=${encodeURIComponent(botId)}&publicKey=${encodeURIComponent(publicKey)}`;
+  const probes = [
+    ["a same-origin fetch with no origin or referer", { "sec-fetch-site": "same-origin" }, 200],
+    ["a cross-site fetch with no origin or referer", { "sec-fetch-site": "cross-site" }, 403],
+    ["a fetch with an origin header", { origin: base }, 200],
+    ["a fetch with no origin, referer or sec-fetch-site", {}, 403],
+  ];
+  for (const [label, headers, expected] of probes) {
+    const response = await fetch(url, { headers });
+    assert(response.status === expected, `${label} returned ${response.status}, expected ${expected}.`);
+  }
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -156,6 +170,9 @@ try {
   assert(sourceResponse.ok, `POST /api/sources failed with ${sourceResponse.status}.`);
 
   const frame = await widgetFrame(page);
+  const publicKey = new URL(frame.url()).searchParams.get("publicKey") || "";
+  assert(publicKey, "The install preview iframe did not carry a public widget key.");
+  await checkOriginVerification(botId, publicKey);
   await openWidget(frame);
 
   const answer = await ask(frame, sourceQuestion);
