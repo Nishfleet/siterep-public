@@ -1759,6 +1759,7 @@ function App() {
   }, [apiError, isCustomerMode]);
 
   const crawlJobActive = activeCrawlJob?.status === "queued" || activeCrawlJob?.status === "running";
+  const liveCustomerDashboard = isCustomerMode && Boolean(customerAccess.accessKey || hasValidCustomerSession);
   const trained = (trainingStage === "ready" || sources.length > 0) && !crawlJobActive;
   const training = crawlJobActive || trainingStage === "validating" || trainingStage === "crawling" || trainingStage === "indexing";
   const crawlProgress = activeCrawlJob ? crawlJobProgress(activeCrawlJob) : trainingStage === "ready" ? 100 : trainingStage === "indexing" ? 72 : trainingStage === "crawling" ? 42 : trainingStage === "validating" ? 18 : 0;
@@ -2859,12 +2860,13 @@ function App() {
   }, [activeBotId, adminAccessReady, authSession?.botId, botId, customerAccess.accessKey, customerAccess.botId, forcePublicSurface, hasValidCustomerSession, isCustomerMode]);
 
   useEffect(() => {
-    if (!crawlJobActive) return;
+    if (!crawlJobActive && !liveCustomerDashboard) return;
     const timer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       refreshBot(botId);
-    }, 2500);
+    }, crawlJobActive ? 2500 : 10000);
     return () => window.clearInterval(timer);
-  }, [botId, crawlJobActive, activeCrawlJob?.id]);
+  }, [botId, crawlJobActive, activeCrawlJob?.id, liveCustomerDashboard]);
 
   async function runTraining() {
     const normalized = normalizeUrl(url);
