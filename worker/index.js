@@ -10997,6 +10997,9 @@ function privacyRequestTarget(input = {}) {
 // A deletion names one person: a lead id or an email, never both, so a pair
 // that points at two different visitors can never erase the wrong one.
 const LEAD_AND_EMAIL_ERROR = "Name one lead or one visitor email, not both.";
+// Lead records that disagree about a lead's email (one id, two addresses)
+// stop the deletion: an id-based erase would reach the other person's rows.
+const AMBIGUOUS_LEAD_ERROR = "This visitor's lead records name more than one email, so nothing was deleted. Contact Site Rep support to finish this deletion.";
 
 // Erases one visitor's lead data from every Site Rep store that holds it:
 // the Durable Object store, the D1 record ledger, and the KV recovery mirror
@@ -11011,6 +11014,12 @@ const LEAD_AND_EMAIL_ERROR = "Name one lead or one visitor email, not both.";
 // backup taken from the live store before the erase landed would otherwise
 // bring the visitor back. Every write after the live erase reads the erased
 // store, so nothing later can capture the visitor again.
+//
+// The live erase re-resolves the visitor against the record it writes, so a
+// lead or conversation carrying their lead id or email that arrives after the
+// first read is erased too. Only an anonymous conversation in one of their
+// sessions that arrives in that window stays: an incomplete erase, never a
+// wrong one.
 async function deleteLeadData(botId, input = {}, options = {}) {
   const normalizedBotId = String(botId || "").trim();
   if (String(input.leadId ?? "").trim() && normalizeLeadEmail(input.email)) {
@@ -11041,6 +11050,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       await expandTargetsInLedger(db, normalizedBotId, targets);
       expandTargetsInBot(current, targets, { followSessions: false });
     }
+    if (targets.ambiguous) return { status: 409, body: { error: AMBIGUOUS_LEAD_ERROR } };
     if (options.requireExistingLead && !targetsFoundAnything(current, targets)) {
       return { status: 404, body: { error: "Lead not found." } };
     }

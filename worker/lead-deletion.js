@@ -62,6 +62,9 @@ export function emptyLeadDeletionTargets() {
     // email -> salted one-way hash, filled by the caller (hashing is async).
     // A privacy request that named the email keeps only this hash.
     emailHashes: new Map(),
+    // Set when a lead reached by id carries an email other than the one
+    // already known: the deletion is refused instead of widened.
+    ambiguous: false,
   };
 }
 
@@ -76,6 +79,7 @@ export function cloneTargets(targets) {
     questionKeys: new Map(targets.questionKeys),
     ledgerRows: targets.ledgerRows,
     emailHashes: new Map(targets.emailHashes || []),
+    ambiguous: Boolean(targets.ambiguous),
   };
 }
 
@@ -108,7 +112,9 @@ function addConversation(targets, id, question, { identity = false } = {}) {
 // Folds the in-store copies into the target sets until nothing new appears:
 // the visitor's leads pull in the conversations they were captured in, and
 // conversations carrying the visitor's email are theirs. Emails never come
-// from a conversation or session, so the set of people never grows. With
+// from a conversation or session, and a lead reached by id adds its email
+// only while none is known (see addEmailFromLeadId), so the set of people
+// never grows. With
 // followSessions, each candidate session then adds
 // its other (anonymous) conversations, but only when every conversation and
 // lead in it belongs to this visitor.
@@ -121,7 +127,7 @@ export function expandTargetsInBot(bot, targets, { followSessions = true } = {})
     for (const lead of leads) {
       if (!leadMatches(lead, targets)) continue;
       if (idKey(lead.id)) targets.leadIds.add(idKey(lead.id));
-      if (normalizeLeadEmail(lead.email)) targets.emails.add(normalizeLeadEmail(lead.email));
+      addEmailFromLeadId(targets, normalizeLeadEmail(lead.email));
       if (idKey(lead.conversationId)) addConversation(targets, lead.conversationId, undefined, { identity: true });
     }
     for (const conversation of conversations) {
@@ -166,6 +172,21 @@ function isForeignEmail(email, targets) {
 
 function isTargetLead(lead, targets) {
   return targets.leadIds.has(idKey(lead?.id)) || targets.emails.has(normalizeLeadEmail(lead?.email));
+}
+
+// One lead id is one lead with one email: the ledger's primary key is
+// (bot_id, lead_id) and store lead ids are unique per bot. A lead reached by
+// id may supply the email only while no email is known yet (a lead older
+// than the store, found in the ledger). A lead that carries a different email
+// means the records disagree, so the targets are marked ambiguous and nobody
+// is added: a deletion never spreads from one person to a second.
+function addEmailFromLeadId(targets, email) {
+  if (!email || targets.emails.has(email)) return;
+  if (targets.emails.size) {
+    targets.ambiguous = true;
+    return;
+  }
+  targets.emails.add(email);
 }
 
 function identitySize(targets) {
@@ -507,7 +528,7 @@ export async function expandTargetsInLedger(db, botId, targets) {
       .all();
     for (const row of leads.results || []) {
       targets.ledgerRows += 1;
-      if (normalizeLeadEmail(row.email)) targets.emails.add(normalizeLeadEmail(row.email));
+      addEmailFromLeadId(targets, normalizeLeadEmail(row.email));
       if (idKey(row.conversation_id)) addConversation(targets, row.conversation_id, undefined, { identity: true });
     }
   }

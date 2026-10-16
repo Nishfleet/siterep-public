@@ -423,6 +423,37 @@ test("an owner deletes a lead and every Site Rep copy of it, with a PII-free aud
   assert.equal((await h.post("/api/leads/delete", { leadId: 11 })).status, 404, "a second delete finds nothing");
 });
 
+test("a lead id whose records disagree on the email never pulls in a second person", () => {
+  const bot = seededBot();
+  // A second store record under Jane's lead id, with someone else's email.
+  bot.leads.push({ id: 11, email: "kim@visitor.test", conversationId: 400, status: "new", createdAt: NOW });
+  const targets = leadDeletionTargets(bot, { leadId: 11 });
+  assert.equal(targets.ambiguous, true);
+  assert.deepEqual([...targets.emails], [JANE], "Kim's email is never added");
+});
+
+test("a deletion is refused when the ledger names another email for one of the visitor's lead ids", { skip: !DatabaseSync }, async () => {
+  const h = harness();
+  await seedLedger(h);
+  h.d1._db
+    .prepare(
+      "INSERT OR REPLACE INTO siterep_leads (bot_id, lead_id, email, name, status, score, heat, conversation_id, lead_json, created_at, updated_at) VALUES (?, ?, ?, '', '', 0, '', ?, ?, ?, ?)",
+    )
+    .run("deletebot", "11", "kim@visitor.test", "400", JSON.stringify({ id: 11, email: "kim@visitor.test" }), NOW, NOW);
+
+  const response = await h.post("/api/leads/delete", { leadId: 11 });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /more than one email, so nothing was deleted/);
+  assert.deepEqual(h.botRecord().leads.map((lead) => lead.email).sort(), [JANE, OMAR], "nobody was erased");
+  const kim = h.d1._db.prepare("SELECT count(*) AS n FROM siterep_leads WHERE bot_id = 'deletebot' AND email = 'kim@visitor.test'").get();
+  assert.equal(kim.n, 1, "the other person's ledger row stays");
+
+  const byEmail = await h.post("/api/leads/delete", { email: JANE });
+  assert.equal(byEmail.status, 409, "the email path reaches lead 11 too, so it is refused the same way");
+  assert.deepEqual(h.botRecord().leads.map((lead) => lead.email).sort(), [JANE, OMAR]);
+  assert.equal(h.d1._db.prepare("SELECT count(*) AS n FROM siterep_leads WHERE bot_id = 'deletebot' AND email = 'kim@visitor.test'").get().n, 1);
+});
+
 test("a session the ledger shows another visitor in is skipped and reported", { skip: !DatabaseSync }, async () => {
   const h = harness();
   await seedLedger(h);
