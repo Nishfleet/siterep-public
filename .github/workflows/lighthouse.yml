@@ -19,3 +19,4 @@ jobs:
     with:
       urls: |
         https://siterep.net/
+      upload_reports: true
