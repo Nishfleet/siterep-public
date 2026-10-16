@@ -5259,6 +5259,50 @@ button.lead-chip {
   opacity: 1;
 }
 
+.lead-actions .lead-delete {
+  align-items: center;
+  border-color: var(--red-wash);
+  color: var(--red-ink);
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.lead-actions .lead-delete:disabled {
+  background: white;
+  color: var(--muted);
+}
+
+.privacy-request-list {
+  border: 1px solid var(--red-wash);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px;
+}
+
+.privacy-request-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.privacy-request-row span {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.privacy-request-row select {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  max-width: 100%;
+  min-height: 30px;
+}
+
 .install-status,
 .widget-proof-card {
   align-items: center;

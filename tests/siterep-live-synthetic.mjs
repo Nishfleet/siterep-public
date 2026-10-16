@@ -14,6 +14,22 @@ function readWorkerReleaseMarker() {
   return match[1];
 }
 
+// Same source as the release marker: the canary expects whatever trust date
+// the checked-out worker serves, so a trust-copy change never leaves a second
+// hard-coded date behind. Production deploys from CI on every main push, so
+// the canary only sees the old date for the minutes between merge and deploy,
+// exactly as it does for a release-marker change.
+function readWorkerTrustUpdatedAt() {
+  const source = readFileSync(new URL("../worker/index.js", import.meta.url), "utf8");
+  const match = source.match(/const TRUST_STATUS_UPDATED_AT = "([^"]+)"/);
+  if (!match) {
+    throw new Error(
+      "worker/index.js is missing `const TRUST_STATUS_UPDATED_AT = \"...\"`; the live canary cannot derive its trust-date expectation",
+    );
+  }
+  return match[1];
+}
+
 const baseUrl = new URL(process.env.SITEREP_MONITOR_BASE_URL || "https://siterep.net");
 const isLocalCandidate = ["127.0.0.1", "localhost", "::1"].includes(baseUrl.hostname);
 const defaultMonitorBotId = "site-rep-demo";
@@ -26,7 +42,7 @@ const healthOnly = process.argv.includes("--health") || process.env.SITEREP_MONI
 const strictMode = process.argv.includes("--strict") || process.env.SITEREP_MONITOR_STRICT === "true";
 const requestTimeoutMs = Number(process.env.SITEREP_MONITOR_TIMEOUT_MS || 10000);
 const expectedReleaseMarker = process.env.SITEREP_EXPECTED_RELEASE_MARKER || readWorkerReleaseMarker();
-const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || "2026-08-11";
+const expectedTrustUpdatedAt = process.env.SITEREP_EXPECTED_TRUST_UPDATED_AT || readWorkerTrustUpdatedAt();
 const defaultSitemapLastmodFloors = Object.freeze({
   "/": "2026-08-09",
   "/ai-website-chatbot-for-small-business": "2026-08-09",

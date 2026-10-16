@@ -754,7 +754,7 @@ const ticketAutomationSteps = [
 
 const securityPrinciples = [
   "Conversation, source, and lead records stay in Site Rep unless an approved provider connection is configured",
-  "Exports and deletion-review paths are available from the customer dashboard",
+  "Exports, self-serve lead deletion, and account deletion review are available from the customer dashboard",
   "Retention and access-control details stay documented on the trust pages",
 ];
 
@@ -1120,9 +1120,25 @@ type PrivacyRequest = {
   status: "requested" | "reviewing" | "completed" | "rejected" | string;
   requesterEmail?: string;
   note?: string;
+  targetLeadId?: string;
+  targetEmail?: string;
   requestedAt: string;
   updatedAt?: string;
+  completedAt?: string;
 };
+
+type LeadDeletionResult = {
+  ok: boolean;
+  complete?: boolean;
+  warnings?: string[];
+};
+
+// The deletion result names anything it could not finish (an unreadable
+// backup, a session shared with another lead) instead of a bare success.
+function leadDeletionNotice(done: string, deletion?: LeadDeletionResult) {
+  const warnings = deletion?.warnings || [];
+  return [done, ...warnings, "An audit entry records that a deletion happened."].join(" ");
+}
 
 type CommandCenter = {
   generatedAt: string;
@@ -1511,6 +1527,9 @@ function App() {
   const [lead, setLead] = useState<Lead>({ name: "", email: "", need: "" });
   const [leadSaved, setLeadSaved] = useState<LeadRecord | null>(null);
   const [leadError, setLeadError] = useState("");
+  const [leadNotice, setLeadNotice] = useState("");
+  const [privacyRequests, setPrivacyRequests] = useState<PrivacyRequest[]>([]);
+  const [privacyRequestLeadChoice, setPrivacyRequestLeadChoice] = useState<Record<string, string>>({});
   const [publicKey, setPublicKey] = useState("");
   const [ownerAccessKey, setOwnerAccessKey] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -3468,7 +3487,7 @@ function App() {
 
   async function requestDataDeletion() {
     const confirmed = window.confirm(
-      "This opens a deletion review request for the current Site Rep account. It does not instantly delete data. Continue?",
+      "This opens a deletion review request for the whole Site Rep account. To erase one visitor's data now, use Delete lead in the lead inbox. Continue?",
     );
     if (!confirmed) return;
     setBotOpsNotice("");
@@ -4394,6 +4413,47 @@ function App() {
     }
   }
 
+  async function deleteLead(item: LeadRecord) {
+    const confirmed = window.confirm(
+      `Delete ${item.email} and their conversations from Site Rep? This removes the lead, linked transcripts, follow-up tickets, notifications, and queued webhooks, and cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setLeadNotice("");
+    try {
+      const bot = await api<BotState & { deletion?: LeadDeletionResult }>("/api/leads/delete", {
+        method: "POST",
+        body: JSON.stringify({ botId, leadId: item.id }),
+      });
+      applyBotState(bot);
+      setLeadError("");
+      setLeadNotice(leadDeletionNotice("Lead deleted.", bot.deletion));
+    } catch (error) {
+      setLeadError(error instanceof Error ? error.message : "Lead deletion failed.");
+    }
+  }
+
+  async function completePrivacyRequest(request: PrivacyRequest) {
+    const chosenLeadId = privacyRequestLeadChoice[request.id] || "";
+    if (!request.targetLeadId && !request.targetEmail && !chosenLeadId) {
+      setLeadError("Choose the lead this request is about.");
+      return;
+    }
+    const confirmed = window.confirm("Delete this visitor's lead data now and mark the request completed? This cannot be undone.");
+    if (!confirmed) return;
+    setLeadNotice("");
+    try {
+      const bot = await api<BotState & { deletion?: LeadDeletionResult }>("/api/privacy/deletion-request/complete", {
+        method: "POST",
+        body: JSON.stringify({ botId, privacyRequestId: request.id, ...(chosenLeadId ? { leadId: chosenLeadId } : {}) }),
+      });
+      applyBotState(bot);
+      setLeadError("");
+      setLeadNotice(leadDeletionNotice("Deletion request completed.", bot.deletion));
+    } catch (error) {
+      setLeadError(error instanceof Error ? error.message : "Could not complete the deletion request.");
+    }
+  }
+
   function updateLeadNoteDraft(item: LeadRecord, patch: Partial<{ note: string; nextFollowUpAt: string }>) {
     dirtyLeadNoteIdsRef.current.add(item.id);
     setLeadNotes((current) => ({
@@ -4462,6 +4522,7 @@ function App() {
     setEscalations(bot.escalations || []);
     setTickets(bot.tickets || []);
     setNotifications(bot.notifications || []);
+    setPrivacyRequests(bot.privacyRequests || []);
     setBilling(bot.billing || null);
     setCommandCenter(bot.commandCenter || null);
     setEvents(bot.events || []);
@@ -4778,7 +4839,7 @@ function App() {
                 <li><strong>Install health</strong> — whether the widget is live on your allowed domain.</li>
                 <li><strong>Private exports</strong> — CSV downloads of conversations, leads, and sources.</li>
                 <li><strong>Notifications</strong> — team alerts for new leads, handoffs, and source gaps.</li>
-                <li><strong>Deletion-review requests</strong> — customer removal requests awaiting review.</li>
+                <li><strong>Deletion-review requests</strong> — whole-account removal requests awaiting review; single leads delete instantly from the lead inbox.</li>
               </ul>
             </div>
             <div>
@@ -6602,6 +6663,38 @@ function App() {
                 <Download size={14} />
                 Export CSV
               </Button>
+              {leadNotice ? <p className="field-notice">{leadNotice}</p> : null}
+              {privacyRequests.some((request) => request.type === "deletion" && request.status !== "completed" && ["lead", "visitor"].includes(request.scope)) ? (
+                <div className="privacy-request-list" aria-label="Open lead deletion requests">
+                  <strong>Lead deletion requests</strong>
+                  {privacyRequests
+                    .filter((request) => request.type === "deletion" && request.status !== "completed" && ["lead", "visitor"].includes(request.scope))
+                    .map((request) => (
+                      <div key={request.id} className="privacy-request-row">
+                        <span>
+                          {request.targetEmail || (request.targetLeadId ? `Lead ${request.targetLeadId}` : "No lead named")} · requested{" "}
+                          {new Date(request.requestedAt).toLocaleDateString()}
+                        </span>
+                        {!request.targetLeadId && !request.targetEmail ? (
+                          <select
+                            value={privacyRequestLeadChoice[request.id] || ""}
+                            onChange={(event) => setPrivacyRequestLeadChoice((current) => ({ ...current, [request.id]: event.target.value }))}
+                            aria-label="Lead this request is about"
+                          >
+                            <option value="">Choose lead</option>
+                            {leads.map((item) => (
+                              <option key={item.id} value={String(item.id)}>{item.email}</option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <Button type="button" onClick={() => completePrivacyRequest(request)} disabled={isPublicDemo}>
+                          <Trash2 size={14} />
+                          Delete data
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              ) : null}
               {leads.length > 0 ? (
                 <ul>
                   {leads.slice(0, 50).map((item) => (
@@ -6656,6 +6749,10 @@ function App() {
                             {status}
                           </Button>
                         ))}
+                        <Button className="lead-delete" type="button" onClick={() => deleteLead(item)} disabled={isPublicDemo} aria-label={`Delete lead ${item.email}`}>
+                          <Trash2 size={13} />
+                          Delete lead
+                        </Button>
                       </div>
                     </li>
                   ))}
