@@ -11467,7 +11467,12 @@ async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
       result.unreadable.push(key.name);
       continue;
     }
-    if (!json) continue;
+    if (!json) {
+      if (!Number(key.expiration || 0)) {
+        await kv.put(key.name, raw, { expirationTtl: STORE_BACKUP_TTL_SECONDS });
+      }
+      continue;
+    }
     const expiration = Number(key.expiration || 0);
     if (!expiration) {
       await kv.put(key.name, json, { expirationTtl: STORE_BACKUP_TTL_SECONDS });

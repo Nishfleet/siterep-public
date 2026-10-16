@@ -1034,3 +1034,26 @@ test("a scrubbed backup that had no expiry gets the normal backup expiry", async
   assert.ok(entry.expiration > Date.now() / 1000, "the scrubbed backup now expires");
   assert.ok(entry.expiration <= Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 + 5);
 });
+
+test("a backup with no expiry gets the normal backup expiry even when it does not hold the visitor", async () => {
+  const holdingKey = `store:backup:${NOW.slice(0, 10)}`;
+  const otherKey = "store:backup:2026-01-01";
+  const h = harness({ kvNoExpiry: [holdingKey] });
+  await h.kv.put(otherKey, JSON.stringify({ bots: { otherbot: { botId: "otherbot" } } }));
+  assert.equal(h.kv._map.get(holdingKey).expiration, undefined, "the holding backup starts with no expiry");
+  assert.equal(h.kv._map.get(otherKey).expiration, undefined, "the other backup starts with no expiry");
+  assert.doesNotMatch(h.kv._map.get(otherKey).value, /jane@visitor\.test/, "the other backup holds no copy of the visitor");
+
+  const response = await h.post("/api/leads/delete", { leadId: 11 });
+  assert.equal(response.status, 200);
+
+  const holding = h.kv._map.get(holdingKey);
+  assert.doesNotMatch(holding.value, /jane@visitor\.test/, "the holding backup is scrubbed");
+  assert.ok(holding.expiration > Date.now() / 1000, "the scrubbed backup now expires");
+  assert.ok(holding.expiration <= Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 + 5);
+
+  const other = h.kv._map.get(otherKey);
+  assert.equal(other.value, JSON.stringify({ bots: { otherbot: { botId: "otherbot" } } }), "the backup that never held the visitor is untouched");
+  assert.ok(other.expiration > Date.now() / 1000, "the backup that did not hold the visitor now expires");
+  assert.ok(other.expiration <= Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 + 5);
+});
