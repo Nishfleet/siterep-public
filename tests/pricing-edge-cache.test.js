@@ -31,6 +31,10 @@ function fakeEdgeCache() {
   };
 }
 
+function fakeContext(pending = []) {
+  return { waitUntil: (work) => pending.push(work), passThroughOnException: () => {}, props: {} };
+}
+
 function pricingEnv(overrides = {}) {
   return {
     RAZORPAY_CURRENCY: "USD",
@@ -62,7 +66,7 @@ async function withEdgeCache(run) {
 test("pricing endpoint sends edge cache headers and serves the second request from the edge cache", async () => {
   await withEdgeCache(async (worker, cache) => {
     const env = pricingEnv();
-    const first = await worker.fetch(pricingRequest("DE"), env, {});
+    const first = await worker.fetch(pricingRequest("DE"), env, fakeContext());
     assert.equal(first.status, 200);
     assert.equal(first.headers.get("cache-control"), CLIENT_CACHE_CONTROL);
     assert.equal(first.headers.get("x-pricing-cache"), "MISS");
@@ -70,12 +74,12 @@ test("pricing endpoint sends edge cache headers and serves the second request fr
     assert.equal(firstBody.ok, true);
     assert.equal(cache.map.size, 1);
 
-    const second = await worker.fetch(pricingRequest("DE"), env, {});
+    const second = await worker.fetch(pricingRequest("DE"), env, fakeContext());
     assert.equal(second.headers.get("cache-control"), CLIENT_CACHE_CONTROL);
     assert.equal(second.headers.get("x-pricing-cache"), "HIT");
     assert.deepEqual(await second.json(), firstBody);
 
-    const head = await worker.fetch(pricingRequest("DE", "HEAD"), env, {});
+    const head = await worker.fetch(pricingRequest("DE", "HEAD"), env, fakeContext());
     assert.equal(head.headers.get("x-pricing-cache"), "HIT");
     assert.equal(await head.text(), "");
   });
@@ -83,10 +87,10 @@ test("pricing endpoint sends edge cache headers and serves the second request fr
 
 test("pricing edge cache is keyed by country and by pricing configuration", async () => {
   await withEdgeCache(async (worker, cache) => {
-    await worker.fetch(pricingRequest("DE"), pricingEnv(), {});
-    const otherCountry = await worker.fetch(pricingRequest("IN"), pricingEnv(), {});
+    await worker.fetch(pricingRequest("DE"), pricingEnv(), fakeContext());
+    const otherCountry = await worker.fetch(pricingRequest("IN"), pricingEnv(), fakeContext());
     assert.equal(otherCountry.headers.get("x-pricing-cache"), "MISS");
-    const changedPrice = await worker.fetch(pricingRequest("DE"), pricingEnv({ RAZORPAY_STARTER_AMOUNT_SUBUNITS: "1100" }), {});
+    const changedPrice = await worker.fetch(pricingRequest("DE"), pricingEnv({ RAZORPAY_STARTER_AMOUNT_SUBUNITS: "1100" }), fakeContext());
     assert.equal(changedPrice.headers.get("x-pricing-cache"), "MISS");
     assert.equal((await changedPrice.json()).plans[0].amountSubunits, 1100);
     assert.equal(cache.map.size, 3);
@@ -96,23 +100,23 @@ test("pricing edge cache is keyed by country and by pricing configuration", asyn
 test("stale pricing is served immediately and refreshed in the background", async () => {
   await withEdgeCache(async (worker, cache) => {
     const env = pricingEnv();
-    await worker.fetch(pricingRequest("DE"), env, {});
+    await worker.fetch(pricingRequest("DE"), env, fakeContext());
     const [key, stored] = [...cache.map.entries()][0];
     const body = await stored.clone().text();
     cache.map.set(key, new Response(body, { headers: { "x-pricing-cached-at": String(Date.now() - 2 * 3600 * 1000) } }));
     const pending = [];
-    const stale = await worker.fetch(pricingRequest("DE"), env, { waitUntil: (work) => pending.push(work) });
+    const stale = await worker.fetch(pricingRequest("DE"), env, fakeContext(pending));
     assert.equal(stale.headers.get("x-pricing-cache"), "STALE");
     await Promise.all(pending);
     assert.equal(pending.length, 1);
-    const refreshed = await worker.fetch(pricingRequest("DE"), env, {});
+    const refreshed = await worker.fetch(pricingRequest("DE"), env, fakeContext());
     assert.equal(refreshed.headers.get("x-pricing-cache"), "HIT");
   });
 });
 
 test("degraded pricing is never cached at the edge or by clients", async () => {
   await withEdgeCache(async (worker, cache) => {
-    const response = await worker.fetch(pricingRequest("DE"), {}, {});
+    const response = await worker.fetch(pricingRequest("DE"), {}, fakeContext());
     assert.equal((await response.json()).ok, false);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(cache.map.size, 0);
