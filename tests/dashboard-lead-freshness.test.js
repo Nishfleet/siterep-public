@@ -23,7 +23,7 @@ test("the customer dashboard keeps its own view fresh after the crawl ends", () 
   );
   assert.match(
     effect,
-    /customerDashboardOpen/,
+    /liveCustomerDashboard/,
     "the refresh must keep running while a customer dashboard is open",
   );
 });

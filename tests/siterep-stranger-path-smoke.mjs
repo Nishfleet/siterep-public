@@ -173,7 +173,14 @@ try {
   }
   assert(crawlDone, "The sign-up crawl never finished, so the lead-in-dashboard step could not run on an idle workspace.");
   timings.crawlFinishedMs = Date.now() - startedAt;
-  await page.waitForSelector("text=/Cancel crawl/i", { state: "detached", timeout: 30000 });
+  const crawlEndedInPage = Date.now() + 30000;
+  let dashboardIdle = false;
+  while (Date.now() < crawlEndedInPage) {
+    dashboardIdle = (await page.locator("body").innerText()).match(/Cancel crawl/i) === null;
+    if (dashboardIdle) break;
+    await page.waitForTimeout(500);
+  }
+  assert(dashboardIdle, "The open dashboard never saw the crawl end, so the lead-in-dashboard step could not run on an idle workspace.");
   timings.dashboardIdleMs = Date.now() - startedAt;
 
   const sourceResponse = await fetch(`${base}/api/sources`, {
@@ -219,8 +226,8 @@ try {
   }
   assert(leadSaved, "The captured lead never reached the customer dashboard.");
 
-  const inboxDeadline = Date.now() + 30000;
   let inboxListed = false;
+  const inboxDeadline = Date.now() + 30000;
   while (Date.now() < inboxDeadline) {
     inboxListed = (await page.locator("body").innerText()).includes(visitorEmail);
     if (inboxListed) break;
