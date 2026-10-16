@@ -1116,6 +1116,7 @@ const STORE_BOTS_KEY = "store:bots";
 const STORE_BOT_PREFIX = "store:bot:";
 const STORE_BACKUP_TTL_SECONDS = 60 * 60 * 24 * 30;
 const STORE_BACKUP_KEY_PREFIX = "store:backup:";
+const STORE_BACKUP_LIST_MAX_PAGES = 10;
 // The live KV mirror is best-effort recovery, not a write-through cache: KV
 // allows ~1 write/sec/key, so mirror at most once a minute.
 const STORE_KV_MIRROR_MIN_INTERVAL_MS = 60 * 1000;
@@ -9168,13 +9169,13 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { error: "Choose the lead or visitor email this request is about." });
       return;
     }
-    // A lead id or email that matches nothing stored leaves the request open.
     const result = await deleteLeadData(botId, target, {
       trigger: "privacy_request",
       actor: privacyAuditActor(response._siterepAuthorization),
       privacyRequestId,
       completedTarget: target,
       requireExistingLead: true,
+      completeMissingTarget: Boolean(namedTarget),
     });
     sendJson(response, result.status, result.body);
     return;
@@ -11109,6 +11110,14 @@ const LEAD_AND_EMAIL_ERROR = "Name one lead or one visitor email, not both.";
 // Lead records that disagree about a lead's email (one id, two addresses)
 // stop the deletion: an id-based erase would reach the other person's rows.
 const AMBIGUOUS_LEAD_ERROR = "This visitor's lead records name more than one email, so nothing was deleted. Contact Site Rep support to finish this deletion.";
+const AMBIGUOUS_LEAD_WRITE_ERROR = "This visitor's lead records changed during the deletion and now name more than one email. The live record was left untouched, but recovery copies were already scrubbed. Contact Site Rep support to finish this deletion.";
+
+class AmbiguousLeadDeletionError extends Error {
+  constructor() {
+    super(AMBIGUOUS_LEAD_WRITE_ERROR);
+    this.name = "AmbiguousLeadDeletionError";
+  }
+}
 
 // Erases one visitor's lead data from every Site Rep store that holds it:
 // the Durable Object store, the D1 record ledger, and the KV recovery mirror
@@ -11145,10 +11154,12 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   const db = recordLedgerDb();
   const ledgerRemoved = { leads: 0, conversations: 0 };
   const unreadableSnapshots = new Set();
+  let uncheckedCopies = false;
   let snapshotsScrubbed = 0;
   const scrubCopies = async () => {
     const kv = await eraseLeadFromKvSnapshots(normalizedBotId, targets);
     snapshotsScrubbed += kv.scrubbed;
+    if (kv.unchecked) uncheckedCopies = true;
     for (const name of kv.unreadable) unreadableSnapshots.add(name);
     if (db) {
       const removed = await deleteLeadLedgerRows(db, normalizedBotId, targets);
@@ -11163,7 +11174,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       expandTargetsInBot(current, targets, { followSessions: false });
     }
     if (targets.ambiguous) return { status: 409, body: { error: AMBIGUOUS_LEAD_ERROR } };
-    if (options.requireExistingLead && !targetsFoundAnything(current, targets)) {
+    if (options.requireExistingLead && !targetsFoundAnything(current, targets) && !options.completeMissingTarget) {
       return { status: 404, body: { error: "Lead not found." } };
     }
     await resolveSessions(db, normalizedBotId, current, targets);
@@ -11230,6 +11241,8 @@ async function deleteLeadData(botId, input = {}, options = {}) {
           completedRequestIds.push(item.id);
         }
       }
+      expandTargetsInBot(record, targets, { followSessions: false });
+      if (targets.ambiguous) throw new AmbiguousLeadDeletionError();
       // Last, so the requests just matched by email are hashed too. Sessions
       // were decided against the live record and the ledger above; the live
       // erase follows exactly those, never a session judged alone.
@@ -11255,6 +11268,10 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       return record;
     }, { forceMirror: true });
   } catch (error) {
+    if (error instanceof AmbiguousLeadDeletionError) {
+      console.warn(JSON.stringify({ type: "lead_deletion_ambiguous", botId: normalizedBotId, ...safeErrorFields(error) }));
+      return { status: 409, body: { error: AMBIGUOUS_LEAD_WRITE_ERROR } };
+    }
     // The copies scrubbed above stay scrubbed; the live lead is untouched,
     // so a retry finds the same targets.
     console.warn(JSON.stringify({ type: "lead_deletion_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
@@ -11275,6 +11292,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   try {
     const check = await kvCopiesHoldingTarget(normalizedBotId, targets);
     staleCopies = check.stale;
+    if (check.unchecked) uncheckedCopies = true;
     for (const name of check.unreadable) unreadableSnapshots.add(name);
   } catch (error) {
     staleCopies = ["(check failed)"];
@@ -11295,12 +11313,15 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   if (unreadableSnapshots.size) {
     warnings.push(`${unreadableSnapshots.size} recovery snapshot${unreadableSnapshots.size === 1 ? " was" : "s were"} in an unexpected format and could not be checked for this visitor.`);
   }
+  if (uncheckedCopies) {
+    warnings.push("The recovery backup listing did not finish, so some copies were not checked for this visitor.");
+  }
   if (mirrorStale) warnings.push("A KV recovery copy still held this visitor after the scrub. It is replaced on the next store write or backup scrub, and expires within 30 days at most.");
   if (recheckFailed) warnings.push("The final check of recovery backups did not finish. A backup that still holds this visitor expires within 30 days.");
   if (targets.blockedSessions.size) {
     warnings.push("Some anonymous questions came from a browser session shared with another lead, so they were kept.");
   }
-  const complete = !unreadableSnapshots.size && !recheckFailed && !mirrorStale;
+  const complete = !unreadableSnapshots.size && !recheckFailed && !mirrorStale && !uncheckedCopies;
 
   if (!complete) {
     // Best effort: the deletion and its request are already recorded above.
@@ -11382,9 +11403,11 @@ async function privacyEmailHash(salt, email) {
 // visitor, read-only. Unreadable ones are reported separately.
 async function kvCopiesHoldingTarget(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
-  const result = { stale: [], unreadable: [] };
+  const result = { stale: [], unreadable: [], unchecked: false };
   if (!kv) return result;
-  const names = [STORE_KEY, ...(await listStoreBackupKeys(kv)).map((key) => key.name)];
+  const listing = await listStoreBackupKeys(kv);
+  result.unchecked = listing.truncated;
+  const names = [STORE_KEY, ...listing.keys.map((key) => key.name)];
   for (const name of names) {
     const raw = await kv.get(name);
     if (!raw) continue;
@@ -11398,12 +11421,21 @@ async function kvCopiesHoldingTarget(botId, targets, env = activeEnv) {
 async function listStoreBackupKeys(kv) {
   const keys = [];
   let cursor;
+  let pages = 0;
+  let truncated = false;
   do {
     const page = await kv.list({ prefix: STORE_BACKUP_KEY_PREFIX, ...(cursor ? { cursor } : {}) });
     keys.push(...(page?.keys || []));
+    pages += 1;
     cursor = page && !page.list_complete ? page.cursor : undefined;
+    if (cursor && pages >= STORE_BACKUP_LIST_MAX_PAGES) {
+      truncated = true;
+      cursor = undefined;
+    } else if (!page || (!page.list_complete && !cursor)) {
+      truncated = true;
+    }
   } while (cursor);
-  return keys;
+  return { keys, truncated };
 }
 
 // Scrubs the visitor from the KV daily backups. Every writer of the backup
@@ -11416,15 +11448,18 @@ async function listStoreBackupKeys(kv) {
 // STORE_KEY is not touched here: it has one writer, the store's own
 // serialized write path, and deleteLeadData's live erase rewrites it from the
 // already-scrubbed store. A second writer here could overwrite a chat or lead
-// that landed in between. Each backup keeps the expiry it already had; one
-// due to expire within a minute is deleted instead, since KV rejects
-// expirations that close. Returns how many backups changed and which could
-// not be read as a store.
+// that landed in between. A backup keeps the expiry it already had, one that
+// had none gets the normal backup expiry, and one due to expire within a
+// minute is deleted instead, since KV rejects expirations that close. Returns
+// how many backups changed, which could not be read as a store, and whether
+// the listing stopped before the last page.
 async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
-  const result = { scrubbed: 0, unreadable: [] };
+  const result = { scrubbed: 0, unreadable: [], unchecked: false };
   if (!kv) return result;
-  for (const key of await listStoreBackupKeys(kv)) {
+  const listing = await listStoreBackupKeys(kv);
+  result.unchecked = listing.truncated;
+  for (const key of listing.keys) {
     const raw = await kv.get(key.name);
     if (!raw) continue;
     const { json, unreadable } = eraseLeadFromStoreSnapshot(raw, botId, targets);
@@ -11435,7 +11470,7 @@ async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
     if (!json) continue;
     const expiration = Number(key.expiration || 0);
     if (!expiration) {
-      await kv.put(key.name, json);
+      await kv.put(key.name, json, { expirationTtl: STORE_BACKUP_TTL_SECONDS });
     } else if (expiration > Math.floor(Date.now() / 1000) + 60) {
       await kv.put(key.name, json, { expiration });
     } else {

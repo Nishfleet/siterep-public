@@ -926,3 +926,111 @@ test("a failed audit write is reported, and the erase, completed request and act
   assert.equal(stored.privacyRequests.find((item) => item.id === request.id).status, "completed");
   assert.ok(stored.events.some((event) => event.title === "Lead data deleted"));
 });
+
+test("a lead that lands with another email under the same id during the write abandons the write", async () => {
+  const h = harness();
+  const list = h.kv.list;
+  let injected = false;
+  h.kv.list = async (options) => {
+    if (!injected) {
+      injected = true;
+      const key = "store:bot:deletebot";
+      const bot = h.storage._map.get(key);
+      h.storage._map.set(key, {
+        ...bot,
+        leads: [...bot.leads, { id: 11, email: "kim@visitor.test", conversationId: 400, status: "new", createdAt: NOW }],
+      });
+    }
+    return list(options);
+  };
+
+  const response = await h.post("/api/leads/delete", { leadId: 11 });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /more than one email/);
+  const stored = h.storage._map.get("store:bot:deletebot");
+  assert.deepEqual(stored.leads.map((lead) => lead.email).sort(), [JANE, "kim@visitor.test", OMAR], "nobody was erased");
+});
+
+test("a request that names a lead already erased still completes with zero counts and only the hash", async () => {
+  const h = harness();
+  assert.equal((await h.post("/api/leads/delete", { leadId: 11 })).status, 200);
+
+  const queued = await h.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const request = (await queued.json()).privacyRequests.find((item) => item.scope === "visitor" && item.targetEmail === JANE);
+  assert.ok(request, "the open request still names who it is about");
+
+  const completed = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id });
+  assert.equal(completed.status, 200, "a request that named its target still closes when the data is already gone");
+  assert.equal((await completed.json()).deletion.counts.leads, 0);
+  const done = h.botRecord().privacyRequests.find((item) => item.id === request.id);
+  assert.equal(done.status, "completed");
+  assert.equal(done.targetEmail, undefined);
+  assert.match(done.targetEmailHash, /^sha256:[0-9a-f]{64}$/);
+  assert.doesNotMatch(JSON.stringify(h.botRecord()), /jane@visitor\.test/i, "only the salted hash is kept");
+
+  const leadQueued = await h.post("/api/privacy/deletion-request", { scope: "lead", leadId: 11 }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const leadRequest = (await leadQueued.json()).privacyRequests.find((item) => item.scope === "lead" && item.targetLeadId === "11");
+  assert.equal((await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: leadRequest.id })).status, 200);
+  const leadDone = h.botRecord().privacyRequests.find((item) => item.id === leadRequest.id);
+  assert.equal(leadDone.status, "completed");
+  assert.equal(leadDone.targetLeadId, "11", "the completed request still shows which lead it covered");
+});
+
+test("a backup listing that does not finish reports the copies it did not check", async () => {
+  const run = async (pageFor) => {
+    const h = harness();
+    let pages = 0;
+    h.kv.list = async ({ prefix = "" } = {}) => pageFor((pages += 1), prefix);
+    const response = await h.post("/api/leads/delete", { leadId: 11 });
+    return { h, body: await response.json() };
+  };
+  const endless = (pages, prefix) => ({ keys: [{ name: `${prefix}page-${pages}` }], list_complete: false, cursor: `cursor-${pages}` });
+  const exact = (pages, prefix) => ({
+    keys: [{ name: `${prefix}page-${pages}` }],
+    list_complete: pages >= 10,
+    ...(pages >= 10 ? {} : { cursor: `cursor-${pages}` }),
+  });
+  const malformed = (pages, prefix) => ({ keys: [{ name: `${prefix}page-${pages}` }], list_complete: false });
+
+  const capped = await run(endless);
+  assert.equal(capped.body.deletion.complete, false);
+  assert.match(capped.body.deletion.warnings.join(" "), /listing did not finish/);
+  assert.doesNotMatch(JSON.stringify(capped.h.botRecord().leads), /jane@visitor\.test/, "live data is still deleted");
+
+  const whole = await run(exact);
+  assert.equal(whole.body.deletion.complete, true, "ten pages that finish are complete");
+  assert.doesNotMatch(whole.body.deletion.warnings.join(" "), /listing did not finish/);
+
+  const broken = await run(malformed);
+  assert.equal(broken.body.deletion.complete, false);
+  assert.match(broken.body.deletion.warnings.join(" "), /listing did not finish/);
+
+  const absent = await run(() => undefined);
+  assert.equal(absent.body.deletion.complete, false);
+  assert.match(absent.body.deletion.warnings.join(" "), /listing did not finish/);
+});
+
+test("a request that names no lead still refuses a body target that matches nothing", async () => {
+  const h = harness();
+  const queued = await h.post("/api/privacy/deletion-request", { scope: "lead" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const request = (await queued.json()).privacyRequests.find((item) => item.scope === "lead");
+  assert.ok(request, "a request that names no lead is queued for the owner");
+  assert.equal(request.targetLeadId, undefined);
+
+  const missing = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id, leadId: 999 });
+  assert.equal(missing.status, 404, "a body target that matches nothing is not a completed deletion");
+  assert.equal(h.botRecord().privacyRequests.find((item) => item.id === request.id).status, "requested", "the request stays open");
+});
+
+test("a scrubbed backup that had no expiry gets the normal backup expiry", async () => {
+  const backupKey = `store:backup:${NOW.slice(0, 10)}`;
+  const h = harness({ kvNoExpiry: [backupKey] });
+  assert.equal(h.kv._map.get(backupKey).expiration, undefined, "seeded with no expiry");
+
+  const response = await h.post("/api/leads/delete", { leadId: 11 });
+  assert.equal(response.status, 200);
+  const entry = h.kv._map.get(backupKey);
+  assert.doesNotMatch(entry.value, /jane@visitor\.test/, "the backup is scrubbed");
+  assert.ok(entry.expiration > Date.now() / 1000, "the scrubbed backup now expires");
+  assert.ok(entry.expiration <= Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 + 5);
+});
