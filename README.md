@@ -63,8 +63,9 @@ A scheduled workflow (`.github/workflows/honesty-check.yml`) runs
 citation, when the endpoint is unreachable, or when the answer it reads is
 older than 15 minutes. A red run opens or updates the `honesty-check-red`
 issue. It is not part of `npm test`, because it needs the deployed worker.
-Switch it off by disabling or deleting that workflow file, or point
-`SITEREP_HONESTY_CHECK_URL` at a preview host.
+Switch it off by disabling or deleting that workflow file, or run it against a
+preview host with `SITEREP_HONESTY_CHECK_URL` (and `SITEREP_HONESTY_CHECK_ORIGIN`
+when the preview host is not the origin the worker expects).
 
 ## Deeper context
 

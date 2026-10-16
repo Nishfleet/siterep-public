@@ -29,8 +29,13 @@ async function readCheck() {
 
 test("the deployed honesty check passes and every answer keeps its citation", async () => {
   const { status, body } = await readCheck();
-  assert.equal(status, 200, `honesty check answered ${status}: ${String(body).slice(0, 300)}`);
-  const payload = JSON.parse(body);
+  assert.equal(status, 200, `honesty check answered ${status}: ${JSON.stringify(String(body).slice(0, 300))}`);
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    assert.fail(`honesty check answered 200 with a body that is not JSON: ${JSON.stringify(String(body).slice(0, 300))}`);
+  }
   const ageMs = Date.now() - Date.parse(payload.checkedAt);
   console.log(
     [

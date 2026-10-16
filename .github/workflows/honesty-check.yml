@@ -28,7 +28,9 @@ jobs:
         with:
           node-version: "24"
       - id: check
-        run: node --test tests/honesty-live.check.js 2>&1 | tee honesty.log
+        run: |
+          set -euo pipefail
+          node --test tests/honesty-live.check.js 2>&1 | tee honesty.log
         continue-on-error: true
       - name: Open or update the failing-honesty issue
         if: steps.check.outcome == 'failure'
@@ -45,7 +47,7 @@ jobs:
             head -c 6000 honesty.log
             echo '```'
           } > body.md
-          gh label create honesty-check-red -R "$GITHUB_REPOSITORY" --color D93F0B --description "The deployed honesty check is failing" 2>/dev/null || true
+          gh label create honesty-check-red -R "$GITHUB_REPOSITORY" --force --color D93F0B --description "The deployed honesty check is failing"
           existing="$(gh issue list -R "$GITHUB_REPOSITORY" --label honesty-check-red --state open --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
             gh issue comment "$existing" -R "$GITHUB_REPOSITORY" --body-file body.md
