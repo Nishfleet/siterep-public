@@ -13,6 +13,9 @@
 # callee's miss-review-pr job can act on it (same-repo head; a claim/issue-*
 # close, or a merge of a GitHub-generated revert, whose title always starts
 # Revert "). Any stranger's comment or a fork's PR close starts nothing.
+# Every other pull_request_target action (the callee's hold-risky, ejected
+# and PR sweeps use them) is dispatched only for a same-repo head, so a
+# fork's PR opening, pushing or being labelled starts nothing either.
 # issues: reopened dispatches the callee's miss-review for the issue; the
 # callee's MISS_REVIEW variable and its Gate's one-review-per-issue dedupe
 # own that decision.
@@ -33,18 +36,45 @@ on:
         description: 'miss-review to replay a miss on issue, orchestrate to hand a parked issue to the orchestrator, empty for a normal sweep'
         required: false
         type: string
+  # All nine PR events the fleet's review and merge gates listen for:
+  # https://github.com/Nishfleet/fleet-ops#intake-enrolment (precondition 3),
+  # the same list as the callee's own on.pull_request_target.types. On these
+  # events only the callee's PR jobs run (hold-risky and its review-risky,
+  # ejected, paused, and miss-review-pr on a close); its sweep runs only on
+  # issues: closed, workflow_dispatch and schedule. hold-risky reads the PR
+  # through the API and labels with GITHUB_TOKEN, which starts no new run.
+  # review-risky is the fleet's paid review of a held head: it reviews each
+  # head once (a second event on the same head, a label included, finds the
+  # verdict and stops), and it reads the head as a git diff, never running
+  # its code. No PR-event job checks out or runs the head.
   pull_request_target:
-    types: [dequeued, auto_merge_disabled, closed]
+    types: [dequeued, auto_merge_disabled, closed, auto_merge_enabled, synchronize, labeled, opened, reopened, ready_for_review]
   workflow_run:
     workflows: [CI]
     types: [completed]
   schedule:
     - cron: '17 */6 * * *'
-# One running and one pending run per commented issue; GitHub replaces the
-# pending run, so a burst of comments cannot fan out. Every other event gets
-# its own group and never queues (the callee owns the sweep's own group).
+# One running and one pending run per commented issue, and per PR and PR
+# action; GitHub replaces the pending run, so a burst of comments, pushes or
+# labels cannot fan out. Actions get separate groups on purpose: a new
+# head's synchronize must reach hold-risky at once, never wait behind a
+# long review-risky run of the old head. Parallel runs on one PR are safe
+# because the callee serialises its own PR work: hold-risky in a per-PR
+# group that queues, and the review in a per-PR group where the newer run
+# replaces the older, after which the verdict check stops a second review
+# of the same head. Nothing here is cancelled mid-run, so a callee job
+# never stops between two writes; the callee reads the PR's current state,
+# so a replaced pending run loses nothing. A PR close and every other event
+# get their own group and never queue (the callee owns the sweep's own
+# group). Every group here is prefixed so it never equals the callee's
+# agent-dispatch-<run_id> or agent-dispatch-sweep: a caller and callee
+# sharing a group deadlock, and GitHub fails the run as a workflow file
+# issue with no jobs.
 concurrency:
-  group: ${{ github.event_name == 'issue_comment' && format('agent-dispatch-comment-{0}-{1}', github.repository, github.event.issue.number) || format('agent-dispatch-{0}', github.run_id) }}
+  group: >-
+    ${{ github.event_name == 'issue_comment' && format('agent-dispatch-comment-{0}-{1}', github.repository, github.event.issue.number) ||
+    (github.event_name == 'pull_request_target' && github.event.action != 'closed') && format('agent-dispatch-pr-{0}-{1}-{2}', github.repository, github.event.pull_request.number, github.event.action) ||
+    format('agent-dispatch-stub-{0}', github.run_id) }}
   cancel-in-progress: false
 jobs:
   dispatch:
@@ -54,8 +84,9 @@ jobs:
          (github.event.comment.author_association == 'OWNER' ||
           github.event.comment.author_association == 'MEMBER' ||
           github.event.comment.author_association == 'COLLABORATOR'))) &&
-      (github.event_name != 'pull_request_target' || github.event.action != 'closed' ||
-        (github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event_name != 'pull_request_target' ||
+        (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository) ||
+        (github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository &&
           ((github.event.pull_request.merged == false && startsWith(github.event.pull_request.head.ref, 'claim/issue-')) ||
            (github.event.pull_request.merged == true && startsWith(github.event.pull_request.title, 'Revert "')))))
     uses: Nishfleet/fleet-ops/.github/workflows/agent-dispatch.yml@main
