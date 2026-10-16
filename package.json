@@ -14,6 +14,7 @@
     "cf:check": "wrangler deploy --dry-run",
     "smoke:public-layout": "node tests/siterep-public-layout-smoke.mjs",
     "smoke:widget-host": "node tests/siterep-widget-host-smoke.mjs",
+    "smoke:stranger-path": "node tests/siterep-stranger-path-smoke.mjs",
     "monitor:health": "node tests/siterep-live-synthetic.mjs --health",
     "monitor:live": "node tests/siterep-live-synthetic.mjs",
     "monitor:local": "SITEREP_MONITOR_BASE_URL=http://127.0.0.1:8787 SITEREP_MONITOR_ORIGIN=https://siterep.net node tests/siterep-live-synthetic.mjs",

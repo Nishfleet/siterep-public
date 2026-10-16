@@ -125,6 +125,11 @@ const SECURITY_HEADERS = Object.freeze({
   "referrer-policy": "no-referrer",
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
 });
+const WIDGET_PREVIEW_PATH = "/widget-test.html";
+const WIDGET_PREVIEW_INLINE_SCRIPT_HASH = "sha256-JaS8CcQqwOErAAH+p2YZPHd9JdaV+X9U0uUOrGymexE=";
+const WIDGET_PREVIEW_CSP = SECURITY_HEADERS["content-security-policy"]
+  .replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+  .replace("script-src 'self' ", `script-src 'self' '${WIDGET_PREVIEW_INLINE_SCRIPT_HASH}' `);
 const PUBLIC_SITE_URL = "https://siterep.net";
 const SITE_DESCRIPTION =
   "Site Rep answers your visitors from approved pages only, cites the source behind every answer, and captures high-intent leads.";
@@ -1228,6 +1233,10 @@ const workerHandler = {
         return notFoundResponse(request);
       }
 
+      if ((request.method === "GET" || request.method === "HEAD") && url.pathname === WIDGET_PREVIEW_PATH) {
+        return await widgetPreviewResponse(request, env);
+      }
+
       const response = await env.ASSETS.fetch(request);
       if (isAssetsSpaFallback(url, response)) {
         return notFoundResponse(request);
@@ -1589,6 +1598,18 @@ function withVaryAccept(response) {
   return withSecurityHeaders(new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
+    headers,
+  }));
+}
+
+async function widgetPreviewResponse(request, env) {
+  const asset = await env.ASSETS.fetch(request);
+  const headers = new Headers(asset.headers);
+  headers.set("content-security-policy", WIDGET_PREVIEW_CSP);
+  headers.set("x-frame-options", "SAMEORIGIN");
+  return withSecurityHeaders(new Response(request.method === "HEAD" ? null : asset.body, {
+    status: asset.status,
+    statusText: asset.statusText,
     headers,
   }));
 }
@@ -12361,7 +12382,10 @@ function externalAllowedOriginsFor(bot) {
 }
 
 function resolveRequestOrigin(request, fallbackUrl = "") {
-  return request.headers.origin || safeOrigin(request.headers.referer) || safeOrigin(fallbackUrl);
+  const declared = headerValue(request, "origin") || safeOrigin(headerValue(request, "referer"));
+  if (declared) return declared;
+  const sameOrigin = headerValue(request, "sec-fetch-site") === "same-origin";
+  return (sameOrigin ? safeOrigin(request.url) : "") || safeOrigin(fallbackUrl);
 }
 
 function verifiedRequestOrigin(request) {
