@@ -59,9 +59,11 @@ scripts, and the wrangler dry-run on every pull request.
 
 A scheduled workflow (`.github/workflows/honesty-check.yml`) runs
 `node --test tests/honesty-live.check.js` every six hours: one read-only GET of
-`/api/public/honesty-check` on the live site, which fails when any answer loses
-its citation. It is not part of `npm test`, because it needs the deployed
-worker. Switch it off by disabling or deleting that workflow file, or point
+`/api/public/honesty-check` on the live site. It fails when an answer loses its
+citation, when the endpoint is unreachable, or when the answer it reads is
+older than 15 minutes. A red run opens or updates the `honesty-check-red`
+issue. It is not part of `npm test`, because it needs the deployed worker.
+Switch it off by disabling or deleting that workflow file, or point
 `SITEREP_HONESTY_CHECK_URL` at a preview host.
 
 ## Deeper context

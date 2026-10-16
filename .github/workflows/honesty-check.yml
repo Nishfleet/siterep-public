@@ -1,8 +1,8 @@
 name: Honesty check
 
-# Scheduled only: the check needs the deployed worker and the live pricing
+# Scheduled only: the check reads the deployed worker and the live pricing
 # catalog, so it stays off the PR gate. `npm test` runs the hermetic
-# tests/honesty-check.test.js instead.
+# tests/honesty-check.test.js instead. A red run opens or updates an issue.
 on:
   schedule:
     - cron: "17 */6 * * *"
@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -26,4 +27,30 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
-      - run: node --test tests/honesty-live.check.js
+      - id: check
+        run: node --test tests/honesty-live.check.js 2>&1 | tee honesty.log
+        continue-on-error: true
+      - name: Open or update the failing-honesty issue
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The deployed honesty check is failing: a demo answer lost its citation, or the check could not read a fresh answer from the worker. Reproduce it with \`node --test tests/honesty-live.check.js\` against a preview host, fix the answer path in the worker, not the check, then close this issue."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            head -c 6000 honesty.log
+            echo '```'
+          } > body.md
+          gh label create honesty-check-red -R "$GITHUB_REPOSITORY" --color D93F0B --description "The deployed honesty check is failing" 2>/dev/null || true
+          existing="$(gh issue list -R "$GITHUB_REPOSITORY" --label honesty-check-red --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --label honesty-check-red --title "The deployed honesty check is failing" --body-file body.md
+          fi
+      - if: steps.check.outcome == 'failure'
+        run: exit 1
