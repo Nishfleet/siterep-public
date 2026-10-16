@@ -162,6 +162,20 @@ try {
   assert(crawled > 0, `The sign-up crawl never indexed a source page (last seen: ${JSON.stringify(lastSources)}).`);
   timings.firstCrawlIndexedMs = Date.now() - startedAt;
 
+  const idleDeadline = Date.now() + 60000;
+  let crawlDone = false;
+  while (Date.now() < idleDeadline) {
+    const response = await fetch(`${base}/api/customer/bot?botId=${encodeURIComponent(botId)}`, { headers: auth });
+    if (!response.ok) throw new Error(`GET /api/customer/bot failed with ${response.status}.`);
+    crawlDone = !(await response.json()).activeCrawlJob;
+    if (crawlDone) break;
+    await page.waitForTimeout(1000);
+  }
+  assert(crawlDone, "The sign-up crawl never finished, so the lead-in-dashboard step could not run on an idle workspace.");
+  timings.crawlFinishedMs = Date.now() - startedAt;
+  await page.waitForSelector("text=/Cancel crawl/i", { state: "detached", timeout: 30000 });
+  timings.dashboardIdleMs = Date.now() - startedAt;
+
   const sourceResponse = await fetch(`${base}/api/sources`, {
     method: "POST",
     headers: auth,
