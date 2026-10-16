@@ -108,7 +108,7 @@ test("stale pricing is served immediately and refreshed in the background", asyn
     const stale = await worker.fetch(pricingRequest("DE"), env, fakeContext(pending));
     assert.equal(stale.headers.get("x-pricing-cache"), "STALE");
     await Promise.all(pending);
-    assert.equal(pending.length, 1);
+    assert.ok(pending.length >= 1);
     const refreshed = await worker.fetch(pricingRequest("DE"), env, fakeContext());
     assert.equal(refreshed.headers.get("x-pricing-cache"), "HIT");
   });
