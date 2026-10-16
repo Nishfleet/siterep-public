@@ -32,5 +32,5 @@ export const ROUTE_SEGMENTS = new Set([
   "store-backup", "subscription-state", "sync-settings", "terms", "tickets",
   "tidio", "tidio-lyro", "train", "trust", "trust-status", "unknowns",
   "unsubscribe", "update", "v1", "vs", "webhook", "webspeaker", "weekly-digest",
-  "widget", "widget-",
+  "widget", "widget-", "widget-test.html",
 ]);

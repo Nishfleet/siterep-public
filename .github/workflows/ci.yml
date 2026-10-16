@@ -36,6 +36,11 @@ jobs:
           # Hermetic: route-mocks the whole /api/public/** surface; keeps the
           # Docs Mode install-flow gate from breaking while CI stays green.
           npm run smoke:widget-host
+          # Walks the whole self-serve path on a throwaway local Worker: sign-up,
+          # source crawl, widget install preview, first answer, lead in the
+          # dashboard. Needs ./dist, and outbound HTTPS to example.com because
+          # the real crawler blocks loopback hosts by design.
+          npm run smoke:stranger-path
           # Wrangler version comes from the committed lockfile (4.120.0 pinned in
           # devDependencies), not npx's mutable cache: pulling the moving latest
           # tag broke every CI run repo-wide on 2026-08-11 (upstream publish E404).
