@@ -11025,6 +11025,9 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   if (String(input.leadId ?? "").trim() && normalizeLeadEmail(input.email)) {
     return { status: 400, body: { error: LEAD_AND_EMAIL_ERROR } };
   }
+  if (normalizeLeadEmail(input.email) && !isValidEmail(normalizeLeadEmail(input.email))) {
+    return { status: 400, body: { error: "Enter the visitor's full email address." } };
+  }
   const current = (await readStore()).bots?.[normalizedBotId];
   if (!current) return { status: 404, body: { error: "Bot not found." } };
   const targets = leadDeletionTargets(current, input, { followSessions: false });

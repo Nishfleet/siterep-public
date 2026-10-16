@@ -20,6 +20,13 @@ export function normalizeLeadEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+// Emails become whole-word text matches across events, notifications and
+// webhooks, so only something shaped like an address ever becomes a target:
+// a malformed stored value such as "a" would otherwise match every "a".
+function isAddress(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 // Same grouping key the worker uses for shared questions (unknowns and
 // escalations): case and punctuation do not matter.
 export function normalizeQuestionKey(value) {
@@ -93,7 +100,7 @@ export function leadDeletionTargets(bot, input = {}, options = {}) {
   const byId = leadId ? leads.find((lead) => idKey(lead.id) === leadId) : null;
   const email = normalizeLeadEmail(byId?.email) || requestedEmail;
   if (leadId) targets.leadIds.add(leadId);
-  if (email) targets.emails.add(email);
+  if (isAddress(email)) targets.emails.add(email);
   if (!targets.emails.size && !targets.leadIds.size) return null;
   expandTargetsInBot(bot, targets, options);
   return targets;
@@ -181,7 +188,7 @@ function isTargetLead(lead, targets) {
 // means the records disagree, so the targets are marked ambiguous and nobody
 // is added: a deletion never spreads from one person to a second.
 function addEmailFromLeadId(targets, email) {
-  if (!email || targets.emails.has(email)) return;
+  if (!isAddress(email) || targets.emails.has(email)) return;
   if (targets.emails.size) {
     targets.ambiguous = true;
     return;
@@ -334,6 +341,9 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   // An unknown's id is the conversation id of its first asker for chat
   // gaps, but a timestamp for feedback and QA-run gaps, so an id match alone
   // is not proof. It is the visitor's only when the question matches too.
+  // A shared unknown that stays gets a new id, so it no longer points at the
+  // visitor's conversation and a second pass (the rescrub of a backup, or
+  // the check after it) leaves it alone instead of counting it down again.
   if (Array.isArray(bot.unknowns)) {
     const next = [];
     for (const item of bot.unknowns) {
@@ -346,7 +356,12 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
         counts.unknowns += 1;
       } else {
         counts.unknownsUnlinked += 1;
-        next.push({ ...item, count: Number(item.count) - 1, question: sharedQuestionWording(bot, key, targets) });
+        next.push({
+          ...item,
+          id: `unknown_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`,
+          count: Number(item.count) - 1,
+          question: sharedQuestionWording(bot, key, targets),
+        });
       }
     }
     bot.unknowns = next;

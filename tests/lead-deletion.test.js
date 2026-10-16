@@ -244,11 +244,41 @@ test("unknown entries match the visitor by question, not by a colliding id", () 
 
   assert.equal(counts.unknowns, 0);
   assert.equal(counts.unknownsUnlinked, 1);
-  assert.deepEqual(bot.unknowns, [
-    { id: 100, question: "Do you offer refunds?", count: 1 },
-    { id: 101, question: "do you ship to leeds", count: 2 },
-  ]);
+  assert.deepEqual(bot.unknowns[0], { id: 100, question: "Do you offer refunds?", count: 1 });
+  assert.match(String(bot.unknowns[1].id), /^unknown_/, "the shared gap no longer points at Jane's conversation");
+  assert.deepEqual({ ...bot.unknowns[1], id: "x" }, { id: "x", question: "do you ship to leeds", count: 2 });
   assert.doesNotMatch(JSON.stringify(bot.escalations), /Leeds\?/, "a shared escalation keeps no wording of the deleted visitor");
+});
+
+test("a malformed email is never a target, typed or stored", async () => {
+  const bot = seededBot();
+  bot.leads.push({ id: 44, email: "a", conversationId: null, status: "new", createdAt: NOW });
+  const targets = leadDeletionTargets(bot, { leadId: 44 });
+  assert.deepEqual([...targets.emails], [], "a stored non-address never becomes a text match");
+  const counts = eraseLeadFromBot(bot, targets);
+  assert.equal(counts.leads, 1);
+  assert.equal(bot.events.length, 2, "events mentioning the word 'a' stay");
+
+  const h = harness();
+  const response = await h.post("/api/leads/delete", { email: "a" });
+  assert.equal(response.status, 400);
+  assert.deepEqual(h.botRecord().leads.map((lead) => lead.email).sort(), [JANE, OMAR]);
+});
+
+test("erasing the same copy twice changes nothing the second time", () => {
+  const bot = seededBot();
+  bot.unknowns = [{ id: 101, question: "Do you ship to Leeds?", count: 3 }];
+  bot.conversations.push({ id: 400, question: "do you ship to leeds", answer: "Yes.", sessionId: "sess_other", createdAt: NOW });
+  const snapshot = JSON.stringify({ bots: { deletebot: bot } });
+  const targets = leadDeletionTargets(seededBot(), { leadId: 11 });
+  const once = eraseLeadFromStoreSnapshot(snapshot, "deletebot", targets);
+  assert.ok(once.json);
+  assert.equal(JSON.parse(once.json).bots.deletebot.unknowns[0].count, 2);
+  assert.deepEqual(eraseLeadFromStoreSnapshot(once.json, "deletebot", targets), { json: null, unreadable: false }, "the rescrub and the check find nothing left");
+  const live = JSON.parse(once.json).bots.deletebot;
+  const again = eraseLeadFromBot(live, targets);
+  assert.equal(again.unknownsUnlinked, 0);
+  assert.equal(live.unknowns[0].count, 2, "other visitors' count is not counted down again");
 });
 
 test("a queued webhook about another lead keeps its delivery and loses only the mention", () => {
