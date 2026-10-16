@@ -1159,7 +1159,7 @@ export default {
       }
 
       if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/public/pricing") {
-        return publicPricingResponse(request, env);
+        return publicPricingResponse(request, env, ctx);
       }
 
       if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/public/trust-status") {
@@ -3352,13 +3352,101 @@ function publicFastHealthResponse(request, url, env) {
   return response.toResponse(request);
 }
 
-async function publicPricingResponse(request, env) {
+const PRICING_EDGE_FRESH_MS = 3600 * 1000;
+const PRICING_EDGE_STORE_SECONDS = 86400;
+const PRICING_CLIENT_CACHE_CONTROL = "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400";
+
+function pricingEdgeCache() {
+  return typeof caches !== "undefined" && caches?.default ? caches.default : null;
+}
+
+function pricingConfigFingerprint(env) {
+  const dodo = dodoConfigForEnv(env);
+  const razorpay = Object.keys(PLAN_LIMITS).map((name) => {
+    const config = razorpayConfig(env, name);
+    return [config.currency, config.amountSubunits];
+  });
+  const material = JSON.stringify([dodo.mode, dodo.baseUrl, dodo.adaptiveCurrencyFeesInclusive, dodo.productIds, razorpay]);
+  let hash = 5381;
+  for (let index = 0; index < material.length; index += 1) hash = ((hash * 33) ^ material.charCodeAt(index)) >>> 0;
+  return hash.toString(36);
+}
+
+function pricingEdgeCacheKey(request, env) {
+  const url = new URL(request.url);
+  const key = new URL("/api/public/pricing", url.origin);
+  key.searchParams.set("country", countryFromRequestLike(request) || "auto");
+  key.searchParams.set("v", pricingConfigFingerprint(env));
+  return new Request(key.toString(), { method: "GET" });
+}
+
+async function storePricingEdgeCache(cache, cacheKey, catalog) {
+  await cache.put(
+    cacheKey,
+    new Response(JSON.stringify(catalog), {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": `public, s-maxage=${PRICING_EDGE_STORE_SECONDS}`,
+        "x-pricing-cached-at": String(Date.now()),
+      },
+    }),
+  );
+}
+
+async function refreshPricingEdgeCache(cache, cacheKey, env, request) {
+  try {
+    const catalog = await publicPricingCatalog(env, request);
+    if (catalog?.ok) await storePricingEdgeCache(cache, cacheKey, catalog);
+  } catch (error) {
+    console.warn("Pricing edge cache refresh failed", error);
+  }
+}
+
+function deferPricingWork(ctx, work) {
+  if (typeof ctx?.waitUntil === "function") {
+    ctx.waitUntil(work);
+    return Promise.resolve();
+  }
+  return work;
+}
+
+async function publicPricingResponse(request, env, ctx = null) {
   const response = new ApiResponse();
   if (!setCors(response, request, env)) {
     sendJson(response, 403, { error: "CORS origin is not allowed." });
     return response.toResponse(request);
   }
-  sendJson(response, 200, await publicPricingCatalog(env, request));
+  const cache = pricingEdgeCache();
+  const cacheKey = cache ? pricingEdgeCacheKey(request, env) : null;
+  let catalog = null;
+  let state = cache ? "MISS" : "BYPASS";
+  if (cache) {
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) {
+        const cachedAt = Number(hit.headers.get("x-pricing-cached-at")) || 0;
+        catalog = await hit.json();
+        if (Date.now() - cachedAt < PRICING_EDGE_FRESH_MS) {
+          state = "HIT";
+        } else {
+          state = "STALE";
+          await deferPricingWork(ctx, refreshPricingEdgeCache(cache, cacheKey, env, request));
+        }
+      }
+    } catch (error) {
+      console.warn("Pricing edge cache read failed", error);
+      catalog = null;
+    }
+  }
+  if (!catalog) {
+    catalog = await publicPricingCatalog(env, request);
+    if (cache && catalog?.ok) {
+      await deferPricingWork(ctx, storePricingEdgeCache(cache, cacheKey, catalog).catch((error) => console.warn("Pricing edge cache write failed", error)));
+    }
+  }
+  response.setHeader("cache-control", catalog?.ok ? PRICING_CLIENT_CACHE_CONTROL : "no-store");
+  response.setHeader("x-pricing-cache", state);
+  sendJson(response, 200, catalog);
   return response.toResponse(request);
 }
 
