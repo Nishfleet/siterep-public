@@ -14,6 +14,8 @@ import { enforceSelfServeReadinessInvariant } from "./readiness.js";
 import { handleSiteRepMcp } from "./site-rep-mcp.js";
 import { collectFunnelEvent, readFunnelStats } from "./funnel-events.js";
 import { readMcpStats, recordMcpEvent } from "./mcp-events.js";
+import { withSentry } from "@sentry/cloudflare";
+import { reportError, sentryOptions } from "./sentry.js";
 import {
   answeringMode,
   defaultOverageSettings,
@@ -310,7 +312,7 @@ Site Rep relies on these providers to run the service. They process customer and
 
 - Cloudflare — hosting, Workers AI (answer generation), and storage (D1, R2, KV, Durable Objects). Cloudflare's Workers AI terms say customer content is not made available to other customers and is not used to train or improve services unless explicit consent is given; Site Rep storage services still keep the app data disclosed here.
 - Dodo Payments — checkout, subscription, and billing as merchant of record.
-- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only when they come from Site Rep's own code, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
+- Sentry (Functional Software, Inc., USA) — error monitoring. When the Worker hits an error, a scrubbed error report is sent: the error type and stack trace, error messages only in fixed shapes from Site Rep's own code or the Cloudflare platform, with any names or values in them replaced, the request method and path with ids replaced, and technical details such as the release and runtime. Request bodies, query strings, cookies, headers, visitor text, and email addresses are removed first.
 - The configured email provider — customer notifications and transactional email.
 
 ## What the widget stores on a visitor's device
@@ -1138,7 +1140,7 @@ let recordLedgerSchemaReady = false;
 let accountRbacSchemaReady = false;
 let dodoBillingSchemaReady = false;
 
-export default {
+const workerHandler = {
   async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
@@ -1235,15 +1237,23 @@ export default {
       const fallback = new ApiResponse();
       setCors(fallback, request, env);
       console.error("Worker request failed", error);
+      reportError(error);
       sendJson(fallback, 500, { error: "Server error." });
       return fallback.toResponse();
     }
   },
 
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(handleScheduled(event, env));
+  // Cron work is awaited, not handed to ctx.waitUntil: the invocation ends
+  // only when every task has run, so a failing task is reported before the
+  // Sentry SDK flushes, and the run is the same with or without a DSN.
+  async scheduled(event, env) {
+    await handleScheduled(event, env);
   },
 };
+
+// sentryOptions sets `enabled: false` when SENTRY_DSN is unset, so with no DSN
+// the SDK sends nothing and the handlers behave as before.
+export default withSentry(sentryOptions, workerHandler);
 
 function wantsMarkdown(request) {
   const accept = request.headers.get("Accept") || "";
@@ -3722,6 +3732,7 @@ async function runScheduledTask(task, operation) {
   try {
     return await operation();
   } catch (error) {
+    reportError(error);
     console.warn(JSON.stringify({
       type: "scheduled_task_failed",
       task,
