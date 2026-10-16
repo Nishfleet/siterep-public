@@ -1,0 +1,36 @@
+// Literal path segments of the routes in worker/index.js. Error reports keep a
+// path segment only if it is in this list; every other segment becomes ":id".
+// tests/sentry-error-reporting.test.js rebuilds this list from the route
+// literals in worker/index.js and fails when the two differ.
+export const ROUTE_SEGMENTS = new Set([
+  "__internal", "abuse-protection", "access-email", "account", "account-rbac",
+  "account-rbac-backfill", "action-queue.csv", "actions", "activate", "admin",
+  "agent-brief", "agent-brief.json", "ai-website-chatbot-for-small-business",
+  "api", "api-keys", "app", "apple-touch-icon.png", "approve", "assets",
+  "audit", "auth", "backfill", "billing", "bot", "bot.json", "bots", "cancel",
+  "catalog", "chat", "chatbase", "chatling", "checkout", "claim", "clone",
+  "command-center", "complete", "config", "conversation-ops", "conversations",
+  "conversations.csv", "crawl", "create", "customer", "customer-receipt",
+  "customer-receipt.json", "customgpt", "dashboard", "deep", "delete", "deletion-request",
+  "demo", "docs", "dodo", "domains", "draft", "embed", "escalations", "export",
+  "favicon.svg", "feedback", "first-customer-proof",
+  "first-customer-proof.json", "follow-up-queue.csv", "free", "freshness-merge",
+  "freshness-pick", "from-cloud", "from-feed", "from-url", "from-urls",
+  "funnel", "funnel-event", "get-started", "health", "honesty", "honesty-check",
+  "icons", "index.html", "install", "integrations", "intercom", "intercom-fin",
+  "interest", "interest.csv", "internal", "lead-rules", "leads", "leads.csv",
+  "ledger", "link", "live", "log-in", "login", "logout", "magic-session", "mcp",
+  "merge", "note", "notifications", "overage", "owner-queue", "owner-queue.csv",
+  "payments", "plans", "portal", "preflight", "prepare", "pricing", "privacy",
+  "process", "process-customer-access", "profile", "public", "quality",
+  "razorpay", "record", "record-ledger", "register", "release-status",
+  "reminders", "remove", "report", "report.json", "reset-usage", "resolve",
+  "retest", "retrain", "retrieval", "revoke", "rollback", "routing", "run",
+  "scheduled", "session", "settings", "sign-in", "sign-up", "signin", "signup",
+  "signup-requests", "source", "source-auto-sync", "source-content",
+  "source-fix", "sources", "start", "start-free", "stats", "status",
+  "store-backup", "subscription-state", "sync-settings", "terms", "tickets",
+  "tidio", "tidio-lyro", "train", "trust", "trust-status", "unknowns",
+  "unsubscribe", "update", "v1", "vs", "webhook", "webspeaker", "weekly-digest",
+  "widget", "widget-",
+]);
