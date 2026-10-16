@@ -359,7 +359,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 
 - Source-backed answer behavior: the public bot answers from approved sources and asks for follow-up when source backing is missing.
 - Customer dashboard: leads, conversations, unknown questions, source gaps, install health, exports, notifications, and deletion-review requests are visible in the private dashboard.
-- Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.
+- Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Copies already sent outside Site Rep, such as lead emails and webhooks, are not recalled. Whole-account deletion requests are still tracked for review.
 - Visitor data minimization: visitor records store only the question and any name, email, or need the visitor chooses to submit. Visitor IP addresses are used only transiently in memory for rate limiting and are not written to conversations or leads.
 - No tracking cookies: the chat widget sets no cookies and no persistent local storage; it uses session-only storage (cleared when the tab closes) for a random session id.
 - Access control: admin routes require server-side admin access, customer routes use scoped session access, and public widget routes do not return private access material.
@@ -3617,7 +3617,7 @@ function publicTrustStatusPayload(env = activeEnv) {
     ],
     support: {
       email: "hello@siterep.net",
-      deletionReview: "Workspace owners delete a visitor's lead data from the dashboard or owner API, and lead deletion requests complete the same way. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Whole-account deletion requests are still tracked for review.",
+      deletionReview: "Workspace owners delete a visitor's lead data from the dashboard or owner API, and lead deletion requests complete the same way. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Copies already sent outside Site Rep, such as lead emails and webhooks, are not recalled. Whole-account deletion requests are still tracked for review.",
     },
     configuredSignals: {
       dodoProductsConfigured: Boolean(env?.DODO_SITEREP_PRODUCT_STARTER_ID),
@@ -11050,10 +11050,19 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   let storeCounts = null;
   let privacyRequestId = String(options.privacyRequestId || "");
   const completedRequestIds = [];
+  const deletionCounts = (counts) => ({
+    ...counts,
+    ledgerLeads: ledgerRemoved.leads,
+    ledgerConversations: ledgerRemoved.conversations,
+    snapshots: snapshotsScrubbed,
+    snapshotsUnreadable: unreadableSnapshots.size,
+    sharedSessionsSkipped: targets.blockedSessions.size,
+  });
+  let bot = null;
   // The live erase also rewrites the KV mirror at once, through the store's
   // own writer, so the mirror never holds the visitor after this point.
   try {
-    await updateStore((store) => {
+    bot = await updateStore((store) => {
       const record = ensureBot(store, normalizedBotId);
       record.privacySalt ||= privacySalt;
       if (options.newPrivacyRequest) {
@@ -11091,6 +11100,23 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       // were decided against the live record and the ledger above; the live
       // erase follows exactly those, never a session judged alone.
       storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
+      // Same write as the erase, so a deletion never lands without its
+      // completed request and activity entry (a retry would find nothing).
+      const counts = deletionCounts(storeCounts);
+      for (const id of completedRequestIds) {
+        const chosen = id === privacyRequestId ? options.completedTarget : null;
+        const chosenTarget = chosen
+          ? { leadId: chosen.leadId, emailHash: chosen.email ? targets.emailHashes.get(normalizeLeadEmail(chosen.email)) : "" }
+          : null;
+        completePrivacyRequest(record, id, counts, now, chosenTarget);
+      }
+      pushEvent(
+        record,
+        "privacy",
+        "Lead data deleted",
+        `Deleted ${counts.leads + counts.ledgerLeads ? "a lead" : "visitor data"} with ${counts.conversations} conversation${counts.conversations === 1 ? "" : "s"} and related follow-up records.`,
+        { trigger: options.trigger || "owner_delete", privacyRequestId, counts },
+      );
       record.updatedAt = now;
       return record;
     }, { forceMirror: true });
@@ -11130,14 +11156,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     }));
   }
 
-  const summary = {
-    ...storeCounts,
-    ledgerLeads: ledgerRemoved.leads,
-    ledgerConversations: ledgerRemoved.conversations,
-    snapshots: snapshotsScrubbed,
-    snapshotsUnreadable: unreadableSnapshots.size,
-    sharedSessionsSkipped: targets.blockedSessions.size,
-  };
+  const summary = deletionCounts(storeCounts);
   const warnings = [];
   if (unreadableSnapshots.size) {
     warnings.push(`${unreadableSnapshots.size} recovery snapshot${unreadableSnapshots.size === 1 ? " was" : "s were"} in an unexpected format and could not be checked for this visitor.`);
@@ -11149,33 +11168,35 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   }
   const complete = !unreadableSnapshots.size && !recheckFailed && !mirrorStale;
 
-  const bot = await updateStore((store) => {
-    const record = ensureBot(store, normalizedBotId);
-    for (const id of completedRequestIds) {
-      const chosen = id === privacyRequestId ? options.completedTarget : null;
-      const chosenTarget = chosen
-        ? { leadId: chosen.leadId, emailHash: chosen.email ? targets.emailHashes.get(normalizeLeadEmail(chosen.email)) : "" }
-        : null;
-      completePrivacyRequest(record, id, summary, now, chosenTarget);
+  if (!complete) {
+    // Best effort: the deletion and its request are already recorded above.
+    try {
+      bot = (await updateStore((store) => {
+        const record = store.bots?.[normalizedBotId];
+        if (!record) return null;
+        pushEvent(record, "privacy", "Lead deletion needs a follow-up check", "Some recovery copies could not be confirmed clean. They expire within 30 days.", {
+          trigger: options.trigger || "owner_delete",
+          privacyRequestId,
+          counts: summary,
+          complete,
+        });
+        record.updatedAt = new Date().toISOString();
+        return record;
+      })) || bot;
+    } catch (error) {
+      console.warn(JSON.stringify({ type: "lead_deletion_followup_event_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
     }
-    pushEvent(
-      record,
-      "privacy",
-      "Lead data deleted",
-      `Deleted ${summary.leads + summary.ledgerLeads ? "a lead" : "visitor data"} with ${summary.conversations} conversation${summary.conversations === 1 ? "" : "s"} and related follow-up records.${complete ? "" : " Some recovery copies need a follow-up check."}`,
-      { trigger: options.trigger || "owner_delete", privacyRequestId, counts: summary, complete },
-    );
-    record.updatedAt = now;
-    return record;
-  });
+  }
 
-  await recordPrivacyAudit(normalizedBotId, "lead_data_deleted", options.actor || "", {
+  const audited = await recordPrivacyAudit(normalizedBotId, "lead_data_deleted", options.actor || "", {
     trigger: options.trigger || "owner_delete",
     privacyRequestId,
     counts: summary,
     complete,
   }, now);
-  return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, complete, warnings, privacyRequestId, counts: summary } } };
+  // false without a ledger database or when the audit row could not be written.
+  if (db && !audited) warnings.push("The audit log entry for this deletion could not be written. The activity log still records it.");
+  return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, complete, audited, warnings, privacyRequestId, counts: summary } } };
 }
 
 // Marks a deletion request done with counts. It keeps the lead id it names

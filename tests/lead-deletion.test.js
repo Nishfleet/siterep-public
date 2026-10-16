@@ -840,3 +840,28 @@ test("privacy internals stay in the store: public shapes are allowlists and ever
   assert.ok(writer > classStart && writer < classEnd, "the daily backup is a coordinator method");
   assert.ok(uses[1] > writer && uses[1] < classEnd, "the only backup key write is in that method");
 });
+
+test("a failed audit write is reported, and the erase, completed request and activity entry still land together", async (t) => {
+  const h = harness();
+  if (!h.d1) return t.skip("node:sqlite not available");
+  await h.post("/api/privacy/deletion-request", { scope: "lead", leadId: 11 }, { authorization: `Bearer ${EDITOR_TOKEN}` });
+  const request = h.botRecord().privacyRequests[0];
+  const prepare = h.d1.prepare;
+  h.d1.prepare = (sql) => {
+    if (/INSERT INTO siterep_privacy_audit/.test(sql)) throw new Error("audit table unavailable");
+    return prepare.call(h.d1, sql);
+  };
+  try {
+    const response = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: request.id });
+    assert.equal(response.status, 200);
+    const { deletion } = await response.json();
+    assert.equal(deletion.audited, false);
+    assert.ok(deletion.warnings.some((warning) => /audit log entry/.test(warning)));
+  } finally {
+    h.d1.prepare = prepare;
+  }
+  const stored = h.botRecord();
+  assert.deepEqual(stored.leads.map((lead) => lead.email), [OMAR]);
+  assert.equal(stored.privacyRequests.find((item) => item.id === request.id).status, "completed");
+  assert.ok(stored.events.some((event) => event.title === "Lead data deleted"));
+});
