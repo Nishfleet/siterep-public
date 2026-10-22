@@ -30,5 +30,7 @@ updates:
       time: "09:20"
       timezone: "Asia/Kolkata"
     open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(actions)"
