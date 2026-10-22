@@ -31,6 +31,10 @@ updates:
       timezone: "Asia/Kolkata"
     open-pull-requests-limit: 2
     cooldown:
+      # A release is taken at least 3 days after it is published (upstream rule).
+      # Dependabot already applies a 3-day default cooldown to version updates
+      # in every ecosystem it supports, npm included, security updates exempt,
+      # so this line pins the rule rather than moving the platform default.
       default-days: 3
     commit-message:
       prefix: "deps(actions)"
