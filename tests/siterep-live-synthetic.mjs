@@ -118,6 +118,8 @@ const requiredSecurityHeaders = Object.freeze({
   "referrer-policy": /^no-referrer$/i,
   "permissions-policy": /camera=\(\), microphone=\(\), geolocation=\(\)/i,
 });
+// The install preview is framed by its own origin (worker/index.js serves SAMEORIGIN there).
+const sameOriginFrameLabels = new Set(["widget preview html"]);
 const failures = [];
 const warnings = [];
 const checks = [];
@@ -161,7 +163,9 @@ async function probe(label, pathname, options = {}, validate = null) {
 function assertSecurityHeaders(label, response) {
   for (const [header, pattern] of Object.entries(requiredSecurityHeaders)) {
     const value = response.headers.get(header) || "";
-    if (!pattern.test(value)) failures.push(`${label}: missing or weak ${header}`);
+    const expected =
+      header === "x-frame-options" && sameOriginFrameLabels.has(label) ? /^SAMEORIGIN$/i : pattern;
+    if (!expected.test(value)) failures.push(`${label}: missing or weak ${header}`);
   }
 }
 
@@ -426,13 +430,13 @@ if (!healthOnly) {
     },
   );
   await probe("funnel instrumentation bundle", "/", {}, async ({ body }) => {
-    const assetMatch = body.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/);
+    const assetMatch = body.match(/<meta name="app-entry" content="(\/assets\/[A-Za-z0-9_-]+\.js)"/);
     if (!assetMatch) throw new Error("homepage did not reference the SPA bundle");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
     let bundleResponse;
     try {
-      bundleResponse = await fetch(absoluteUrl(assetMatch[0]), { signal: controller.signal });
+      bundleResponse = await fetch(absoluteUrl(assetMatch[1]), { signal: controller.signal });
     } finally {
       clearTimeout(timeout);
     }
