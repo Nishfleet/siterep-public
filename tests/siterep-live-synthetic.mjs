@@ -118,7 +118,6 @@ const requiredSecurityHeaders = Object.freeze({
   "referrer-policy": /^no-referrer$/i,
   "permissions-policy": /camera=\(\), microphone=\(\), geolocation=\(\)/i,
 });
-// The install preview is framed by its own origin (worker/index.js serves SAMEORIGIN there).
 const sameOriginFrameLabels = new Set(["widget preview html"]);
 const failures = [];
 const warnings = [];
