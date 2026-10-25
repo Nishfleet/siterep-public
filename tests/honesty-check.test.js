@@ -323,8 +323,8 @@ test("pricing-stamp-freshness workflow runs the stamp check from a live schedule
   assert.match(workflow, /schedule:\n\s+- cron:/, "pricing-stamp-freshness.yml must keep its schedule trigger");
   assert.match(
     workflow,
-    /run: node --test tests\/pricing-stamp-freshness\.check\.js/,
-    "a live run step must invoke tests/pricing-stamp-freshness.check.js",
+    /run: \|\n\s+set -euo pipefail\n\s+node --test tests\/pricing-stamp-freshness\.check\.js/,
+    "a live run step must set pipefail and invoke tests/pricing-stamp-freshness.check.js",
   );
 });
 
