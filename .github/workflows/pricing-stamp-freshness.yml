@@ -29,7 +29,9 @@ jobs:
         with:
           node-version: "24"
       - id: check
-        run: node --test tests/pricing-stamp-freshness.check.js 2>&1 | tee freshness.log
+        run: |
+          set -euo pipefail
+          node --test tests/pricing-stamp-freshness.check.js 2>&1 | tee freshness.log
         continue-on-error: true
       - name: Open or update the stale-stamp issue
         if: steps.check.outcome == 'failure'
