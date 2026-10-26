@@ -67,6 +67,26 @@ Switch it off by disabling or deleting that workflow file, or run it against a
 preview host with `SITEREP_HONESTY_CHECK_URL` (and `SITEREP_HONESTY_CHECK_ORIGIN`
 when the preview host is not the origin the worker expects).
 
+A scheduled workflow (`.github/workflows/pricing-stamp-freshness.yml`) runs
+`node --test tests/pricing-stamp-freshness.check.js` every Monday: it fails
+when a comparison-page pricing stamp is older than 60 days, and a red run
+opens or updates the `pricing-stamp-stale` issue. It is not part of
+`npm test`, because a stamp date compared to now() would fail every pull
+request once the stamp ages. Switch it off by disabling or deleting that
+workflow file.
+
+## Fleet agent dispatch
+
+`.github/workflows/agent-dispatch.yml` is a trigger stub for the fleet's
+shared automation. A workflow only fires on its own repo's events, so this
+file forwards issue, comment, and pull-request events, plus a six-hourly
+sweep, to the reusable workflow at
+[`Nishfleet/fleet-ops/.github/workflows/agent-dispatch.yml`](https://github.com/Nishfleet/fleet-ops/blob/main/.github/workflows/agent-dispatch.yml).
+That shared workflow runs the issue worker, the PR review gate, and the merge
+gates for this repo. A login with write access can also start it by hand from the
+Actions tab, with an issue number and an optional task. Switch it off by
+deleting or disabling the workflow file.
+
 ## Deeper context
 
 - [wordpress-plugin/README.md](wordpress-plugin/README.md) — plugin layout,

@@ -1,0 +1,10 @@
+version: 3
+ignore_actions:
+  # The fleet dispatch reusable workflows must keep following the dispatcher's
+  # moving @main ref: the dispatch is addressed by name (issue #202), so
+  # pinning them here would fork the callee version from the dispatched one.
+  - name: Nishfleet/fleet-ops/.github/workflows/.*
+    ref: main
+  # docker:// refs stay digest-pinned; pinact does not rewrite image digests.
+  - name: docker://.*
+    ref: sha256:.*
