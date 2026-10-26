@@ -344,12 +344,12 @@ The chat widget sets no cookies and no persistent local storage. It uses session
 Site Rep does not currently include SOC 2, GDPR, HIPAA, zero-retention, or no-training-on-data certification. Customers who need those commitments should request a written review before buying.
 `;
 const TRUST_STATUS_UPDATED_AT = "2026-10-15";
-const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-08-26";
-const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-08-26";
+const RELEASE_STATUS_MARKER_UPDATED_AT = "2026-10-26";
+const RELEASE_STATUS_MARKER = "launch-hygiene-proof-health-2026-10-26";
 const RELEASE_STATUS_BRANCH = "main";
 const RELEASE_STATUS_STAGE = "production_hardening";
-const RELEASE_STATUS_COMMIT = "6fee55fa3cf1b5b6a7ec9ca3dea0cb279c313f4f";
-const RELEASE_STATUS_DEPLOYED_AT = "2026-08-26T21:36:19Z";
+const RELEASE_STATUS_COMMIT = "a812433239ffe36295642e1e3c419c2caa635ec2";
+const RELEASE_STATUS_DEPLOYED_AT = "2026-10-24T08:01:52Z";
 const TRUST_STATUS_MARKDOWN = `---
 title: Site Rep Trust and Data Handling
 description: Site Rep security, privacy, reliability, and what is not included today.
