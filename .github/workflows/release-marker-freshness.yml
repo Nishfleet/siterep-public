@@ -30,6 +30,7 @@ jobs:
         with:
           node-version: "24"
       - id: check
+        shell: bash
         run: node --test tests/release-marker-freshness.check.js 2>&1 | tee freshness.log
         continue-on-error: true
       - name: Open or update the stale-stamp issue
