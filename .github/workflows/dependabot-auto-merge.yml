@@ -30,7 +30,11 @@ jobs:
     # sizing discipline as actionlint.yml).
     timeout-minutes: 5
     permissions:
-      contents: read
+      # The recipe's pair. contents: write is required in practice: the
+      # enablePullRequestAutoMerge mutation rejects GITHUB_TOKEN with only
+      # pull-requests: write ("Resource not accessible by integration", run
+      # 40527773139). Nothing is ever checked out or pushed by this job.
+      contents: write
       pull-requests: write
     # PR-author id, not the actor login: zizmor's bot-conditions audit names
     # login and actor comparisons spoofable, and dependabot[bot]'s user id
