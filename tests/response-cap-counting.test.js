@@ -66,7 +66,6 @@ function seedBot(botId, { plan = "Starter", sources = [], count = 0 } = {}) {
     installs: [],
     allowedOrigins: ["https://example.com"],
     routingProfile: "frugal",
-    retrieval: {},
     abuseProtection: {},
     widgetSettings: {},
     responseCount: count,

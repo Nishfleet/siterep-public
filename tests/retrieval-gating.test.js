@@ -2,36 +2,51 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("retrieval settings keep lexical as the safe default", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+async function readWorker() {
+  return readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+}
 
-  assert.match(worker, /function defaultRetrievalSettings/);
-  assert.match(worker, /mode: "lexical"/);
-  assert.match(worker, /rerankEnabled: false/);
-  assert.match(worker, /requireEvalPass: true/);
-  assert.match(worker, /record\.retrieval = sanitizeRetrievalSettings/);
-  assert.match(worker, /retrieval: publicRetrievalSettings\(bot\)/);
+test("the unimplemented vector and rerank retrieval layer is gone", async () => {
+  const worker = await readWorker();
+
+  for (const symbol of [
+    "defaultRetrievalSettings",
+    "sanitizeRetrievalSettings",
+    "publicRetrievalSettings",
+    "activeRetrievalPolicy",
+    "answerWithRetrievalPolicy",
+    "advancedEnabled",
+    "fallbackReason",
+    "requestedMode",
+    "activeMode",
+    "rerankEnabled",
+    "evalProfile",
+    "answer.retrieval",
+    "/api/retrieval/settings",
+  ]) {
+    assert.ok(!worker.includes(symbol), `expected no "${symbol}" left in worker/index.js`);
+  }
+
+  assert.doesNotMatch(worker, /retrieval:/, "no retrieval-policy key may reappear under a new name");
 });
 
-test("vector and rerank are gated behind eval policy and fail back to lexical", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+test("a request to the removed retrieval-settings route falls through to the not-found response", async () => {
+  const worker = await readWorker();
 
-  assert.match(worker, /function activeRetrievalPolicy/);
-  assert.match(worker, /advanced retrieval requires a passing eval profile/);
-  assert.match(worker, /advanced retrieval implementation is not enabled yet/);
-  assert.match(worker, /return \{ mode: "lexical", advancedEnabled: false, fallbackReason:/);
-  assert.match(worker, /function answerWithRetrievalPolicy/);
-  assert.match(worker, /const answer = answerFromSources\(question, sources, options\)/);
-  assert.match(worker, /requestedMode/);
-  assert.match(worker, /activeMode/);
-  assert.match(worker, /fallbackReason/);
+  assert.doesNotMatch(worker, /["'`]\/api\/retrieval\/settings["'`]/);
+  assert.match(worker, /API route not found\./);
 });
 
-test("retrieval settings are owner-only and not a public visitor mutation", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
+test("answers are produced by the lexical source search directly", async () => {
+  const worker = await readWorker();
 
-  assert.match(worker, /url\.pathname === "\/api\/retrieval\/settings"/);
-  assert.match(worker, /"\/api\/retrieval\/settings"/);
-  const publicRoutes = worker.slice(worker.indexOf("function isPublicApiRoute"), worker.indexOf("function isOwnerAllowedRoute"));
-  assert.doesNotMatch(publicRoutes, /\/api\/retrieval\/settings/);
+  assert.match(worker, /answerFromSources\(question, hydrated,/);
+  assert.match(worker, /answerFromSources\(\s+question,\s+await hydrateSourcesForQuestion/);
+});
+
+test("the answer trace still exists and no longer carries retrieval-policy metadata", async () => {
+  const worker = await readWorker();
+
+  assert.match(worker, /function buildAnswerTrace/);
+  assert.doesNotMatch(worker, /retrieval: answer\.retrieval/);
 });
