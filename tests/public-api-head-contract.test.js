@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-// RFC 9110 (https://www.rfc-editor.org/rfc/rfc9110): HEAD is GET without a body, so public endpoints must answer HEAD with the same status and headers.
+// https://www.rfc-editor.org/rfc/rfc9110 makes HEAD GET without a body, so a public endpoint answers HEAD with the same status and headers as GET.
 
 const PUBLIC_JSON_ENDPOINTS = [
   "/api/health",

@@ -24,9 +24,6 @@ const FUNNEL_EVENT_ENDPOINT = `${FUNNEL_API_BASE}/api/public/funnel-event`;
 
 export function funnelEvent(name: FunnelEventName) {
   try {
-    // Best-effort fire-and-forget. text/plain keeps this a CORS "simple
-    // request" (no preflight anywhere, including cross-origin dev), and
-    // credentials are explicitly omitted so no cookie could ever ride along.
     fetch(FUNNEL_EVENT_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "text/plain" },

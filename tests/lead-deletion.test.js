@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 
-// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -57,9 +56,6 @@ function fakeStorage(seed = {}) {
   };
 }
 
-// Workers KV shape: list() is sorted by key and reports each key's
-// expiration only when it has one. Keys named in noExpiry are seeded the way
-// the KV-only store writes its main copy: with no expiration at all.
 function fakeKv(seed = {}, { noExpiry = [] } = {}) {
   const map = new Map();
   for (const [name, value] of Object.entries(seed)) {
@@ -84,7 +80,6 @@ function fakeKv(seed = {}, { noExpiry = [] } = {}) {
   };
 }
 
-// D1-shaped adapter over node:sqlite so the real SQL runs.
 function fakeD1() {
   const db = new DatabaseSync(":memory:");
   return {
@@ -113,18 +108,13 @@ function fakeD1() {
   };
 }
 
-// The worker caches "ledger schema ready" per isolate, so every test shares
-// one database (as production does) and starts from empty tables.
 let ledger = null;
 function sharedLedger() {
   if (!DatabaseSync) return null;
   ledger ||= fakeD1();
+  const existingTables = new Set(ledger._db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
   for (const table of ["siterep_leads", "siterep_conversations", "siterep_privacy_audit"]) {
-    try {
-      ledger._db.exec(`DELETE FROM ${table}`);
-    } catch {
-      // Table not created yet: the first request creates it.
-    }
+    if (existingTables.has(table)) ledger._db.exec(`DELETE FROM ${table}`);
   }
   return ledger;
 }
@@ -217,7 +207,6 @@ test("store snapshots are scrubbed with the same rules and untouched when nothin
 
 test("a browser session shared with another lead is never followed", () => {
   const bot = seededBot();
-  // Omar typed in the same tab session Jane used, and left his own lead.
   bot.conversations.push({ id: 300, question: "Is there a discount?", answer: "No.", sessionId: "sess_jane", visitor: { email: OMAR }, createdAt: NOW });
   bot.conversations.push({ id: 301, question: "Opening hours?", answer: "9-5.", sessionId: "sess_jane", createdAt: NOW });
   bot.leads.push({ id: 33, email: "kim@visitor.test", conversationId: 301, status: "new", createdAt: NOW });
@@ -234,9 +223,7 @@ test("a browser session shared with another lead is never followed", () => {
 test("unknown entries match the visitor by question, not by a colliding id", () => {
   const bot = seededBot();
   bot.unknowns = [
-    // A QA-run gap whose timestamp id happens to equal Jane's conversation id.
     { id: 100, question: "Do you offer refunds?", count: 1 },
-    // Jane asked first; two other visitors asked the same thing since.
     { id: 101, question: "Do you ship to Leeds?", count: 3 },
   ];
   bot.conversations.push({ id: 400, question: "do you ship to leeds", answer: "Yes.", sessionId: "sess_other", createdAt: NOW });
@@ -339,7 +326,6 @@ for (const [deleted, other] of [
     assert.equal(bot.actionQueue[0].payload.title, `New lead ${other}`, "the other lead's webhook is not masked");
     assert.equal(counts.actionsScrubbed, 0);
 
-    // The whole address is still found case-insensitively, at a sentence end too.
     const mixed = boundaryBot(deleted, other);
     mixed.actionQueue[0].payload.title = `Compare ${other} with ${deleted.toUpperCase()}.`;
     eraseLeadFromBot(mixed, leadDeletionTargets(mixed, { email: deleted }));
@@ -393,13 +379,10 @@ function harness({ kvNoExpiry = [], extraBots = {} } = {}) {
 
 async function seedLedger(h) {
   if (!h.d1) return;
-  // Touch an owner route once so the ledger schema exists, then add rows the
-  // store no longer holds (an older capture of the same visitor).
   await h.get("/api/leads?botId=deletebot");
   const insertLead = h.d1._db.prepare(
     "INSERT INTO siterep_leads (bot_id, lead_id, email, name, status, score, heat, conversation_id, lead_json, created_at, updated_at) VALUES (?, ?, ?, ?, '', 0, '', ?, ?, ?, ?)",
   );
-  // Mixed case, as rows written before the ledger lowercased addresses can be.
   insertLead.run("deletebot", "9", "Jane@Visitor.TEST", "Jane", "90", JSON.stringify({ id: 9, email: JANE, conversationId: 90, createdAt: NOW }), NOW, NOW);
   const insertConversation = h.d1._db.prepare(
     "INSERT INTO siterep_conversations (bot_id, conversation_id, question, answer, visitor_email, conversation_json, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, ?)",
@@ -455,7 +438,6 @@ test("an owner deletes a lead and every Site Rep copy of it, with a PII-free aud
 
 test("a lead id whose records disagree on the email never pulls in a second person", () => {
   const bot = seededBot();
-  // A second store record under Jane's lead id, with someone else's email.
   bot.leads.push({ id: 11, email: "kim@visitor.test", conversationId: 400, status: "new", createdAt: NOW });
   const targets = leadDeletionTargets(bot, { leadId: 11 });
   assert.equal(targets.ambiguous, true);
@@ -487,7 +469,6 @@ test("a deletion is refused when the ledger names another email for one of the v
 test("a session the ledger shows another visitor in is skipped and reported", { skip: !DatabaseSync }, async () => {
   const h = harness();
   await seedLedger(h);
-  // Only the ledger knows a third visitor also typed in Jane's old session.
   h.d1._db
     .prepare(
       "INSERT INTO siterep_conversations (bot_id, conversation_id, question, answer, visitor_email, conversation_json, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, ?)",
@@ -554,12 +535,8 @@ test("an owner's lead deletion request runs immediately; account requests stay i
 });
 
 test("the live KV store key is written only by the store's own writer, from the erased store", async () => {
-  // The KV copy is older than the live store: it still holds a bot the live
-  // store no longer has. A scrub that rewrote this copy would put that stale
-  // state back (and in KV-only mode would overwrite chats that landed since).
   const h = harness();
   await h.kv.put("store", JSON.stringify({ bots: { deletebot: seededBot(), stalebot: { botId: "stalebot" } } }), { expirationTtl: 3600 });
-  // The once-a-minute mirror limit is in force; the deletion must still refresh it.
   h.coordinator.lastKvMirrorAt = Date.now();
   const put = h.kv.put;
   const storeWrites = [];
@@ -589,8 +566,6 @@ test("a backup written while the deletion runs is scrubbed by the second pass", 
   let injected = false;
   h.kv.put = async (name, value, options) => {
     await put(name, value, options);
-    // A daily backup lands right after the first scrub, from the store as it
-    // was before the live erase.
     if (!injected && name === h.backupKey) {
       injected = true;
       await put("store:backup:2099-01-01", JSON.stringify({ bots: { deletebot: seededBot() } }), { expirationTtl: 3600 });
@@ -636,7 +611,6 @@ test("deletion routes act only on the bot the caller is authorized for", async (
   }
   assert.match(JSON.stringify(h.botRecord("otherbot").leads), /jane@visitor\.test/, "another workspace's lead is untouched");
 
-  // A bot id in the query is the one authorization checked, so it is the one the handler acts on.
   const response = await h.rawPost("/api/leads/delete?botId=deletebot", { leadId: 11 }, { authorization: `Bearer ${OWNER_TOKEN}` });
   assert.equal(response.status, 200);
   assert.doesNotMatch(JSON.stringify(h.botRecord().leads), /jane@visitor\.test/);
@@ -658,7 +632,6 @@ test("an email that matches nothing is a 404 and leaves no audit trail", async (
 
 test("completing a request with a lead id that matches nothing leaves the request open", async () => {
   const h = harness();
-  // A request that names no lead, completed with a lead id that does not exist.
   const queued = await h.post("/api/privacy/deletion-request", { scope: "lead" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   const request = (await queued.json()).privacyRequests[0];
   assert.equal(request.targetLeadId, undefined);
@@ -680,7 +653,6 @@ test("completing a request that names a lead never deletes a different one", asy
   assert.match(JSON.stringify(stored.leads), /omar@visitor\.test/, "the body's lead is untouched");
   assert.match(JSON.stringify(stored.leads), /jane@visitor\.test/);
 
-  // A request that names no lead takes the one the owner chooses, and keeps it on the record.
   const open = await h.post("/api/privacy/deletion-request", { scope: "lead", note: "Visitor asked by phone." }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   const unnamed = (await open.json()).privacyRequests.find((item) => !item.targetLeadId && item.scope === "lead");
   const chosen = await h.post("/api/privacy/deletion-request/complete", { privacyRequestId: unnamed.id, leadId: 22 });
@@ -706,7 +678,6 @@ test("an owner's deletion request that matches nothing is a 404 with nothing rec
 test("a lead id and an email together are refused, so one person never stands in for another", async () => {
   const h = harness();
   const editor = { authorization: `Bearer ${EDITOR_TOKEN}` };
-  // Lead 22 is Omar; the email is Jane's.
   const cases = [
     ["/api/leads/delete", { leadId: 22, email: JANE }, undefined],
     ["/api/privacy/deletion-request", { scope: "lead", leadId: 22, visitorEmail: JANE }, undefined],
@@ -743,7 +714,6 @@ test("deletion routes reject a blank or padded bot id instead of creating a bot"
   assert.equal(h.botRecord("   "), undefined);
 });
 
-// The store record and every KV copy (mirror and backups) of it.
 function assertNoTraceOf(h, pattern, label) {
   assert.doesNotMatch(JSON.stringify(h.botRecord()), pattern, `${label}: live store`);
   for (const [name, entry] of h.kv._map) assert.doesNotMatch(entry.value, pattern, `${label}: KV ${name}`);
@@ -752,7 +722,6 @@ function assertNoTraceOf(h, pattern, label) {
 test("no request path leaves the deleted visitor's email in the store or its KV copies", async () => {
   const JANE_RE = /jane@visitor\.test/i;
 
-  // Owner path: the request is created and completed in one step.
   const owner = harness();
   const ownerResponse = await owner.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE, note: `Erase ${JANE} please.` });
   assert.equal(ownerResponse.status, 200);
@@ -769,7 +738,6 @@ test("no request path leaves the deleted visitor's email in the store or its KV 
   assert.match(ownerDone.targetEmailHash, /^sha256:[0-9a-f]{64}$/);
   assert.equal(ownerDone.note, "Erase [deleted] please.");
 
-  // Queue path: an editor logs a request naming the email, the owner completes it.
   const queued = harness();
   const logged = await queued.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE, requesterEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   const request = (await logged.json()).privacyRequests[0];
@@ -781,7 +749,6 @@ test("no request path leaves the deleted visitor's email in the store or its KV 
   assert.match(queuedDone.targetEmailHash, /^sha256:/);
   assert.equal(queuedDone.requesterEmail, "", "a requester address that is the visitor's goes too");
 
-  // An unnamed request completed for a chosen email records only the hash.
   const chosen = harness();
   const open = await chosen.post("/api/privacy/deletion-request", { scope: "visitor" }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   const unnamed = (await open.json()).privacyRequests[0];
@@ -789,7 +756,6 @@ test("no request path leaves the deleted visitor's email in the store or its KV 
   assertNoTraceOf(chosen, JANE_RE, "chosen target");
   assert.match(chosen.botRecord().privacyRequests.find((item) => item.id === unnamed.id).targetEmailHash, /^sha256:/);
 
-  // The lead inbox delete hashes an older open request that named the email.
   const inbox = harness();
   await inbox.post("/api/privacy/deletion-request", { scope: "visitor", visitorEmail: JANE }, { authorization: `Bearer ${EDITOR_TOKEN}` });
   assert.equal((await inbox.post("/api/leads/delete", { leadId: 11 })).status, 200);
@@ -812,7 +778,6 @@ test("the same email hashes the same way within a bot, so a completed request ca
 test("a backup that still holds the visitor after the scrub makes the result incomplete", async () => {
   const h = harness();
   const put = h.kv.put;
-  // The backup write is lost (as if an older copy landed after it).
   h.kv.put = async (name, value, options) => {
     if (name === h.backupKey) return;
     await put(name, value, options);
@@ -872,12 +837,18 @@ test("the dashboard and public trust copy describe self-serve deletion, not tick
   assert.doesNotMatch(worker, /is not instant erasure/);
   assert.match(worker, /Customers can delete a visitor's lead from the dashboard lead inbox/);
   assert.doesNotMatch(worker, /retention period|automatically purge/i);
-  // Recovery copies are named honestly: backups and point-in-time recovery
-  // are not claimed to be erased at once.
   const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
   assert.doesNotMatch(worker, /including the record ledger and recovery backups|lead data instantly/);
   for (const copy of [worker, llms]) assert.match(copy, /point-in-time recovery copies keep earlier states for up to 30 days/);
   assert.match(worker, /D1 Time Travel/);
+});
+
+test("the dashboard deletion notice names what a deletion could not finish", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const start = app.indexOf("function leadDeletionNotice(");
+  assert.ok(start >= 0, "leadDeletionNotice exists");
+  const body = app.slice(start, app.indexOf("\n}\n", start));
+  assert.match(body, /\.\.\.warnings/, "the notice names every warning the deletion returned");
 });
 
 test("privacy internals stay in the store: public shapes are allowlists and every backup writer runs in the coordinator", async () => {
@@ -887,12 +858,9 @@ test("privacy internals stay in the store: public shapes are allowlists and ever
     assert.ok(start >= 0, `${name} exists`);
     return source.slice(start, source.indexOf("\n}\n", start));
   };
-  // The salt and stored email hashes reach no owner-facing response or export.
   for (const name of ["toPublicBot", "buildBotBackup"]) {
     assert.doesNotMatch(body(name), /\.\.\.bot\b|\.\.\.record\b|privacySalt/, `${name} lists its fields`);
   }
-  // Daily backups are written by the coordinator Durable Object itself, so the
-  // deletion scrub (also run inside it) never interleaves with the backup job.
   const uses = [...source.matchAll(/STORE_BACKUP_KEY_PREFIX/g)].map((match) => match.index);
   assert.equal(uses.length, 3, "defined once, written once, listed once");
   const classStart = source.indexOf("export class CiteRepCoordinator extends DurableObject {");

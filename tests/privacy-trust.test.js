@@ -36,7 +36,6 @@ test("privacy page, trust page and trust-status payload name the same sub-proces
   assert.match(worker, /- Scrubbed error reports when the service hits an error/);
   assert.match(worker, /data: "Error reports",/);
   assert.match(worker, /## Data map\n[\s\S]*?- Error reports: scrubbed reports sent to Sentry/);
-  // Both the page and the trust-status payload name how long reports are kept.
   assert.match(worker, /## Data map\n[\s\S]*?- Error reports: [^\n]*Sentry deletes each report after 30 days\./);
   assert.match(worker, /data: "Error reports",[\s\S]*?customerControl: "Not shown in the dashboard; Sentry deletes each report 30 days after it arrives\."/);
 });

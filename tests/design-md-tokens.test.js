@@ -1,15 +1,3 @@
-// Drift test: DESIGN.md frontmatter must stay in sync with the real tokens.
-//
-// Site Rep's design tokens live in three places that can drift apart:
-//   1. DESIGN.md frontmatter (the agent-facing description),
-//   2. the :root palette block in src/styles.css (what the app actually renders),
-//   3. the @theme inline block in src/index.css (what shadcn utilities resolve to).
-// This test fails when 1 disagrees with 2 or 3. Colors are checked against the
-// real :root values; typography and radius are checked against @theme.
-//
-// Spacing and component recipes are documented in DESIGN.md but have no
-// token surface to test (raw padding values and class names), so they are out
-// of scope here — same as 0509's design-token test.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -25,15 +13,13 @@ function read(p) {
 
 function norm(value) {
   return String(value)
-    .replace(/\\(["'\\])/g, "$1") // YAML "\"" escapes → plain quote
+    .replace(/\\(["'\\])/g, "$1")
     .replace(/^["']|["']$/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
 
-// Minimal parser for the DESIGN.md frontmatter: nested maps up to two levels,
-// with quoted strings, numbers, and bare values (0px, 999px, none).
 function parseFrontmatter(doc) {
   const match = doc.match(/^---\n([\s\S]*?)\n---/);
   assert(match, "DESIGN.md must start with a YAML frontmatter block (--- ... ---)");
@@ -76,8 +62,6 @@ function extractBlock(css, startMarker) {
 
 function parseDeclarations(block) {
   const out = {};
-  // Strip comments first: they can contain semicolons, so splitting on ";"
-  // before removing them would cut a comment in half.
   const clean = block.replace(/\/\*[\s\S]*?\*\//g, "");
   for (const decl of clean.split(";")) {
     const m = decl.trim().match(/^(--[\w-]+|[a-z-]+)\s*:\s*([\s\S]+)$/i);
@@ -111,7 +95,7 @@ test("the styles.css :root palette has no undocumented colors", () => {
   const colors = frontmatter.colors || {};
   for (const name of Object.keys(rootCss)) {
     if (!name.startsWith("--")) continue;
-    if (name === "--shadow") continue; // documented under "Elevation", not a color
+    if (name === "--shadow") continue;
     assert.ok(
       colors[name.slice(2)] !== undefined,
       `styles.css :root defines ${name} but DESIGN.md frontmatter does not document it`,
@@ -125,7 +109,6 @@ test("every DESIGN.md typography token exists in @theme with matching size, line
   const themeNames = new Set();
   for (const name of Object.keys(themeCss)) {
     const m = name.match(/^--text-([\w-]+)$/);
-    // skip the sub-declarations --text-x--line-height / --text-x--letter-spacing
     if (m && !m[1].includes("--")) themeNames.add(m[1]);
   }
   for (const [name, spec] of Object.entries(typography)) {

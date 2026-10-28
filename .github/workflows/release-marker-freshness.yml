@@ -1,0 +1,59 @@
+name: Release marker freshness
+
+# Weekly check that the checked-in release identity in worker/index.js is under 60 days old.
+# Kept off the PR gate: a literal date compared to now() fails every PR once it ages
+# (fleet-ops#10384). A deploy cannot commit the refresh itself: main is protected.
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - id: check
+        shell: bash
+        run: node --test tests/release-marker-freshness.check.js 2>&1 | tee freshness.log
+        continue-on-error: true
+      - name: Open or update the stale-stamp issue
+        if: steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The checked-in release identity in worker/index.js is older than 60 days. Copy the live deploy-stamped commit and time from /api/health/deep into RELEASE_STATUS_COMMIT, RELEASE_STATUS_DEPLOYED_AT and the marker pair, then close this issue."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            head -c 6000 freshness.log
+            echo '```'
+          } > body.md
+          gh label create release-marker-stale -R "$GITHUB_REPOSITORY" --color D93F0B --description "Checked-in release identity older than 60 days" 2>/dev/null || true
+          existing="$(gh issue list -R "$GITHUB_REPOSITORY" --label release-marker-stale --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --label release-marker-stale --title "Checked-in release identity is older than 60 days" --body-file body.md
+          fi
+      - if: steps.check.outcome == 'failure'
+        run: exit 1

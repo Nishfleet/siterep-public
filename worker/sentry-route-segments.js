@@ -1,7 +1,3 @@
-// Literal path segments of the routes in worker/index.js. Error reports keep a
-// path segment only if it is in this list; every other segment becomes ":id".
-// tests/sentry-error-reporting.test.js rebuilds this list from the route
-// literals in worker/index.js and fails when the two differ.
 export const ROUTE_SEGMENTS = new Set([
   "__internal", "abuse-protection", "access-email", "account", "account-rbac",
   "account-rbac-backfill", "action-queue.csv", "actions", "activate", "admin",
