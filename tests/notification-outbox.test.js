@@ -84,7 +84,6 @@ function makeBot(botId, { ownerEmail = `owner@${botId}.test` } = {}) {
     installs: [],
     allowedOrigins: ["https://example.com"],
     routingProfile: "frugal",
-    retrieval: {},
     abuseProtection: {},
     widgetSettings: {},
     responseCount: 0,

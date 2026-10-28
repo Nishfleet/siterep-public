@@ -2522,7 +2522,6 @@ function ensureBot(store, botId) {
       installs: [],
       allowedOrigins: [],
       routingProfile: "frugal",
-      retrieval: defaultRetrievalSettings(),
       abuseProtection: defaultAbuseProtectionSettings(),
       qualityRun: null,
       previousQualityRun: null,
@@ -2557,7 +2556,6 @@ function ensureBot(store, botId) {
   if (!store.bots[botId].lifecycleStatus) store.bots[botId].lifecycleStatus = "draft";
   if (!Array.isArray(store.bots[botId].allowedOrigins)) store.bots[botId].allowedOrigins = [];
   if (!["frugal", "balanced", "strict"].includes(store.bots[botId].routingProfile)) store.bots[botId].routingProfile = "frugal";
-  store.bots[botId].retrieval = sanitizeRetrievalSettings({}, store.bots[botId].retrieval || {});
   store.bots[botId].abuseProtection = sanitizeAbuseProtectionSettings({}, store.bots[botId].abuseProtection || {});
   if (!("qualityRun" in store.bots[botId])) store.bots[botId].qualityRun = null;
   if (!("previousQualityRun" in store.bots[botId])) store.bots[botId].previousQualityRun = null;
@@ -7579,19 +7577,6 @@ async function handleApi(request, response, url) {
     return;
   }
 
-  if (request.method === "POST" && url.pathname === "/api/retrieval/settings") {
-    const body = await readJson(request);
-    const bot = await updateStore((store) => {
-      const record = ensureBot(store, body.botId || "starter-demo");
-      record.retrieval = sanitizeRetrievalSettings(body.retrieval || body, record.retrieval || {});
-      record.updatedAt = new Date().toISOString();
-      return record;
-    });
-
-    sendJson(response, 200, toPublicBot(bot));
-    return;
-  }
-
   if (request.method === "POST" && url.pathname === "/api/abuse-protection/settings") {
     const body = await readJson(request);
     const bot = await updateStore((store) => {
@@ -9848,7 +9833,6 @@ function isOwnerAllowedRoute(method, pathname) {
       "/api/domains/remove",
       "/api/bots/status",
       "/api/routing/profile",
-      "/api/retrieval/settings",
       "/api/abuse-protection/settings",
       "/api/overage/settings",
       "/api/widget/settings",
@@ -9970,7 +9954,6 @@ function toPublicBot(bot) {
     lifecycleStatus: bot.lifecycleStatus || "draft",
     publishBlockers: publicLaunchBlockers(bot),
     routingProfile: normalizeRoutingProfile(bot.routingProfile),
-    retrieval: publicRetrievalSettings(bot),
     abuseProtection: publicAbuseProtectionSettings(bot),
     siteUrl: bot.siteUrl,
     updatedAt: bot.updatedAt,
@@ -10163,7 +10146,7 @@ async function prepareComposedAnswer(botId, question, sessionId, request = null)
   const answer = await demoAnswerWithLiveStarterPrice(
     botId,
     question,
-    answerWithRetrievalPolicy(question, hydrated, { recentQuestions: recentTurns.map((turn) => turn.question) }, bot.retrieval),
+    answerFromSources(question, hydrated, { recentQuestions: recentTurns.map((turn) => turn.question) }),
     activeEnv,
     request,
   );
@@ -10313,11 +10296,10 @@ async function recordConversation(botId, question, context = {}) {
       (await demoAnswerWithLiveStarterPrice(
         botId,
         question,
-        answerWithRetrievalPolicy(
+        answerFromSources(
           question,
           await hydrateSourcesForQuestion(botId, question, retrievableSources(bot.sources || [])),
           { recentQuestions: recentSessionQuestions(bot, sessionId) },
-          bot.retrieval,
         ),
         activeEnv,
         context.request,
@@ -14368,44 +14350,6 @@ function normalizeRoutingProfile(value) {
   return ROUTING_PROFILES.has(profile) ? profile : "frugal";
 }
 
-function defaultRetrievalSettings() {
-  return {
-    mode: "lexical",
-    rerankEnabled: false,
-    requireEvalPass: true,
-    evalProfile: "default-docs-mode",
-    evalPassedAt: "",
-  };
-}
-
-function sanitizeRetrievalSettings(input = {}, current = {}) {
-  const base = { ...defaultRetrievalSettings(), ...(current && typeof current === "object" ? current : {}) };
-  const requestedMode = String(input.mode ?? base.mode ?? "lexical").trim().toLowerCase();
-  const mode = ["lexical", "vector", "hybrid"].includes(requestedMode) ? requestedMode : "lexical";
-  const rerankEnabled = Boolean(input.rerankEnabled ?? base.rerankEnabled);
-  const requireEvalPass = input.requireEvalPass ?? base.requireEvalPass;
-  const evalProfile = String(input.evalProfile ?? base.evalProfile ?? "default-docs-mode").trim().slice(0, 80) || "default-docs-mode";
-  const evalPassedAt = String(input.evalPassedAt ?? base.evalPassedAt ?? "").trim();
-  return {
-    mode,
-    rerankEnabled,
-    requireEvalPass: requireEvalPass !== false,
-    evalProfile,
-    evalPassedAt: Number.isFinite(Date.parse(evalPassedAt)) ? evalPassedAt : "",
-  };
-}
-
-function publicRetrievalSettings(bot = {}) {
-  const policy = sanitizeRetrievalSettings({}, bot.retrieval || {});
-  const active = activeRetrievalPolicy(policy);
-  return {
-    ...policy,
-    activeMode: active.mode,
-    advancedEnabled: active.advancedEnabled,
-    fallbackReason: active.fallbackReason,
-  };
-}
-
 function defaultAbuseProtectionSettings() {
   return {
     enabled: false,
@@ -14505,31 +14449,6 @@ function hostnameMatchesOrigin(hostname, origin) {
   } catch {
     return false;
   }
-}
-
-function activeRetrievalPolicy(settings = {}) {
-  const policy = sanitizeRetrievalSettings({}, settings);
-  if (policy.mode === "lexical") {
-    return { mode: "lexical", advancedEnabled: false, fallbackReason: "" };
-  }
-  if (policy.requireEvalPass && !policy.evalPassedAt) {
-    return { mode: "lexical", advancedEnabled: false, fallbackReason: "advanced retrieval requires a passing eval profile" };
-  }
-  return { mode: "lexical", advancedEnabled: false, fallbackReason: "advanced retrieval implementation is not enabled yet" };
-}
-
-function answerWithRetrievalPolicy(question, sources, options = {}, retrieval = {}) {
-  const active = activeRetrievalPolicy(retrieval);
-  const answer = answerFromSources(question, sources, options);
-  return {
-    ...answer,
-    retrieval: {
-      requestedMode: sanitizeRetrievalSettings({}, retrieval).mode,
-      activeMode: active.mode,
-      rerankEnabled: active.advancedEnabled && Boolean(retrieval?.rerankEnabled),
-      fallbackReason: active.fallbackReason,
-    },
-  };
 }
 
 function buildCoverageMap(sources) {
@@ -14840,7 +14759,6 @@ function buildAnswerTrace(question, answer, answerRoute) {
     sourceTitles: (answer.sources || []).map((source) => source.title),
     route: answerRoute.model,
     routeReason: answerRoute.reason,
-    retrieval: answer.retrieval || { requestedMode: "lexical", activeMode: "lexical", rerankEnabled: false, fallbackReason: "" },
     score: answer.score || 0,
     refused: Boolean(answer.unknown),
     explanation: answer.unknown
