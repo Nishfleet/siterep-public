@@ -168,7 +168,7 @@ function conversationMatches(conversation, targets) {
 }
 
 function emailMentionPattern(email, flags) {
-  return new RegExp(`(?<![A-Za-z0-9._%+\\-])${escapeRegExp(email)}(?![A-Za-z0-9_\\-]|\\.[A-Za-z0-9])`, flags);
+  return new RegExp(`(?<![A-Za-z0-9._%+\\-])${escapeRegExp(email)}(?![A-Za-z0-9_\\-]|\\.[A-Za-z0-9])`, flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 }
 
 function textMentionsTarget(text, targets) {

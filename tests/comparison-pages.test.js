@@ -82,7 +82,7 @@ test("comparison page html titles come from front matter instead of duplicate ro
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
   assert.match(worker, /const title = frontmatterTitle \|\| `Site Rep \| \$\{page\.title\}`/);
-  assert.match(worker, /function markdownFrontmatterValue\(markdown, key\)/);
+  assert.match(worker, /function markdownFrontmatterTitle\(markdown\)/);
   assert.match(worker, /title: Site Rep vs CustomGPT \| Cited answers, local pricing/);
   assert.match(worker, /title: Site Rep vs Intercom Fin \| Local-price website answers/);
   assert.match(worker, /title: Site Rep vs WebSpeaker \| Local checkout, cited answers/);
@@ -109,7 +109,7 @@ test("comparison page html titles come from front matter instead of duplicate ro
   const escapeHtmlFn = extractBlock("function escapeHtml", ["\nfunction withVaryAccept"]);
   const renderInlineHtmlFn = extractBlock("function renderInlineHtml", ["\nfunction jsonLdScript"]);
   const markdownBodyToHtmlFn = extractBlock("function markdownBodyToHtml", ["\nfunction renderInlineHtml"]);
-  const markdownFrontmatterValueFn = extractBlock("function markdownFrontmatterValue", ["\nfunction markdownBodyToHtml"]);
+  const markdownFrontmatterTitleFn = extractBlock("function markdownFrontmatterTitle", ["\nfunction markdownBodyToHtml"]);
   const jsonLdScriptFn = extractBlock("function jsonLdScript", ["\nfunction slugify"]);
   const renderTrustPageHtmlFn = extractBlock("function renderTrustPageHtml", ["\nfunction canonicalUrlFor"]);
   const { renderTrustPageHtml } = new Function(
@@ -122,7 +122,7 @@ function docsInstallBody(markdown) { return markdown; }
 ${escapeHtmlFn}
 ${renderInlineHtmlFn}
 ${markdownBodyToHtmlFn}
-${markdownFrontmatterValueFn}
+${markdownFrontmatterTitleFn}
 ${jsonLdScriptFn}
 ${renderTrustPageHtmlFn}
 return { renderTrustPageHtml };`,
