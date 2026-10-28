@@ -1,0 +1,20 @@
+# Semgrep's built-in defaults, kept because a .semgrepignore file replaces them.
+node_modules/
+build/
+dist/
+vendor/
+.env/
+.venv/
+.tox/
+*.min.js
+.npm/
+.yarn/
+test/
+tests/
+*_test.go
+.semgrep_logs/
+
+# Vendored shadcn skill, installed from shadcn/ui and pinned by skills-lock.json.
+# Its showcase-coverage.mjs builds a RegExp from component file names on the
+# developer's own disk; it never runs in the Worker or on visitor input (#237).
+.agents/skills/shadcn/scripts/showcase-coverage.mjs

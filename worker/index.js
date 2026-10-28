@@ -1396,7 +1396,7 @@ function renderTrustPageHtml(page) {
   const body = page.pathname === "/docs/install" ? docsInstallBody(page.markdown) : markdownBodyToHtml(page.markdown);
   const canonicalUrl = canonicalUrlFor(page.pathname || "/");
   const pathname = String(page.pathname || "");
-  const frontmatterTitle = pathname === "/vs" || pathname.startsWith("/vs/") ? markdownFrontmatterValue(page.markdown, "title") : "";
+  const frontmatterTitle = pathname === "/vs" || pathname.startsWith("/vs/") ? markdownFrontmatterTitle(page.markdown) : "";
   const title = frontmatterTitle || `Site Rep | ${page.title}`;
   const comparisonFooter = COMPARISON_LINKS.map((link) => `<a href="${link.path}">${escapeHtml(link.label)}</a>`).join(" · ");
   return `<!doctype html>
@@ -1468,11 +1468,10 @@ function canonicalUrlFor(pathname) {
   return new URL(pathname, PUBLIC_SITE_URL).toString();
 }
 
-function markdownFrontmatterValue(markdown, key) {
+function markdownFrontmatterTitle(markdown) {
   const frontmatter = String(markdown || "").match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatter) return "";
-  const pattern = new RegExp(`^${key}:\\s*(.+)$`, "m");
-  return frontmatter[1].match(pattern)?.[1]?.trim() || "";
+  return frontmatter[1].match(/^title:\s*(.+)$/m)?.[1]?.trim() || "";
 }
 
 function markdownBodyToHtml(markdown) {
