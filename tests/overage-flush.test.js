@@ -84,7 +84,6 @@ function makeBot(botId, { customerId = "cus_test_1", pendingIds = ["ov_1", "ov_2
     installs: [],
     allowedOrigins: ["https://example.com"],
     routingProfile: "frugal",
-    retrieval: {},
     abuseProtection: {},
     widgetSettings: {},
     responseCount: 12000,
