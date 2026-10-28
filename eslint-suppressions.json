@@ -50,11 +50,6 @@
       "count": 1
     }
   },
-  "tests/compose.test.js": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
   "tests/demo-refusal-evals.test.js": {
     "no-unused-vars": {
       "count": 1
