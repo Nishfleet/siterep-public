@@ -21,6 +21,12 @@ updates:
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
+    cooldown:
+      # Owner standing rule, 2026-10-22: upstream releases are taken after
+      # 3 days, not the 7 the semgrep p/default rule asks for. Same policy
+      # as the github-actions entry below; deliberate, so the rule is
+      # silenced on this line only.
+      default-days: 3 # nosemgrep: package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -31,10 +37,9 @@ updates:
       timezone: "Asia/Kolkata"
     open-pull-requests-limit: 2
     cooldown:
-      # A release is taken at least 3 days after it is published (upstream rule).
-      # Dependabot already applies a 3-day default cooldown to version updates
-      # in every ecosystem it supports, npm included, security updates exempt,
-      # so this line pins the rule rather than moving the platform default.
-      default-days: 3
+      # Owner standing rule, 2026-10-22: upstream releases are taken after
+      # 3 days, not the 7 the semgrep p/default rule asks for. Landed in
+      # PR #207; deliberate, so the rule is silenced on this line only.
+      default-days: 3 # nosemgrep: package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown
     commit-message:
       prefix: "deps(actions)"
