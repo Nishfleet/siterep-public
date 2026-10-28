@@ -24,7 +24,6 @@ test("dispatch stub concurrency groups never equal the callee's agent-dispatch-<
   assert.ok(group, "concurrency block present");
   const names = [...group[1].matchAll(/format\('([^']+)'/g)].map((match) => match[1]);
   assert.equal(names.length, 3);
-  // The callee's group is agent-dispatch-<run_id> or agent-dispatch-sweep.
   const callee = /^agent-dispatch-(\d+|sweep)$/;
   for (const name of names) {
     for (const fill of ["123", "sweep", "Nishfleet/siterep-public"]) {
@@ -42,6 +41,5 @@ test("dispatch stub dispatches PR events only for a same-repo head", () => {
     /\(github\.event\.action != 'closed' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository\)/,
   );
   assert.match(condition, /\(github\.event\.action == 'closed' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository &&/);
-  // Dropping either same-repo check would let a fork's PR start a run.
   assert.equal(condition.match(/head\.repo\.full_name == github\.repository/g).length, 2);
 });

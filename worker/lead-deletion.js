@@ -1,15 +1,3 @@
-// Self-serve erasure of one visitor's lead data inside a workspace.
-//
-// A lead is keyed by email and links to the conversation it was captured
-// from. Deleting a lead removes the lead, every conversation tied to that
-// identity, plus every copy the workspace keeps of them: follow-up tickets,
-// escalations, owner notifications, queued webhook payloads, activity
-// entries, the D1 record ledger, and the KV recovery snapshots.
-//
-// Browser session ids are visitor-supplied and can be shared (one tab, two
-// people). A session only widens the deletion to its anonymous questions
-// when nothing in it belongs to another email or lead; otherwise it is
-// skipped and reported, so a deletion never crosses into another lead.
 
 export const LEAD_DELETION_SCOPES = Object.freeze(["lead", "visitor"]);
 
@@ -20,15 +8,10 @@ export function normalizeLeadEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-// Emails become whole-word text matches across events, notifications and
-// webhooks, so only something shaped like an address ever becomes a target:
-// a malformed stored value such as "a" would otherwise match every "a".
 function isAddress(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// Same grouping key the worker uses for shared questions (unknowns and
-// escalations): case and punctuation do not matter.
 export function normalizeQuestionKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -53,24 +36,13 @@ export function emptyLeadDeletionTargets() {
   return {
     emails: new Set(),
     leadIds: new Set(),
-    // Every conversation to delete.
     conversationIds: new Set(),
-    // The subset reached through the lead or email itself, not a session.
     identityConversationIds: new Set(),
-    // Candidate sessions seen on the visitor's own conversations.
     sessionIds: new Set(),
-    // Sessions that also hold another email or lead: never followed.
     blockedSessions: new Set(),
-    // conversation id -> normalized question, to tell the visitor's shared
-    // questions apart from unrelated entries.
     questionKeys: new Map(),
-    // Rows the ledger held for this visitor (0 without a ledger).
     ledgerRows: 0,
-    // email -> salted one-way hash, filled by the caller (hashing is async).
-    // A privacy request that named the email keeps only this hash.
     emailHashes: new Map(),
-    // Set when a lead reached by id carries an email other than the one
-    // already known: the deletion is refused instead of widened.
     ambiguous: false,
   };
 }
@@ -90,8 +62,6 @@ export function cloneTargets(targets) {
   };
 }
 
-// Resolves a lead id or email to everything that belongs to that visitor in
-// the in-store bot record. Returns null when nothing identifies a visitor.
 export function leadDeletionTargets(bot, input = {}, options = {}) {
   const targets = emptyLeadDeletionTargets();
   const leadId = idKey(input.leadId);
@@ -116,15 +86,6 @@ function addConversation(targets, id, question, { identity = false } = {}) {
   }
 }
 
-// Folds the in-store copies into the target sets until nothing new appears:
-// the visitor's leads pull in the conversations they were captured in, and
-// conversations carrying the visitor's email are theirs. Emails never come
-// from a conversation or session, and a lead reached by id adds its email
-// only while none is known (see addEmailFromLeadId), so the set of people
-// never grows. With
-// followSessions, each candidate session then adds
-// its other (anonymous) conversations, but only when every conversation and
-// lead in it belongs to this visitor.
 export function expandTargetsInBot(bot, targets, { followSessions = true } = {}) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
@@ -155,7 +116,6 @@ export function expandTargetsInBot(bot, targets, { followSessions = true } = {})
       for (const conversation of members) addConversation(targets, conversation.id, conversation.question);
     }
   }
-  // Question text of conversations reached by id only.
   for (const conversation of conversations) {
     const key = idKey(conversation?.id);
     if (targets.conversationIds.has(key) && !targets.questionKeys.has(key)) {
@@ -181,12 +141,6 @@ function isTargetLead(lead, targets) {
   return targets.leadIds.has(idKey(lead?.id)) || targets.emails.has(normalizeLeadEmail(lead?.email));
 }
 
-// One lead id is one lead with one email: the ledger's primary key is
-// (bot_id, lead_id) and store lead ids are unique per bot. A lead reached by
-// id may supply the email only while no email is known yet (a lead older
-// than the store, found in the ledger). A lead that carries a different email
-// means the records disagree, so the targets are marked ambiguous and nobody
-// is added: a deletion never spreads from one person to a second.
 function addEmailFromLeadId(targets, email) {
   if (!isAddress(email) || targets.emails.has(email)) return;
   if (targets.emails.size) {
@@ -200,9 +154,6 @@ function identitySize(targets) {
   return targets.emails.size + targets.leadIds.size + targets.identityConversationIds.size + targets.sessionIds.size;
 }
 
-// Leads match by id or email only. A lead with another email is another
-// person's record even when it points at one of this visitor's
-// conversations, so it is never pulled in.
 function leadMatches(lead, targets) {
   return isTargetLead(lead, targets);
 }
@@ -216,10 +167,6 @@ function conversationMatches(conversation, targets) {
   return targets.conversationIds.has(idKey(conversation?.id)) || identityConversationMatches(conversation, targets);
 }
 
-// An email mentioned as a whole address, case-insensitive. The characters
-// around it must not continue an address: deleting jo@x.com never matches
-// bojo@x.com or jo@x.com.au, and deleting jo@x.co never matches jo@x.co.uk.
-// A sentence's closing full stop still ends the address.
 function emailMentionPattern(email, flags) {
   return new RegExp(`(?<![A-Za-z0-9._%+\\-])${escapeRegExp(email)}(?![A-Za-z0-9_\\-]|\\.[A-Za-z0-9])`, flags);
 }
@@ -233,7 +180,6 @@ function textMentionsTarget(text, targets) {
   return false;
 }
 
-// Multi-lead summaries ("a@x — need · b@y — need") keep their other entries.
 function withoutTargetSegments(text, targets) {
   const segments = String(text || "").split(" · ");
   const kept = segments.filter((segment) => !textMentionsTarget(segment, targets));
@@ -244,11 +190,8 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Removes the visitor from free text that also covers other people: their
-// " · " segment goes, and any remaining mention of their email is masked.
 function scrubText(text, targets) {
   if (!textMentionsTarget(text, targets)) return text;
-  // A single-subject text has no other segment to keep, so it is masked.
   let next = withoutTargetSegments(text, targets) || String(text);
   for (const email of targets.emails) {
     if (email) next = next.replace(emailMentionPattern(email, "gi"), SCRUBBED_EMAIL);
@@ -287,9 +230,6 @@ function dedupeKeyTouchesTarget(key, targets) {
   return false;
 }
 
-// Wording for a shared question once the deleted visitor's own text goes:
-// another remaining visitor's wording when there is one, otherwise the
-// normalized question every asker shares.
 function sharedQuestionWording(bot, key, targets) {
   const other = (Array.isArray(bot?.conversations) ? bot.conversations : []).find(
     (conversation) => !conversationMatches(conversation, targets) && normalizeQuestionKey(conversation.question) === key,
@@ -297,8 +237,6 @@ function sharedQuestionWording(bot, key, targets) {
   return other ? String(other.question) : key;
 }
 
-// Removes the visitor's records from one bot record in place and returns
-// counts only, so callers can log what happened without logging who.
 export function eraseLeadFromBot(bot, targets, options = {}) {
   const counts = {
     leads: 0,
@@ -317,11 +255,6 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   if (!bot || !targets) return counts;
   expandTargetsInBot(bot, targets, options);
 
-  // Shared questions first, while the visitor's conversations are still
-  // there to read question text from.
-  // Escalations and unknowns are grouped by question across visitors. One
-  // asked only by this visitor goes; a shared one stays as a count, unlinked
-  // from them and without their wording.
   if (Array.isArray(bot.escalations)) {
     const next = [];
     for (const item of bot.escalations) {
@@ -338,12 +271,6 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     }
     bot.escalations = next;
   }
-  // An unknown's id is the conversation id of its first asker for chat
-  // gaps, but a timestamp for feedback and QA-run gaps, so an id match alone
-  // is not proof. It is the visitor's only when the question matches too.
-  // A shared unknown that stays gets a new id, so it no longer points at the
-  // visitor's conversation and a second pass (the rescrub of a backup, or
-  // the check after it) leaves it alone instead of counting it down again.
   if (Array.isArray(bot.unknowns)) {
     const next = [];
     for (const item of bot.unknowns) {
@@ -406,10 +333,6 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     bot.notifications = next;
   }
 
-  // Each queued webhook carries one subject (lead, conversation, ticket or
-  // source). An action about this visitor goes; one about someone else that
-  // only mentions them in its text is kept with the mention scrubbed, so
-  // other leads' deliveries are never dropped.
   if (Array.isArray(bot.actionQueue)) {
     const next = [];
     for (const action of bot.actionQueue) {
@@ -440,10 +363,6 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     ),
   );
 
-  // Privacy requests stay as the record that a request was made and done,
-  // but never with the visitor's address: a named email becomes its salted
-  // hash, a requester address that is the visitor's is blanked, and a note
-  // that mentions it is masked.
   if (Array.isArray(bot.privacyRequests)) {
     bot.privacyRequests = bot.privacyRequests.map((item) => {
       const named = normalizeLeadEmail(item?.targetEmail);
@@ -467,18 +386,10 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   return counts;
 }
 
-// Any change counts, masked mentions and unlinked shared questions included:
-// a snapshot that changed only that way still holds the visitor until it is
-// rewritten, so it must be rewritten.
 export function totalErased(counts) {
   return Object.values(counts || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
 }
 
-// Applies the same erasure to a JSON snapshot of the whole store (the KV
-// recovery mirror and daily backups). Returns { json, unreadable }: json is
-// the scrubbed snapshot, or null when it holds nothing for this visitor;
-// unreadable is true when the snapshot is not a store this code can scrub,
-// so the caller reports it instead of claiming success.
 export function eraseLeadFromStoreSnapshot(raw, botId, targets) {
   let store;
   try {
@@ -491,8 +402,6 @@ export function eraseLeadFromStoreSnapshot(raw, botId, targets) {
   }
   const bot = store.bots[botId];
   if (!bot) return { json: null, unreadable: false };
-  // Snapshots never follow sessions on their own: the live store and the
-  // ledger decided which sessions are safe, and those ids are in targets.
   const counts = eraseLeadFromBot(bot, cloneTargets(targets), { followSessions: false });
   return { json: totalErased(counts) > 0 ? JSON.stringify(store) : null, unreadable: false };
 }
@@ -517,13 +426,6 @@ function parseJson(value) {
   }
 }
 
-// Widens the targets with D1 ledger rows the in-store record no longer holds
-// (the store keeps the newest 200 leads and 1000 conversations; the ledger
-// keeps everything). Identity only: sessions are checked separately by
-// resolveSessionsInLedger. Errors propagate so a deletion never
-// half-succeeds.
-// Emails are matched with lower() because rows written before the ledger
-// lowercased addresses can still hold mixed case.
 export async function expandTargetsInLedger(db, botId, targets) {
   for (const email of targets.emails) {
     const leads = await db
@@ -575,16 +477,10 @@ export async function expandTargetsInLedger(db, botId, targets) {
   return targets;
 }
 
-// Decides each candidate session once, against both the live bot record and
-// the ledger: a session is followed only when none of its conversations
-// carries another email and no other lead was captured in it. Followed
-// sessions add their conversations; the rest are blocked and counted.
 export async function resolveSessions(db, botId, bot, targets) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
   const candidates = [...targets.sessionIds].filter((sessionId) => !targets.blockedSessions.has(sessionId));
-  // The ledger has no session column, so the bot's rows are scanned by text
-  // (bot_id is indexed). One scan covers every candidate session.
   const ledgerMembers = new Map(candidates.map((sessionId) => [sessionId, []]));
   if (db) {
     for (const group of chunks(candidates, 20)) {
@@ -635,8 +531,6 @@ export async function resolveSessions(db, botId, bot, targets) {
   return targets;
 }
 
-// Whether anything stored still identifies this visitor: a lead or a
-// conversation in the live record, or a ledger row.
 export function targetsFoundAnything(bot, targets) {
   if (targets.ledgerRows > 0) return true;
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];

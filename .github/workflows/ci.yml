@@ -26,6 +26,8 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - name: Lint (comment ban gate, #155)
+        run: npm run lint
       - run: |
           # No-glue regrowth gate (#109): zero helper scripts.
           test -z "$(git ls-files scripts bin tools ops .specify "*.sh")"

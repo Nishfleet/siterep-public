@@ -1133,8 +1133,6 @@ type LeadDeletionResult = {
   warnings?: string[];
 };
 
-// The deletion result names anything it could not finish (an unreadable
-// backup, a session shared with another lead) instead of a bare success.
 function leadDeletionNotice(done: string, deletion?: LeadDeletionResult) {
   const warnings = deletion?.warnings || [];
   return [done, ...warnings, "An audit entry records that a deletion happened."].join(" ");

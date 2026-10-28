@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 
-// The worker bundle imports "cloudflare:workers"; Node has no Workers runtime, so this shim must be registered before the worker module loads.
 registerHooks({
   load(url, context, nextLoad) {
     if (url === "cloudflare:workers") {
@@ -42,8 +41,6 @@ function fakeCtx() {
   };
 }
 
-// Records every outbound fetch the Worker makes, answering Sentry envelope
-// posts locally so nothing touches the network.
 async function withCapturedTraffic(run) {
   const originalFetch = globalThis.fetch;
   const sent = [];
@@ -75,8 +72,6 @@ function failingAssetsEnv(extra = {}, makeError = () => new Error("asset failure
   };
 }
 
-// A payments DB whose calls fail only after a real timer tick, so a cron
-// handler that does not await its work returns before the failure happens.
 function slowFailingPaymentsDb(state) {
   const fail = async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -107,7 +102,6 @@ test("Sentry options use the SDK off switch and keep PII, tracing, and console b
   assert.equal(typeof options.beforeSend, "function");
   assert.equal(typeof options.beforeBreadcrumb, "function");
   assert.equal(options.beforeSendTransaction({ type: "transaction", transaction: "GET /bots/acme?email=a@b.co" }), null);
-  // Only a real deploy (which sets SITEREP_RELEASE_DEPLOYED_AT) reports as production.
   assert.equal(options.environment, "development");
   assert.equal(sentryOptions({ SENTRY_DSN: TEST_DSN, SITEREP_RELEASE_DEPLOYED_AT: "2026-10-15T00:00:00Z" }).environment, "production");
   assert.equal(sentryOptions({ SENTRY_DSN: TEST_DSN, SENTRY_ENVIRONMENT: "staging" }).environment, "staging");
@@ -120,7 +114,6 @@ test("the Worker export is withSentry with the options callback, and the compat 
   assert.match(source, /export default withSentry\(sentryOptions, workerHandler\);/);
   assert.doesNotMatch(source, /withOptionalSentry/);
   const config = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
-  // @sentry/cloudflare needs AsyncLocalStorage for its per-request scopes.
   assert.match(config, /"compatibility_flags":\s*\[[^\]]*"nodejs_(als|compat)"/);
 });
 
@@ -156,14 +149,12 @@ for (const mode of ["no DSN", "a DSN"]) {
     const ctx = fakeCtx();
     const sent = await withCapturedTraffic(async () => {
       await worker.scheduled({ cron: "*/10 * * * *", scheduledTime: Date.now() }, env, ctx);
-      // Checked before ctx.waitUntil work settles: the cron run is already done.
       assert.equal(state.failed, true, "the failing task must have run before scheduled() resolved");
       await ctx.settle();
     });
     if (mode === "a DSN") {
       const events = errorEventsIn(sent);
       assert.ok(events.length >= 1, "the failing cron task must reach Sentry");
-      // A free-form message is withheld; the event still carries the type and stack.
       assert.ok(events.some((entry) => /"value":"\[message withheld\]"/.test(entry.body) && entry.body.includes('"stacktrace"')));
     } else {
       assert.deepEqual(sent, []);
@@ -177,7 +168,6 @@ test("with a DSN, a fetch error is reported scrubbed and the visitor still gets 
   let response;
   const sent = await withCapturedTraffic(async () => {
     const env = failingAssetsEnv({ SENTRY_DSN: TEST_DSN }, () => {
-      // An existing log line that prints a lead must not become a breadcrumb.
       console.warn(`lead from Jane Visitor, call +1 415 555 0134, ${leakyEmail}`);
       return new Error(`asset failure for ${leakyEmail} at +1 415 555 0134`);
     });
@@ -193,7 +183,6 @@ test("with a DSN, a fetch error is reported scrubbed and the visitor still gets 
   const events = errorEventsIn(sent);
   assert.equal(events.length, 1, "exactly one error event must be sent");
   const payload = events[0].body;
-  // The message was built from visitor data, so only the type and stack go.
   assert.match(payload, /"type":"Error","value":"\[message withheld\]"/);
   assert.match(payload, /"stacktrace"/);
   assert.doesNotMatch(payload, /asset failure/);
@@ -283,7 +272,6 @@ test("request paths keep only literal route segments; slugs, ids and tokens beco
     ["/api/bots/acme-dental", "/api/bots/:id"],
     ["/api/bots/status", "/api/bots/status"],
     ["/api/v1/bots/acme-dental/conversations", "/api/v1/bots/:id/conversations"],
-    // A bot slug on widget, public, export and MCP style paths is redacted too.
     ["/api/widget/acme-dental", "/api/widget/:id"],
     ["/api/public/acme-dental/chat", "/api/public/:id/chat"],
     ["/api/export/acme-dental/leads.csv", "/api/export/:id/leads.csv"],
@@ -321,8 +309,6 @@ test("exception messages go out only in a known safe shape", () => {
     "D1_ERROR: no such table: dodo_checkout_sessions",
   ];
   for (const message of kept) assert.equal(safeMessage(message), message, message);
-  // Runtime messages keep their shape; the key or expression (which code can
-  // build from visitor input, e.g. obj[name]) never leaves.
   const reshaped = [
     ["Cannot read properties of undefined (reading 'botId')", "Cannot read properties of undefined (reading '[key]')"],
     ["Cannot set properties of null (setting 'Jane Visitor')", "Cannot set properties of null (setting '[key]')"],

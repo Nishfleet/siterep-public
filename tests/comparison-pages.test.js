@@ -239,10 +239,6 @@ test("every comparison page renders an actionable free-start link from the Try S
 });
 
 test("every comparison leaf carries a pricing-check stamp that matches sitemap lastmod", async () => {
-  // Freshness (stamp age against today) is not asserted here: it lives in
-  // tests/pricing-stamp-freshness.check.js, run weekly by
-  // a weekly workflow (follow-up: needs the workflows permission), so an aging stamp never
-  // fails unrelated PRs.
   for (const { path, month, year, lastmod } of await collectPricingStamps()) {
     assert.equal(lastmod.year, year, `${path} sitemap lastmod year must match the stamp`);
     assert.equal(lastmod.month, month, `${path} sitemap lastmod month must match the stamp`);

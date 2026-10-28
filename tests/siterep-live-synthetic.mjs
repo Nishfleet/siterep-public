@@ -14,11 +14,6 @@ function readWorkerReleaseMarker() {
   return match[1];
 }
 
-// Same source as the release marker: the canary expects whatever trust date
-// the checked-out worker serves, so a trust-copy change never leaves a second
-// hard-coded date behind. Production deploys from CI on every main push, so
-// the canary only sees the old date for the minutes between merge and deploy,
-// exactly as it does for a release-marker change.
 function readWorkerTrustUpdatedAt() {
   const source = readFileSync(new URL("../worker/index.js", import.meta.url), "utf8");
   const match = source.match(/const TRUST_STATUS_UPDATED_AT = "([^"]+)"/);
@@ -459,7 +454,6 @@ if (!healthOnly) {
     assertSitemapFreshness("sitemap", body);
   });
 
-  // Cloudflare default html_handling 307-redirects a .html file to its dot-less twin, which the worker's unknown dot-less 404 gate rejects; html_handling: "none" serves the file as-is.
   await probe("widget preview html", "/widget-test.html", {}, ({ response, body }) => {
     if (response.status !== 200) throw new Error("widget-test.html must be served directly with HTTP 200");
     if (!body.includes("Site Rep Install Preview")) throw new Error("widget-test.html served the wrong document");
