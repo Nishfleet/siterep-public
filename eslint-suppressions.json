@@ -1,0 +1,130 @@
+{
+  "public/widget.js": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "server/crawler.js": {
+    "no-empty": {
+      "count": 3
+    },
+    "no-unused-vars": {
+      "count": 2
+    }
+  },
+  "server/index.js": {
+    "no-empty": {
+      "count": 1
+    },
+    "no-undef": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 4
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "src/App.tsx": {
+    "no-control-regex": {
+      "count": 2
+    },
+    "no-empty": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 19
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "src/funnel.ts": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "tests/agent-brief.test.js": {
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "tests/compose.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/demo-refusal-evals.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/funnel-events.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/honesty-live.check.js": {
+    "preserve-caught-error": {
+      "count": 2
+    }
+  },
+  "tests/sentry-error-reporting.test.js": {
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "tests/siterep-live-synthetic.mjs": {
+    "no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "tests/siterep-stranger-path-smoke.mjs": {
+    "no-empty": {
+      "count": 3
+    }
+  },
+  "tests/source-freshness.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/spa-surface-dot-gate.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "worker/funnel-events.js": {
+    "no-useless-assignment": {
+      "count": 3
+    }
+  },
+  "worker/index.js": {
+    "no-unused-vars": {
+      "count": 11
+    },
+    "no-useless-assignment": {
+      "count": 11
+    }
+  },
+  "worker/mcp-events.js": {
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "worker/site-rep-mcp.js": {
+    "no-empty": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  }
+}

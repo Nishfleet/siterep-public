@@ -243,6 +243,10 @@ test("worker serves the funnel event route before the coordinator queue and alwa
   assert.match(handler, /ctx\.waitUntil\(/, "collection must be deferred to the event loop as fire-and-forget");
   assert.doesNotMatch(handler, /cookie/i, "collection must never read cookies");
   assert.doesNotMatch(handler, /cf-connecting-ip/i, "collection must never read the visitor IP");
+  const respondAt = handler.indexOf("writeHead(204)");
+  const readAt = handler.indexOf("await request.text()");
+  assert.ok(respondAt > -1 && readAt > respondAt, "the body is read after the 204 is written, never before");
+  assert.match(handler, /catch \{\s*raw = "";/, "a failed body read is swallowed and the request still answers 204");
 });
 
 test("worker exposes admin-gated funnel stats queryable by date", async () => {

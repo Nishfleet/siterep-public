@@ -20,9 +20,6 @@ export async function crawlSite(rawUrl, maxPages = MAX_PAGES, options = {}) {
   const startUrl = normalizeUrl(rawUrl);
   const pageLimit = normalizePageLimit(maxPages);
   const origin = new URL(startUrl).origin;
-  // Chunked crawling: a Workers invocation allows ~1000 subrequests, so large
-  // crawls run in chunks across Durable Object alarms. `resume` carries the
-  // BFS state between chunks; `chunkPages` caps fetches per invocation.
   const resume = options.resume && typeof options.resume === "object" ? options.resume : null;
   const chunkPages = Number.isFinite(options.chunkPages) && options.chunkPages > 0 ? options.chunkPages : Infinity;
   const sitemapUrls = resume ? [] : await discoverSitemapUrls(origin, pageLimit);
@@ -825,10 +822,6 @@ function isPrivateIpv4(a, b, c, d) {
   );
 }
 
-// Parse a dotted-decimal IPv4 host. The WHATWG URL parser already folds
-// decimal/octal/hex/short forms (2130706433, 0x7f000001, 0177.0.0.1) into this
-// canonical shape before a host reaches us, but we re-validate defensively
-// rather than trusting upstream normalization.
 function parseDottedIpv4(host) {
   const parts = host.split(".");
   if (parts.length !== 4) return null;
@@ -844,8 +837,6 @@ function isBlockedIpv6Host(host) {
     const octets = parseDottedIpv4(dottedTail[1]);
     if (octets && isPrivateIpv4(octets[0], octets[1], octets[2], octets[3])) return true;
   }
-  // IPv4-mapped in hex hextet form (::ffff:a9fe:a9fe / ::ffff:7f00:1), which is
-  // how the URL parser canonicalizes a mapped dotted address.
   const mapped = host.match(/:ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
   if (mapped) {
     const hi = parseInt(mapped[1], 16);

@@ -87,9 +87,6 @@ const MAX_MANUAL_SOURCE_CONTENT_LENGTH = 200_000;
 const MAX_URL_LIST_IMPORT_COUNT = 25;
 const CRAWL_ALARM_DELAY_MS = 1000;
 const CRAWL_JOB_STALE_MS = 12 * 60 * 1000;
-// Pages fetched per alarm invocation. Each page costs one subrequest and each
-// new source one R2 put, so 400 pages stays well under the ~1000 subrequest
-// cap; larger crawls resume across alarms via R2-persisted BFS state.
 const CRAWL_CHUNK_PAGES = 400;
 const CRAWL_JOB_MAX_ATTEMPTS = 3;
 const CRAWL_JOB_HISTORY_LIMIT = 20;
@@ -1110,15 +1107,12 @@ const COVERAGE_CATEGORIES = [
 const STORE_KEY = "store";
 const STORE_ROOT_KEY = "store:root";
 const STORE_BOTS_KEY = "store:bots";
-// One Durable Object storage key per bot. A single shared value caps the whole
-// customer base at the 2 MB per-value limit; per-bot keys give every workspace
-// its own 2 MB budget.
+// https://developers.cloudflare.com/durable-objects/platform/limits/ caps a stored value at 2 MB, so every bot gets its own storage key: one shared value would cap the whole customer base at 2 MB.
 const STORE_BOT_PREFIX = "store:bot:";
 const STORE_BACKUP_TTL_SECONDS = 60 * 60 * 24 * 30;
 const STORE_BACKUP_KEY_PREFIX = "store:backup:";
 const STORE_BACKUP_LIST_MAX_PAGES = 10;
-// The live KV mirror is best-effort recovery, not a write-through cache: KV
-// allows ~1 write/sec/key, so mirror at most once a minute.
+// https://developers.cloudflare.com/kv/platform/limits/ allows one write per second per key, so the recovery mirror is written at most once a minute and stays best-effort rather than a write-through cache.
 const STORE_KV_MIRROR_MIN_INTERVAL_MS = 60 * 1000;
 const STORE_KV_MIRROR_ALERT_INTERVAL_MS = 60 * 60 * 1000;
 const AUTH_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -1177,10 +1171,6 @@ const workerHandler = {
         return response.toResponse();
       }
 
-      // These public endpoints answer both GET and HEAD with the same status
-      // and headers (RFC 9110: HEAD is GET without a body). Link/liveness
-      // checkers probe with HEAD first, so HEAD-only support would 404 the
-      // trust page's machine-readable links (dogfood patternKey 1435d8dfcbe7).
       if ((request.method === "GET" || request.method === "HEAD") && (url.pathname === "/api/health" || url.pathname === "/api/health/live")) {
         return publicFastHealthResponse(request, url, env);
       }
@@ -1269,16 +1259,11 @@ const workerHandler = {
     }
   },
 
-  // Cron work is awaited, not handed to ctx.waitUntil: the invocation ends
-  // only when every task has run, so a failing task is reported before the
-  // Sentry SDK flushes, and the run is the same with or without a DSN.
   async scheduled(event, env) {
     await handleScheduled(event, env);
   },
 };
 
-// sentryOptions sets `enabled: false` when SENTRY_DSN is unset, so with no DSN
-// the SDK sends nothing and the handlers behave as before.
 export default withSentry(sentryOptions, workerHandler);
 
 function wantsMarkdown(request) {
@@ -1875,8 +1860,6 @@ export class CiteRepCoordinator extends DurableObject {
     await this.writePartitionedStore(store);
   }
 
-  // forceMirror skips the once-a-minute limit, for a write (a lead deletion)
-  // whose old state must not linger in the recovery mirror.
   async mirrorToKv(store, { forceMirror = false } = {}) {
     if (!this.env?.CITEREP_STORE) return;
     const now = Date.now();
@@ -2294,8 +2277,7 @@ class ApiResponse {
   }
 
   toResponse(request) {
-    // HEAD is GET without a body (RFC 9110): keep the exact status and
-    // headers GET would return, but never attach a message body.
+    // https://www.rfc-editor.org/rfc/rfc9110 makes HEAD GET without a body: keep the exact status and headers GET would return, but never attach a message body.
     const head = request?.method === "HEAD";
     const body = head || NULL_BODY_STATUS_CODES.has(this.status) ? null : this.body;
     return withSecurityHeaders(new Response(body, { status: this.status, headers: this.headers }));
@@ -2930,7 +2912,6 @@ function makeOwnerAccessKey() {
   return `own_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
-// A bot holds either a legacy plaintext key (until its owner first signs in with it) or only its SHA-256 hash.
 function hasOwnerAccessKey(bot) {
   return Boolean(bot?.ownerAccessKey || bot?.ownerAccessKeyHash);
 }
@@ -2941,7 +2922,6 @@ function migrateOwnerAccessKeyToHash(bot, key, keyHash) {
   if (!bot || !bot.ownerAccessKey || !timingSafeEqual(key, bot.ownerAccessKey)) return false;
   bot.ownerAccessKeyHash = keyHash;
   delete bot.ownerAccessKey;
-  // Only delivered copies are rewritten; queued emails keep the key and are scrubbed after delivery.
   for (const notification of bot.notifications || []) {
     if (!["sent", "skipped"].includes(notification?.deliveryStatus)) continue;
     if (typeof notification?.detail === "string" && notification.detail.includes(key)) {
@@ -2951,7 +2931,6 @@ function migrateOwnerAccessKeyToHash(bot, key, keyHash) {
   return true;
 }
 
-// Hashes of owner-key-shaped tokens in a notification, so a delivered copy can drop a key whose bot keeps only the hash.
 async function ownerKeyTokenHashes(detail) {
   const tokens = [...new Set(String(detail || "").match(/own_[0-9a-f]{32}/g) || [])];
   return await Promise.all(tokens.map(async (token) => [token, await sha256Hex(token)]));
@@ -5246,8 +5225,6 @@ function requiredPermissionForRoute(method, pathname) {
   return "bot:write";
 }
 
-// Erasing visitor data is an owner decision: owner key, owner/admin team
-// roles, or the platform admin. Editors and read-only links cannot delete.
 function isLeadDeletionRoute(method, pathname) {
   return method === "POST" && ["/api/leads/delete", "/api/privacy/deletion-request/complete"].includes(pathname);
 }
@@ -7099,9 +7076,6 @@ function isTrustedDodoUrl(value) {
 }
 
 async function handlePublicFunnelEvent(request, env, ctx) {
-  // The tiny body must be read before responding (workerd closes the request
-  // stream once the handler responds); any read failure is swallowed and the
-  // request is still answered 204.
   const response = new ApiResponse();
   setCors(response, request, env);
   response.writeHead(204);
@@ -9109,20 +9083,16 @@ async function handleApi(request, response, url) {
       sendJson(response, 400, { error: LEAD_AND_EMAIL_ERROR });
       return;
     }
-    // A lead or visitor request from someone allowed to erase data runs the
-    // deletion now; everything else is logged for an owner to complete.
     if (target && authorizationCanDeleteLeadData(response._siterepAuthorization)) {
       const result = await deleteLeadData(botId, target, {
         trigger: "privacy_request",
         actor: privacyAuditActor(response._siterepAuthorization),
         newPrivacyRequest: body,
-        // A lead or email that matches nothing is a 404: no request, event or audit row.
         requireExistingLead: true,
       });
       sendJson(response, result.status, result.body);
       return;
     }
-    // A deletion request never creates a workspace.
     if (!(await getBot(botId))) {
       sendJson(response, 404, { error: "Bot not found." });
       return;
@@ -9156,8 +9126,6 @@ async function handleApi(request, response, url) {
       sendJson(response, 409, { error: "Account deletion requests stay in review. Only lead and visitor requests complete here." });
       return;
     }
-    // The lead a request names is the one it is about. A body target is
-    // only for a request that names none (the dashboard's "Choose lead").
     const namedTarget = privacyRequestTarget({ scope: existing.scope, leadId: existing.targetLeadId, visitorEmail: existing.targetEmail });
     const bodyTarget = privacyRequestTarget({ scope: existing.scope, leadId: body.leadId, visitorEmail: body.visitorEmail || body.leadEmail });
     if (namedTarget && bodyTarget && JSON.stringify(namedTarget) !== JSON.stringify(bodyTarget)) {
@@ -9501,7 +9469,6 @@ async function getCustomerBot(botId, accessKey) {
     return timingSafeEqual(keyHash, bot.ownerAccessKeyHash) ? bot : null;
   }
   if (!timingSafeEqual(key, bot.ownerAccessKey)) return null;
-  // Legacy plaintext key verified: keep only its hash from now on.
   const migrated = await updateStore((nextStore) => {
     const record = nextStore.bots?.[id];
     return migrateOwnerAccessKeyToHash(record, key, keyHash) ? record : null;
@@ -9926,7 +9893,6 @@ function isAuthorizedAdmin(request, url) {
   return timingSafeEqual(supplied, expected);
 }
 
-// Admin-key header check with failed-attempt rate limiting and an audit log line for every accepted use.
 async function authorizeAdminKeyRequest(request, url) {
   if (!headerValue(request, "x-citerep-admin-key")) return false;
   const preflight = await checkFailedAuthLimit(request, {}, "admin-key");
@@ -9943,13 +9909,25 @@ async function authorizeAdminKeyRequest(request, url) {
   return false;
 }
 
+function decodePathSegment(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function safeUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 function logAdminAccess(request, url, credential, outcome = "allowed") {
   let botId = url?.searchParams?.get?.("botId") || String(url?.pathname || "").match(/^\/api\/bots\/([^/]+)/)?.[1] || "";
-  try {
-    botId = decodeURIComponent(botId);
-  } catch {
-    // keep the raw path segment
-  }
+  botId = decodePathSegment(botId);
   console.info(JSON.stringify({
     event: "admin_access",
     credential,
@@ -11086,15 +11064,11 @@ function queuePrivacyDeletionRequest(bot, input = {}) {
   return bot;
 }
 
-// The bot id the route authorization checked (body, then query), or "" when
-// it is not a plain, non-empty id. Handlers must act on exactly that id.
 function privacyRouteBotId(request, url, body) {
   const botId = botIdFromRequest(request, url, body);
   return typeof botId === "string" && botId.trim() && botId === botId.trim() ? botId : "";
 }
 
-// Lead and visitor deletion requests name who they are about by lead id or
-// the visitor's email. `email` stays the requester's address, as before.
 function privacyRequestTarget(input = {}) {
   if (!LEAD_DELETION_SCOPES.includes(String(input.scope || ""))) return null;
   const leadId = String(input.leadId ?? input.targetLeadId ?? "").trim();
@@ -11104,11 +11078,7 @@ function privacyRequestTarget(input = {}) {
   return { ...(leadId ? { leadId } : {}), ...(validEmail ? { email: validEmail } : {}) };
 }
 
-// A deletion names one person: a lead id or an email, never both, so a pair
-// that points at two different visitors can never erase the wrong one.
 const LEAD_AND_EMAIL_ERROR = "Name one lead or one visitor email, not both.";
-// Lead records that disagree about a lead's email (one id, two addresses)
-// stop the deletion: an id-based erase would reach the other person's rows.
 const AMBIGUOUS_LEAD_ERROR = "This visitor's lead records name more than one email, so nothing was deleted. Contact Site Rep support to finish this deletion.";
 const AMBIGUOUS_LEAD_WRITE_ERROR = "This visitor's lead records changed during the deletion and now name more than one email. The live record was left untouched, but recovery copies were already scrubbed. Contact Site Rep support to finish this deletion.";
 
@@ -11119,25 +11089,6 @@ class AmbiguousLeadDeletionError extends Error {
   }
 }
 
-// Erases one visitor's lead data from every Site Rep store that holds it:
-// the Durable Object store, the D1 record ledger, and the KV recovery mirror
-// and daily backups. Copies already delivered outside Site Rep (sent emails,
-// webhooks) are not recalled.
-//
-// Order: resolve the targets, scrub the ledger and KV backups, erase the
-// live store (which rewrites the KV mirror through the store's own writer),
-// then scrub the ledger and backups once more. The first scrub runs before
-// the live erase so a failure leaves the lead in place and a retry finds the
-// same targets. The second scrub closes the window in between: a daily
-// backup taken from the live store before the erase landed would otherwise
-// bring the visitor back. Every write after the live erase reads the erased
-// store, so nothing later can capture the visitor again.
-//
-// The live erase re-resolves the visitor against the record it writes, so a
-// lead or conversation carrying their lead id or email that arrives after the
-// first read is erased too. Only an anonymous conversation in one of their
-// sessions that arrives in that window stays: an incomplete erase, never a
-// wrong one.
 async function deleteLeadData(botId, input = {}, options = {}) {
   const normalizedBotId = String(botId || "").trim();
   if (String(input.leadId ?? "").trim() && normalizeLeadEmail(input.email)) {
@@ -11180,14 +11131,10 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     await resolveSessions(db, normalizedBotId, current, targets);
     await scrubCopies();
   } catch (error) {
-    // Name and code only: a driver message could one day echo bound values.
     console.warn(JSON.stringify({ type: "lead_deletion_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
     return { status: 503, body: { error: "Lead deletion did not finish. Try again; repeating it is safe." } };
   }
 
-  // A privacy request that named the visitor's email keeps a salted one-way
-  // hash of it instead, so the record proves which request was done without
-  // holding the address. The salt is random per bot and never leaves the store.
   const privacySalt = current.privacySalt || bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
   for (const email of targets.emails) targets.emailHashes.set(email, await privacyEmailHash(privacySalt, email));
 
@@ -11204,8 +11151,6 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     sharedSessionsSkipped: targets.blockedSessions.size,
   });
   let bot = null;
-  // The live erase also rewrites the KV mirror at once, through the store's
-  // own writer, so the mirror never holds the visitor after this point.
   try {
     bot = await updateStore((store) => {
       const record = ensureBot(store, normalizedBotId);
@@ -11243,12 +11188,7 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       }
       expandTargetsInBot(record, targets, { followSessions: false });
       if (targets.ambiguous) throw new AmbiguousLeadDeletionError();
-      // Last, so the requests just matched by email are hashed too. Sessions
-      // were decided against the live record and the ledger above; the live
-      // erase follows exactly those, never a session judged alone.
       storeCounts = eraseLeadFromBot(record, targets, { followSessions: false });
-      // Same write as the erase, so a deletion never lands without its
-      // completed request and activity entry (a retry would find nothing).
       const counts = deletionCounts(storeCounts);
       for (const id of completedRequestIds) {
         const chosen = id === privacyRequestId ? options.completedTarget : null;
@@ -11272,13 +11212,10 @@ async function deleteLeadData(botId, input = {}, options = {}) {
       console.warn(JSON.stringify({ type: "lead_deletion_ambiguous", botId: normalizedBotId, ...safeErrorFields(error) }));
       return { status: 409, body: { error: AMBIGUOUS_LEAD_WRITE_ERROR } };
     }
-    // The copies scrubbed above stay scrubbed; the live lead is untouched,
-    // so a retry finds the same targets.
     console.warn(JSON.stringify({ type: "lead_deletion_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
     return { status: 503, body: { error: "Lead deletion did not finish. Try again; repeating it is safe." } };
   }
 
-  // Second pass: anything a backup or the ledger took before the live erase.
   let recheckFailed = false;
   try {
     await scrubCopies();
@@ -11286,8 +11223,6 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     recheckFailed = true;
     console.warn(JSON.stringify({ type: "lead_deletion_recheck_failed", botId: normalizedBotId, ...safeErrorFields(error) }));
   }
-  // Read-only check of every KV copy (the mirror and each daily backup), so
-  // the result says complete only when none of them still holds the visitor.
   let staleCopies = [];
   try {
     const check = await kvCopiesHoldingTarget(normalizedBotId, targets);
@@ -11324,7 +11259,6 @@ async function deleteLeadData(botId, input = {}, options = {}) {
   const complete = !unreadableSnapshots.size && !recheckFailed && !mirrorStale && !uncheckedCopies;
 
   if (!complete) {
-    // Best effort: the deletion and its request are already recorded above.
     try {
       bot = (await updateStore((store) => {
         const record = store.bots?.[normalizedBotId];
@@ -11349,16 +11283,10 @@ async function deleteLeadData(botId, input = {}, options = {}) {
     counts: summary,
     complete,
   }, now);
-  // false without a ledger database or when the audit row could not be written.
   if (db && !audited) warnings.push("The audit log entry for this deletion could not be written. The activity log still records it.");
   return { status: 200, body: { ...toPublicBot(bot), deletion: { ok: true, complete, audited, warnings, privacyRequestId, counts: summary } } };
 }
 
-// Marks a deletion request done with counts. It keeps the lead id it names
-// and, for an email, only the salted hash eraseLeadFromBot left in its place
-// (a request that named none records the target it was completed for, the
-// same way), so the record shows who the completion covered without holding
-// the address. Its review ticket closes once no other open request shares it.
 function completePrivacyRequest(bot, privacyRequestId, counts, now, completedTarget = null) {
   let completed = null;
   bot.privacyRequests = (bot.privacyRequests || []).map((item) => {
@@ -11399,8 +11327,6 @@ async function privacyEmailHash(salt, email) {
   return `sha256:${await sha256Hex(`siterep-privacy-request:${salt}:${normalizeLeadEmail(email)}`)}`;
 }
 
-// Which KV copies (the live mirror and the daily backups) still hold the
-// visitor, read-only. Unreadable ones are reported separately.
 async function kvCopiesHoldingTarget(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
   const result = { stale: [], unreadable: [], unchecked: false };
@@ -11438,21 +11364,6 @@ async function listStoreBackupKeys(kv) {
   return { keys, truncated };
 }
 
-// Scrubs the visitor from the KV daily backups. Every writer of the backup
-// keys runs inside the single "global-store" coordinator's request queue
-// (enqueue chains each request after the last, KV awaits included): this
-// scrub through handleApi, and the daily backup through its internal route
-// (CiteRepCoordinator.writeDailyStoreBackup; a test pins it as the only writer).
-// So two deletions, or a deletion and the backup job, never interleave their
-// read-modify-write of a backup. The live mirror at
-// STORE_KEY is not touched here: it has one writer, the store's own
-// serialized write path, and deleteLeadData's live erase rewrites it from the
-// already-scrubbed store. A second writer here could overwrite a chat or lead
-// that landed in between. A backup keeps the expiry it already had, one that
-// had none gets the normal backup expiry, and one due to expire within a
-// minute is deleted instead, since KV rejects expirations that close. Returns
-// how many backups changed, which could not be read as a store, and whether
-// the listing stopped before the last page.
 async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
   const kv = env?.CITEREP_STORE;
   const result = { scrubbed: 0, unreadable: [], unchecked: false };
@@ -11486,8 +11397,6 @@ async function eraseLeadFromKvSnapshots(botId, targets, env = activeEnv) {
   return result;
 }
 
-// Durable audit trail for erasures: who acted and how much was removed, never
-// the visitor's details.
 async function recordPrivacyAudit(botId, action, actor, details, createdAt = new Date().toISOString()) {
   return await writeRecordLedger("privacy_audit", async (db) => {
     await db
@@ -11726,9 +11635,6 @@ async function queueLifecycleReminderNotifications() {
   });
 }
 
-// Dodo overwrites billing.status with raw subscription states on routine
-// webhook events ("updated", "plan_changed", "active"); reminders must keep
-// firing for every good-standing state, not just the literal "paid".
 const BILLING_GOOD_STANDING_STATUSES = new Set(["paid", "active", "activated", "updated", "plan_changed"]);
 
 function billingInGoodStanding(billing) {
@@ -11848,10 +11754,6 @@ async function flushOverageUsage(env = activeEnv) {
   const sentByBot = {};
   for (const bot of targets) {
     const customerId = bot.billing.customerId;
-    // Dodo ingests a batch ({ events: [...] }, up to 1000) and dedupes by
-    // event_id, so re-sending a batch is safe. Timestamp is omitted on purpose:
-    // Dodo only accepts events within ~1h, and a queued answer can be older, so
-    // we let Dodo stamp ingestion time — the event_id still bills it exactly once.
     const batch = bot.overage.pending.slice(0, 500);
     try {
       const { response } = await fetchJsonWithTimeout(`${config.baseUrl}/events/ingest`, {
@@ -12242,13 +12144,7 @@ async function deliverOwnerNotification(bot, notification) {
 }
 
 async function sendCloudflareNotification(config, subject, text) {
-  // Cloudflare Email Service binding: auth is the binding itself (no API key),
-  // returns { messageId } on success and throws on failure. The binding's
-  // send() does not accept an AbortController signal, so each send races a
-  // manual timeout instead.
   const html = `<pre style="font-family:Inter,Arial,sans-serif;white-space:pre-wrap;color:#111614">${escapeHtml(text)}</pre>`;
-  // Reply-To must use the binding's replyTo field; Email Service rejects it as
-  // a custom header (only whitelisted and X-* headers are accepted).
   const replyTo = config.replyTo || undefined;
   for (const recipient of config.to) {
     let timer;
@@ -13004,24 +12900,22 @@ function allowedOriginsFor(bot, appOrigin = "") {
 
 function withWwwApexTwin(allowed, origin) {
   allowed.add(origin);
-  try {
-    const url = new URL(origin);
-    if (url.hostname.startsWith("www.")) {
-      url.hostname = url.hostname.slice(4);
-    } else if (url.hostname.includes(".") && !/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)) {
-      url.hostname = `www.${url.hostname}`;
-    } else {
-      return;
-    }
-    allowed.add(url.origin);
-  } catch {}
+  const url = safeUrl(origin);
+  if (!url) return;
+  if (url.hostname.startsWith("www.")) {
+    url.hostname = url.hostname.slice(4);
+  } else if (url.hostname.includes(".") && !/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)) {
+    url.hostname = `www.${url.hostname}`;
+  } else {
+    return;
+  }
+  allowed.add(url.origin);
 }
 
 function storedAllowedOriginsFor(bot) {
   const allowed = new Set();
-  try {
-    if (bot.siteUrl) allowed.add(new URL(bot.siteUrl).origin);
-  } catch {}
+  const siteUrl = safeUrl(bot.siteUrl);
+  if (siteUrl) allowed.add(siteUrl.origin);
   for (const origin of bot.allowedOrigins || []) {
     allowed.add(origin);
   }
@@ -15340,13 +15234,16 @@ function parseSourceUrlList(value) {
       .replace(/^[*\-\s]+/, "")
       .replace(/[)\].,;]+$/, "");
     if (!cleaned || cleaned.length > 2048) continue;
+    let normalized;
     try {
-      const normalized = normalizeUrl(cleaned);
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        urls.push(normalized);
-      }
-    } catch {}
+      normalized = normalizeUrl(cleaned);
+    } catch {
+      continue;
+    }
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      urls.push(normalized);
+    }
     if (urls.length >= MAX_URL_LIST_IMPORT_COUNT) break;
   }
   return urls;

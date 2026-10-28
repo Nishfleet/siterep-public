@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import http from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
@@ -155,7 +154,6 @@ async function launchBrowser() {
   step(`launching ${requestedEngine}`);
   const baseOptions = {
     headless: true,
-    // --no-sandbox is a Chromium flag; Firefox/WebKit must not receive it.
     args: requestedEngine === "chromium" && process.platform === "linux" ? ["--no-sandbox"] : [],
   };
   const requestedChannel = process.env.SITEREP_LAYOUT_BROWSER_CHANNEL;
@@ -266,13 +264,9 @@ function trackApiRequests(page) {
   const paths = [];
   const requests = [];
   const handler = (request) => {
-    try {
-      const url = new URL(request.url());
-      if (url.pathname.startsWith("/api/")) paths.push(url.pathname);
-      requests.push(url.href);
-    } catch {
-      // Ignore malformed request URLs; the contract only cares about /api/*.
-    }
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) paths.push(url.pathname);
+    requests.push(url.href);
   };
   page.on("request", handler);
   return {
@@ -314,7 +308,6 @@ async function pageState(page) {
   }));
 }
 
-// The live edge can hand a datacenter egress a challenge or block document instead of the SPA shell; re-navigating once absorbs that transient edge blip without masking a real SPA regression.
 async function gotoBootedSpa(page, path) {
   await goto(page, path);
   const booted = await page.evaluate(() => Boolean(document.querySelector("#root")?.children.length)).catch(() => false);

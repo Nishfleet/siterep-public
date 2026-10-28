@@ -10,9 +10,6 @@ const CHECKED_IN = new RegExp(`checked in ${MONTH} (\\d{4})`, "g");
 const AS_OF = new RegExp(`as of ${MONTH} (\\d{4})`, "gi");
 const VS_LEAVES = ["/vs/customgpt", "/vs/chatbase", "/vs/intercom-fin", "/vs/tidio-lyro", "/vs/webspeaker", "/vs/chatling"];
 
-// Shared by the PR consistency test and the scheduled freshness check. Returns
-// one { path, month, year, lastmod } per /vs leaf (month is 1-12) after
-// asserting the stamps in a page agree with each other. No clock is read here.
 export async function collectPricingStamps() {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
   const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");

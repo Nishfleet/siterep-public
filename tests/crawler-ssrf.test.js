@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isBlockedCrawlHost, normalizeUrl } from "../server/crawler.js";
 
-// WHATWG URL parser canonicalization (https://url.spec.whatwg.org/): hosts arrive canonicalized, so these fixtures use the parser's form.
+// https://url.spec.whatwg.org/ canonicalizes a host before it reaches us, so these fixtures use the parser's own form.
 
 test("blocks loopback, private, link-local, and metadata IPv4", () => {
   for (const host of [
@@ -12,12 +12,12 @@ test("blocks loopback, private, link-local, and metadata IPv4", () => {
     "172.16.0.1",
     "172.31.255.255",
     "192.168.1.1",
-    "169.254.169.254", // cloud metadata
-    "100.64.0.1", // carrier-grade NAT
+    "169.254.169.254",
+    "100.64.0.1",
     "0.0.0.0",
     "198.18.0.1",
     "255.255.255.255",
-    "224.0.0.1", // multicast
+    "224.0.0.1",
   ]) {
     assert.equal(isBlockedCrawlHost(host), true, `${host} must be blocked`);
   }
@@ -31,10 +31,10 @@ test("allows ordinary public IPv4 and hostnames", () => {
 
 test("blocks IPv4-mapped IPv6 pointing at private/metadata addresses (the bypass)", () => {
   for (const host of [
-    "[::ffff:169.254.169.254]", // dotted mapped form, with brackets
+    "[::ffff:169.254.169.254]",
     "::ffff:169.254.169.254",
-    "::ffff:a9fe:a9fe", // hex hextet form the URL parser canonicalizes to (= 169.254.169.254)
-    "::ffff:7f00:1", // = 127.0.0.1
+    "::ffff:a9fe:a9fe",
+    "::ffff:7f00:1",
     "::ffff:127.0.0.1",
     "::127.0.0.1",
   ]) {
@@ -62,10 +62,10 @@ test("blocks localhost name variants", () => {
 
 test("normalizeUrl rejects encoded-IP forms of loopback and metadata end to end", () => {
   for (const raw of [
-    "http://2130706433/", // decimal 127.0.0.1
-    "http://0x7f000001/", // hex 127.0.0.1
-    "http://0177.0.0.1/", // octal 127.0.0.1
-    "http://0xA9FEA9FE/", // hex 169.254.169.254
+    "http://2130706433/",
+    "http://0x7f000001/",
+    "http://0177.0.0.1/",
+    "http://0xA9FEA9FE/",
     "http://[::ffff:169.254.169.254]/",
     "http://[::1]/",
   ]) {
