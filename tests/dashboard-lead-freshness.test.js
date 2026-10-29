@@ -8,30 +8,41 @@ function dashboardRefreshEffect(source) {
   const intervalIndex = source.indexOf("window.setInterval");
   assert.ok(intervalIndex >= 0, "App.tsx must keep a dashboard refresh interval");
   const effectStart = source.lastIndexOf("useEffect(() => {", intervalIndex);
-  const effectEnd = source.indexOf("]);", source.indexOf("}, [", intervalIndex)) + 3;
-  assert.ok(effectStart >= 0 && effectEnd > intervalIndex, "the dashboard refresh must be a self-contained useEffect");
+  assert.ok(
+    effectStart >= 0 && effectStart < intervalIndex,
+    "the dashboard refresh interval must live inside a useEffect",
+  );
+  const depsStart = source.indexOf("}, [", intervalIndex);
+  assert.ok(depsStart > intervalIndex, "the dashboard refresh effect must close with a dependency array");
+  const effectEnd = source.indexOf("]);", depsStart) + 3;
+  assert.ok(effectEnd > depsStart, "the dashboard refresh effect must end after its dependency array");
   const effect = source.slice(effectStart, effectEnd);
-  assert.match(effect, /liveCustomerDashboard/, "the refresh interval must sit in the customer-dashboard effect");
+  const body = effect.slice(0, effect.indexOf("}, ["));
+  assert.match(body, /liveCustomerDashboard/, "the refresh interval must sit in the customer-dashboard effect");
   return effect;
 }
 
-function runRefreshEffect(effect, { visibilityState = "visible", crawlJobActive = false } = {}) {
+function runRefreshEffect(effect, { visibilityState = "visible", crawlJobActive = false, liveCustomerDashboard = true } = {}) {
   const body = effect.slice(effect.indexOf("{") + 1, effect.lastIndexOf("}"));
   const calls = [];
   const listeners = new Map();
+  const cleared = { count: 0 };
   let intervalFn = null;
+  let intervalMs = null;
   const document = {
     visibilityState,
     addEventListener: (type, fn) => listeners.set(type, fn),
     removeEventListener: (type, fn) => listeners.delete(type, fn),
   };
   const window = {
-    setInterval: (fn) => {
+    setInterval: (fn, ms) => {
       intervalFn = fn;
+      intervalMs = ms;
       return 1;
     },
     clearInterval: () => {
       intervalFn = null;
+      cleared.count += 1;
     },
   };
   const run = new Function(
@@ -43,12 +54,12 @@ function runRefreshEffect(effect, { visibilityState = "visible", crawlJobActive 
     "document",
     body,
   );
-  const cleanup = run(crawlJobActive, true, "bot-1", (id) => calls.push(id), window, document);
+  const cleanup = run(crawlJobActive, liveCustomerDashboard, "bot-1", (id) => calls.push(id), window, document);
   const emitVisibilityChange = (next) => {
     document.visibilityState = next;
     listeners.get("visibilitychange")?.();
   };
-  return { calls, emitVisibilityChange, runInterval: () => intervalFn?.(), cleanup, listeners };
+  return { calls, cleared, emitVisibilityChange, intervalMs, listeners, cleanup, runInterval: () => intervalFn?.() };
 }
 
 test("the customer dashboard keeps its own view fresh after the crawl ends", () => {
@@ -104,11 +115,29 @@ test("a dashboard tab that becomes visible again pulls fresh state at once", () 
   assert.deepEqual(calls, ["bot-1", "bot-1"], "the interval must keep pulling after a focus refresh");
 });
 
-test("the visibility listener is removed when the dashboard closes", () => {
-  const { calls, emitVisibilityChange, cleanup, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource));
+test("the visibility listener and the interval are both dropped on cleanup", () => {
+  const { calls, cleared, emitVisibilityChange, cleanup, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource));
   assert.equal(listeners.has("visibilitychange"), true, "the refresh effect must listen for visibilitychange");
   cleanup();
   assert.equal(listeners.has("visibilitychange"), false, "the visibilitychange listener must be removed on cleanup");
+  assert.equal(cleared.count, 1, "cleanup must clear the refresh interval");
   emitVisibilityChange("visible");
   assert.deepEqual(calls, [], "a cleaned-up effect must not pull state");
+});
+
+test("a closed dashboard and a finished crawl start no refresh at all", () => {
+  const { calls, intervalMs, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource), {
+    liveCustomerDashboard: false,
+  });
+  assert.equal(listeners.size, 0, "no dashboard open must register no listener");
+  assert.equal(intervalMs, null, "no dashboard open must start no interval");
+  assert.deepEqual(calls, [], "no dashboard open must pull no state");
+});
+
+test("a running crawl refreshes faster than an idle dashboard", () => {
+  const crawl = runRefreshEffect(dashboardRefreshEffect(appSource), { crawlJobActive: true });
+  const idle = runRefreshEffect(dashboardRefreshEffect(appSource));
+  assert.equal(crawl.intervalMs, 2500, "a running crawl must refresh every 2.5s");
+  assert.equal(idle.intervalMs, 10000, "an idle dashboard must refresh every 10s");
+  assert.ok(crawl.intervalMs < idle.intervalMs, "a running crawl must refresh faster than an idle dashboard");
 });
