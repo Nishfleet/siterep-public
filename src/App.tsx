@@ -2859,11 +2859,16 @@ function App() {
 
   useEffect(() => {
     if (!crawlJobActive && !liveCustomerDashboard) return;
-    const timer = window.setInterval(() => {
+    const pull = () => {
       if (document.visibilityState === "hidden") return;
       refreshBot(botId);
-    }, crawlJobActive ? 2500 : 10000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(pull, crawlJobActive ? 2500 : 10000);
+    document.addEventListener("visibilitychange", pull);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", pull);
+    };
   }, [botId, crawlJobActive, activeCrawlJob?.id, liveCustomerDashboard]);
 
   async function runTraining() {
