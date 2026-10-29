@@ -1,29 +1,22 @@
 import { defineConfig, type Plugin } from "vite";
 import preact from "@preact/preset-vite";
 import tailwindcss from "@tailwindcss/vite";
-import Beasties from "beasties";
 
 const BOOTSTRAP_SCRIPT =
-  '(()=>{const url=document.querySelector("meta[name=app-entry]").content;let started=false;const go=()=>{if(started)return;started=true;requestAnimationFrame(()=>{setTimeout(()=>{import(url)},0)})};const painted=()=>performance.getEntriesByName("first-contentful-paint").length>0;const start=()=>{if(painted()||document.hidden)return go();try{new PerformanceObserver((list,observer)=>{if(painted()){observer.disconnect();go()}}).observe({type:"paint",buffered:true})}catch(error){go()}setTimeout(go,2500)};if(document.readyState==="complete")start();else window.addEventListener("load",start)})()';
+  '(()=>{const styleMeta=document.querySelector("meta[name=app-style]"),url=document.querySelector("meta[name=app-entry]").content;let styled=!styleMeta,painted=false,started=false;const go=()=>{if(started||!styled||!painted)return;started=true;requestAnimationFrame(()=>{setTimeout(()=>{import(url)},0)})};const mark=()=>{styled=true;go()};const seen=()=>{painted=true;go()};const check=()=>performance.getEntriesByName("first-contentful-paint").length>0;const start=()=>{if(check()||document.hidden)return seen();try{new PerformanceObserver((list,observer)=>{if(check()){observer.disconnect();seen()}}).observe({type:"paint",buffered:true})}catch(error){seen()}setTimeout(seen,2500)};if(styleMeta){const link=document.createElement("link");link.rel="stylesheet";link.href=styleMeta.content;link.onload=mark;link.onerror=mark;document.head.appendChild(link);setTimeout(mark,3000)}if(document.readyState==="complete")start();else window.addEventListener("load",start)})()';
 
-function inlineStylesheet(): Plugin {
+function deferAppStylesheet(): Plugin {
   return {
-    name: "inline-stylesheet",
+    name: "defer-app-stylesheet",
     apply: "build",
     enforce: "post",
-    async transformIndexHtml(html, { bundle }) {
-      if (!bundle) return html;
-      const beasties = new Beasties({ path: "/", publicPath: "/", inlineThreshold: 400_000, pruneSource: false, logLevel: "warn" });
-      beasties.readFile = (file: string) => {
-        const asset = bundle[file.replace(/^\/+/, "")];
-        if (asset?.type !== "asset") throw new Error(`stylesheet ${file} is not in the bundle`);
-        return String(asset.source);
-      };
-      const inlined = await beasties.process(html);
-      for (const [name, asset] of Object.entries(bundle)) {
-        if (asset.type === "asset" && name.endsWith(".css") && !inlined.includes(name)) delete bundle[name];
-      }
-      return inlined;
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        const link = html.match(/<link rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/);
+        if (!link) throw new Error("defer-app-stylesheet: the app stylesheet link is missing from index.html");
+        return html.replace(link[0], () => `<meta name="app-style" content="${link[1]}">`);
+      },
     },
   };
 }
@@ -50,7 +43,7 @@ function inlineBootstrap(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [preact(), tailwindcss(), inlineStylesheet(), inlineBootstrap()],
+  plugins: [preact(), tailwindcss(), deferAppStylesheet(), inlineBootstrap()],
   resolve: {
     alias: {
       "@": "/src",

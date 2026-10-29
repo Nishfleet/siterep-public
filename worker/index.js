@@ -128,7 +128,7 @@ const DEFAULT_ALLOWED_CORS_ORIGINS = new Set([
 ]);
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy":
-    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://static.cloudflareinsights.com 'sha256-fkyzLoZdr62MqznQcguEvkDNu0crDfWyD/QStx24HyA=' 'sha256-ZN+7XkQUjcDBJE/+NCOSXiGsoT397mLKlJ5RjyH3370='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; upgrade-insecure-requests",
+    "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://static.cloudflareinsights.com 'sha256-gJGSMwSCYFucmKFsLWyz6N8POKRC+QvU6ce8d3yTeuQ=' 'sha256-ZN+7XkQUjcDBJE/+NCOSXiGsoT397mLKlJ5RjyH3370='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://cloudflareinsights.com; upgrade-insecure-requests",
   "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
