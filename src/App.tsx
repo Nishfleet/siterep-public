@@ -2859,11 +2859,19 @@ function App() {
 
   useEffect(() => {
     if (!crawlJobActive && !liveCustomerDashboard) return;
-    const timer = window.setInterval(() => {
+    const pull = () => {
       if (document.visibilityState === "hidden") return;
       refreshBot(botId);
-    }, crawlJobActive ? 2500 : 10000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(pull, crawlJobActive ? 2500 : 10000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") pull();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [botId, crawlJobActive, activeCrawlJob?.id, liveCustomerDashboard]);
 
   async function runTraining() {

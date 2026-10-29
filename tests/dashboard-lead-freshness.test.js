@@ -8,9 +8,46 @@ function dashboardRefreshEffect(source) {
   const intervalIndex = source.indexOf("window.setInterval");
   assert.ok(intervalIndex >= 0, "App.tsx must keep a dashboard refresh interval");
   const effectStart = source.lastIndexOf("useEffect(() => {", intervalIndex);
-  const effectEnd = source.indexOf("});", intervalIndex);
+  const depsStart = source.indexOf("}, [", intervalIndex);
+  const effectEnd = source.indexOf("]);", depsStart) + 3;
   assert.ok(effectStart >= 0 && effectEnd > effectStart, "the dashboard refresh must be a self-contained useEffect");
-  return source.slice(effectStart, effectEnd + 3);
+  return source.slice(effectStart, effectEnd);
+}
+
+function runRefreshEffect(effect, { visibilityState = "visible", crawlJobActive = false } = {}) {
+  const body = effect.slice(effect.indexOf("{") + 1, effect.lastIndexOf("}"));
+  const calls = [];
+  const listeners = new Map();
+  let intervalFn = null;
+  const document = {
+    visibilityState,
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type, fn) => listeners.delete(type, fn),
+  };
+  const window = {
+    setInterval: (fn) => {
+      intervalFn = fn;
+      return 1;
+    },
+    clearInterval: () => {
+      intervalFn = null;
+    },
+  };
+  const run = new Function(
+    "crawlJobActive",
+    "liveCustomerDashboard",
+    "botId",
+    "refreshBot",
+    "window",
+    "document",
+    body,
+  );
+  const cleanup = run(crawlJobActive, true, "bot-1", (id) => calls.push(id), window, document);
+  const emitVisibilityChange = (next) => {
+    document.visibilityState = next;
+    listeners.get("visibilitychange")?.();
+  };
+  return { calls, emitVisibilityChange, runInterval: () => intervalFn?.(), cleanup, listeners };
 }
 
 test("the customer dashboard keeps its own view fresh after the crawl ends", () => {
@@ -35,4 +72,24 @@ test("the idle dashboard refresh lands inside the smoke gate's lead-inbox window
   const idleMs = Number(idle[1]);
   assert.ok(idleMs > 0, `the idle refresh must be a positive interval, got ${idleMs}`);
   assert.ok(idleMs <= 20000, `the idle refresh (${idleMs}ms) must stay inside the smoke gate's 30s lead-inbox window`);
+});
+
+test("a dashboard tab that becomes visible again pulls fresh state at once", () => {
+  const { calls, emitVisibilityChange, runInterval, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource));
+  assert.ok(listeners.has("visibilitychange"), "the refresh effect must listen for visibilitychange");
+  emitVisibilityChange("hidden");
+  assert.deepEqual(calls, [], "a tab that stays hidden must not pull state");
+  emitVisibilityChange("visible");
+  assert.deepEqual(calls, ["bot-1"], "a tab that returns to the foreground must pull bot state immediately");
+  runInterval();
+  assert.deepEqual(calls, ["bot-1", "bot-1"], "the interval must keep pulling after a focus refresh");
+});
+
+test("the visibility listener is removed when the dashboard closes", () => {
+  const { calls, emitVisibilityChange, cleanup, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource));
+  assert.equal(listeners.has("visibilitychange"), true, "the refresh effect must listen for visibilitychange");
+  cleanup();
+  assert.equal(listeners.has("visibilitychange"), false, "the visibilitychange listener must be removed on cleanup");
+  emitVisibilityChange("visible");
+  assert.deepEqual(calls, [], "a cleaned-up effect must not pull state");
 });
