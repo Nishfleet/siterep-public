@@ -1,0 +1,116 @@
+# A weekly SQL dump of this repository's D1 database, kept off Cloudflare
+# (fleet-ops#10829).
+#
+# Time Travel covers the last 30 days and only goes back as far as the deploy's
+# own bookmark. The weekly dump is the copy that survives everything else: a
+# wrong restore, a deleted database, an account problem. It lands as an
+# encrypted GitHub artifact on GitHub's storage, off the storage provider's and
+# Cloudflare's accounts.
+#
+# The dump is sealed with age before upload: anyone with read access to this
+# repository can download its workflow artifacts, so only the ciphertext leaves
+# the runner. AGE_RECIPIENT below is the backup key's public half, never a
+# secret and never the private key, which stays on the fleet host. It is a
+# literal rather than a repository variable so this backup needs no GitHub
+# settings change to start: rotating the key is a one-line edit in each of the
+# repositories that hold this job. A run without a recipient fails loud on
+# purpose: a backup that quietly shipped plaintext, or quietly shipped nothing,
+# is the invisibility this job exists to end. The age release itself is
+# digest-pinned.
+#
+# The dump is one stock command, `wrangler d1 export --remote`: it starts the
+# D1 export API, follows the returned bookmark to the finished dump, downloads
+# the signed URL and writes the SQL file. That replaces the hand-built export
+# call and the poll loop this job first carried, which the
+# no-hand-built-orchestration gate fails by design: a quiet poll loop in shell
+# is hand-built orchestration, and the stock tool already owns that wait.
+#
+# Wrangler is the fleet's last-resort Cloudflare tool. Nish approved this one
+# command, `wrangler d1 export`, for the weekly D1 backups, and every other
+# Cloudflare call in these repositories uses `cf`.
+#
+# The matrix keeps the same shape as the other repositories that hold this job,
+# with the one database this repository deploys: GitHub runs one job per
+# database, so a refused database is that database's red job and never a
+# cancelled sibling.
+#
+# Retention 90 days keeps 13 weekly points.
+name: D1 weekly backup
+
+on:
+  schedule:
+    # Mondays 05:37 UTC, the same minute as the sibling backups.
+    - cron: "37 5 * * 1"
+  workflow_dispatch: {} # a manual run for restore drills
+
+concurrency:
+  group: d1-export
+  cancel-in-progress: false # a backup never kills a backup
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: export ${{ matrix.database.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # a database the API refuses costs the others nothing
+      matrix:
+        database:
+          - name: siterep_payments
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f670a698e17bf160c8e4679823e68916
+      AGE_RECIPIENT: age1650j6pxe55udk93gv3qsjeugfrdkhazc3ynpydjm64qm8k7fvvjqc093e4
+      DB_NAME: ${{ matrix.database.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Wrangler comes from the committed lockfile (4.152.0), not a floating
+      # `npx` cache: pulling the moving latest tag broke every CI run repo-wide
+      # on 2026-08-11 (upstream publish E404).
+      - run: npm ci
+      - name: Install age, pinned by digest
+        env:
+          AGE_VERSION: v1.3.2
+          AGE_LINUX_AMD64_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/age.tar.gz" "https://github.com/FiloSottile/age/releases/download/$AGE_VERSION/age-$AGE_VERSION-linux-amd64.tar.gz"
+          echo "$AGE_LINUX_AMD64_SHA256  $RUNNER_TEMP/age.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/age-bin"
+          tar -xzf "$RUNNER_TEMP/age.tar.gz" -C "$RUNNER_TEMP/age-bin" --strip-components=1 age/age
+          test -x "$RUNNER_TEMP/age-bin/age"
+      - name: Dump and seal ${{ matrix.database.name }}
+        run: |
+          umask 077
+          test -n "$AGE_RECIPIENT" || { echo "::error::the age recipient is unset: AGE_RECIPIENT in .github/workflows/d1-export.yml must be the backup key's public key — the backup refuses to ship plaintext dumps"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/d1-export"
+          file="$RUNNER_TEMP/d1-export/$DB_NAME-$(date -u +%Y%m%d).sql"
+          # `-y` skips wrangler's interactive "this locks the database" prompt,
+          # which no runner can answer.
+          npx wrangler d1 export "$DB_NAME" --remote -y --output "$file" \
+            || { echo "::error::$DB_NAME export: wrangler d1 export failed"; exit 1; }
+          test -s "$file" || { echo "::error::$DB_NAME export: the dump is empty"; exit 1; }
+          echo "exported $DB_NAME -> ${file##*/} ($(wc -c < "$file") bytes, sha256 $(sha256sum "$file" | cut -d' ' -f1))"
+          # Sealed before anything ships: only the .age ciphertext reaches the
+          # artifact, and the plaintext dies with the runner's temp.
+          "$RUNNER_TEMP/age-bin/age" -r "$AGE_RECIPIENT" -o "$file.age" "$file" \
+            || { echo "::error::$DB_NAME export: the age encryption failed"; exit 1; }
+          rm -f "$file"
+          sha256sum "$RUNNER_TEMP/d1-export/"*.sql.age
+      - name: Upload the sealed dump off Cloudflare
+        # A job whose dump failed never reaches this step, so the failure is the
+        # dump's own red job and never a silently empty artifact.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: d1-backup-${{ matrix.database.name }}
+          path: ${{ runner.temp }}/d1-export/*.sql.age
+          retention-days: 90
+          if-no-files-found: error
