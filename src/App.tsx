@@ -2864,13 +2864,10 @@ function App() {
       refreshBot(botId);
     };
     const timer = window.setInterval(pull, crawlJobActive ? 2500 : 10000);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") pull();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    document.addEventListener("visibilitychange", pull);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("visibilitychange", pull);
     };
   }, [botId, crawlJobActive, activeCrawlJob?.id, liveCustomerDashboard]);
 
