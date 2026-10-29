@@ -82,13 +82,14 @@ jobs:
           AGE_VERSION: v1.3.2
           AGE_LINUX_AMD64_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
         run: |
-          node -e 'const fs=require("fs");const [,url,out]=process.argv;(async()=>{const r=await fetch(url);if(!r.ok){console.error("download: HTTP "+r.status);process.exit(1);}fs.writeFileSync(out,Buffer.from(await r.arrayBuffer()));})()' "https://github.com/FiloSottile/age/releases/download/$AGE_VERSION/age-$AGE_VERSION-linux-amd64.tar.gz" "$RUNNER_TEMP/age.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/age.tar.gz" "https://github.com/FiloSottile/age/releases/download/$AGE_VERSION/age-$AGE_VERSION-linux-amd64.tar.gz"
           echo "$AGE_LINUX_AMD64_SHA256  $RUNNER_TEMP/age.tar.gz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/age-bin"
           tar -xzf "$RUNNER_TEMP/age.tar.gz" -C "$RUNNER_TEMP/age-bin" --strip-components=1 age/age
           test -x "$RUNNER_TEMP/age-bin/age"
       - name: Dump and seal ${{ matrix.database.name }}
         run: |
+          umask 077
           test -n "$AGE_RECIPIENT" || { echo "::error::the age recipient is unset: AGE_RECIPIENT in .github/workflows/d1-export.yml must be the backup key's public key — the backup refuses to ship plaintext dumps"; exit 1; }
           mkdir -p "$RUNNER_TEMP/d1-export"
           file="$RUNNER_TEMP/d1-export/$DB_NAME-$(date -u +%Y%m%d).sql"
