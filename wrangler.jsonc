@@ -45,7 +45,8 @@
   "routes": [
     {
       "pattern": "siterep.net",
-      "custom_domain": true
+      "custom_domain": true,
+      "previews_enabled": true
     },
     {
       "pattern": "www.siterep.net",
@@ -88,9 +89,6 @@
       "new_sqlite_classes": ["CiteRepCoordinator"]
     }
   ],
-  // Per-PR Workers Previews (wrangler preview). Previews inherit nothing from
-  // production, so every binding here points at preview-only storage: no
-  // customer data, no email, Dodo in test mode.
   "previews": {
     "vars": {
       "SITEREP_NOTIFY_ENABLED": "false",
