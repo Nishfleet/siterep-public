@@ -39,6 +39,35 @@ jobs:
           npm run smoke:stranger-path
           npm run cf:check
 
+  # Owner acceptance (fleet-ops#10935): a Cloudflare Workers Preview of each
+  # PR on preview-only storage, linked on the PR as a GitHub deployment
+  # (wrangler-action's documented recipe). Forks and Dependabot get no deploy
+  # token, so the job skips for them.
+  preview:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.152.0"
+          command: preview --name pr-${{ github.event.pull_request.number }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
   # Secret scan of full history, so a key never sits in git: the fleet
   # already had a live token leak to rotate (fleet-ops#9578).
   Gitleaks:
