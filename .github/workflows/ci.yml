@@ -71,7 +71,8 @@ jobs:
         env:
           PREVIEW_URL: ${{ steps.preview.outputs.preview-url }}
 
-  # Secret scan of full history: a live token leaked (fleet-ops#9578).
+  # Secret scan of full history, so a key never sits in git: the fleet
+  # already had a live token leak to rotate (fleet-ops#9578).
   Gitleaks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
