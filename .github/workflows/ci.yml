@@ -1,10 +1,10 @@
-# The shared reusable-pr-checks workflow was deleted in fleet-ops #8954,
-# so the verify steps live here now. Job id `verify` is the required check
-# context in ruleset main-required-checks.
+# One CI file (fleet-ops#10935). Each job names the incident or rule that
+# keeps it. Job names are the required check contexts on main.
 name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
@@ -16,6 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Product tests, build and smokes. Lint is the comment ban (#155); the
+  # empty scripts check is the no-glue gate (#109).
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -26,24 +28,51 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
-      - name: Lint (comment ban gate, #155)
-        run: npm run lint
+      - run: npm run lint
       - run: |
-          # No-glue regrowth gate (#109): zero helper scripts.
           test -z "$(git ls-files scripts bin tools ops .specify "*.sh")"
           npx playwright install chromium
           npm test
           npm run build
           npm run smoke:public-layout
-          # Hermetic: route-mocks the whole /api/public/** surface; keeps the
-          # Docs Mode install-flow gate from breaking while CI stays green.
           npm run smoke:widget-host
-          # Walks the whole self-serve path on a throwaway local Worker: sign-up,
-          # source crawl, widget install preview, first answer, lead in the
-          # dashboard. Needs ./dist, and outbound HTTPS to example.com because
-          # the real crawler blocks loopback hosts by design.
           npm run smoke:stranger-path
-          # Wrangler version comes from the committed lockfile (4.120.0 pinned in
-          # devDependencies), not npx's mutable cache: pulling the moving latest
-          # tag broke every CI run repo-wide on 2026-08-11 (upstream publish E404).
           npm run cf:check
+
+  # Secret scan of full history, so a key never sits in git: the fleet
+  # already had a live token leak to rotate (fleet-ops#9578).
+  Gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: |
+          curl -fsSL -o gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gl.tgz" | sha256sum -c -
+          tar -xzf gl.tgz gitleaks
+          ./gitleaks git --redact --verbose
+
+  # No-glue standing rule (.semgrep/no-hand-built-orchestration.yml) plus the
+  # p/default pack; fails on ERROR only (#236, #237).
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: pip install semgrep==1.172.0
+      - run: semgrep scan --config .semgrep/no-hand-built-orchestration.yml --config p/default --severity ERROR --error --metrics=off
+
+  # Lints these workflow files; a broken workflow fails silently otherwise.
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color
