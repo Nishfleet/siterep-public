@@ -1,45 +1,10 @@
-# A weekly SQL dump of this repository's D1 database, kept off Cloudflare
-# (fleet-ops#10829).
-#
-# Time Travel covers the last 30 days and only goes back as far as the deploy's
-# own bookmark. The weekly dump is the copy that survives everything else: a
-# wrong restore, a deleted database, an account problem. It lands as an
-# encrypted GitHub artifact on GitHub's storage, off the storage provider's and
-# Cloudflare's accounts.
-#
-# The dump is sealed with age before upload: anyone with read access to this
-# repository can download its workflow artifacts, so only the ciphertext leaves
-# the runner. AGE_RECIPIENT below is the backup key's public half, never a
-# secret and never the private key, which stays on the fleet host. It is a
-# literal rather than a repository variable so this backup needs no GitHub
-# settings change to start: rotating the key is a one-line edit in each of the
-# repositories that hold this job. A run without a recipient fails loud on
-# purpose: a backup that quietly shipped plaintext, or quietly shipped nothing,
-# is the invisibility this job exists to end. The age release itself is
-# digest-pinned.
-#
-# The dump is one stock command, `wrangler d1 export --remote`: it starts the
-# D1 export API, follows the returned bookmark to the finished dump, downloads
-# the signed URL and writes the SQL file. That replaces the hand-built export
-# call and the poll loop this job first carried, which the
-# no-hand-built-orchestration gate fails by design: a quiet poll loop in shell
-# is hand-built orchestration, and the stock tool already owns that wait.
-#
-# Wrangler is the fleet's last-resort Cloudflare tool. Nish approved this one
-# command, `wrangler d1 export`, for the weekly D1 backups, and every other
-# Cloudflare call in these repositories uses `cf`.
-#
-# The matrix keeps the same shape as the other repositories that hold this job,
-# with the one database this repository deploys: GitHub runs one job per
-# database, so a refused database is that database's red job and never a
-# cancelled sibling.
-#
-# Retention 90 days keeps 13 weekly points.
+# Weekly D1 dump, sealed with age and kept off Cloudflare as a GitHub
+# artifact (fleet-ops#10829: a database had no copy outside Cloudflare).
+# AGE_RECIPIENT is the backup key's public half, not a secret.
 name: D1 weekly backup
 
 on:
   schedule:
-    # Mondays 05:37 UTC, the same minute as the sibling backups.
     - cron: "37 5 * * 1"
   workflow_dispatch: {} # a manual run for restore drills
 
@@ -73,9 +38,6 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      # Wrangler comes from the committed lockfile (4.152.0), not a floating
-      # `npx` cache: pulling the moving latest tag broke every CI run repo-wide
-      # on 2026-08-11 (upstream publish E404).
       - run: npm ci
       - name: Install age, pinned by digest
         env:
@@ -93,21 +55,15 @@ jobs:
           test -n "$AGE_RECIPIENT" || { echo "::error::the age recipient is unset: AGE_RECIPIENT in .github/workflows/d1-export.yml must be the backup key's public key — the backup refuses to ship plaintext dumps"; exit 1; }
           mkdir -p "$RUNNER_TEMP/d1-export"
           file="$RUNNER_TEMP/d1-export/$DB_NAME-$(date -u +%Y%m%d).sql"
-          # `-y` skips wrangler's interactive "this locks the database" prompt,
-          # which no runner can answer.
           npx wrangler d1 export "$DB_NAME" --remote -y --output "$file" \
             || { echo "::error::$DB_NAME export: wrangler d1 export failed"; exit 1; }
           test -s "$file" || { echo "::error::$DB_NAME export: the dump is empty"; exit 1; }
           echo "exported $DB_NAME -> ${file##*/} ($(wc -c < "$file") bytes, sha256 $(sha256sum "$file" | cut -d' ' -f1))"
-          # Sealed before anything ships: only the .age ciphertext reaches the
-          # artifact, and the plaintext dies with the runner's temp.
           "$RUNNER_TEMP/age-bin/age" -r "$AGE_RECIPIENT" -o "$file.age" "$file" \
             || { echo "::error::$DB_NAME export: the age encryption failed"; exit 1; }
           rm -f "$file"
           sha256sum "$RUNNER_TEMP/d1-export/"*.sql.age
       - name: Upload the sealed dump off Cloudflare
-        # A job whose dump failed never reaches this step, so the failure is the
-        # dump's own red job and never a silently empty artifact.
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: d1-backup-${{ matrix.database.name }}
