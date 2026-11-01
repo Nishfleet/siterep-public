@@ -45,7 +45,8 @@
   "routes": [
     {
       "pattern": "siterep.net",
-      "custom_domain": true
+      "custom_domain": true,
+      "previews_enabled": true
     },
     {
       "pattern": "www.siterep.net",
@@ -87,5 +88,18 @@
       "tag": "v1-citerep-coordinator",
       "new_sqlite_classes": ["CiteRepCoordinator"]
     }
-  ]
+  ],
+  "previews": {
+    "vars": {
+      "SITEREP_NOTIFY_ENABLED": "false",
+      "SITEREP_OVERAGE_BILLING_ENABLED": "false",
+      "DODO_SITEREP_ENVIRONMENT": "test_mode",
+      "OWNED_INTERNAL_EMAIL_DOMAINS": "0509.io,0509.in,inish.in,aiconverter.app,siterep.net,tinystudio.io,tinystudio.in,seofixkit.com"
+    },
+    "ai": { "binding": "AI" },
+    "kv_namespaces": [{ "binding": "CITEREP_STORE", "id": "212a2de1e8ab486e84b5fc6e0b5ace9d" }],
+    "d1_databases": [{ "binding": "SITEREP_PAYMENTS_DB", "database_name": "siterep_preview", "database_id": "40e49c4a-4a52-401c-9538-149a121082e6" }],
+    "r2_buckets": [{ "binding": "SITEREP_SOURCE_CONTENT", "bucket_name": "siterep-preview" }],
+    "durable_objects": { "bindings": [{ "name": "CITEREP_COORDINATOR", "class_name": "CiteRepCoordinator" }] }
+  }
 }
