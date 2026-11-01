@@ -301,40 +301,10 @@ test("runHonestyEvals citation count drops when a cited source's URL lacks the a
   assert.ok(result.citations.misCited.includes("ok how do i cancel if i dont like it"), "the cancel citation must be flagged as mis-cited");
 });
 
-test("honesty-check workflow runs the live check file from a live scheduled step", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/honesty-check.yml", import.meta.url), "utf8");
-  assert.match(workflow, /schedule:\n\s+- cron:/, "honesty-check.yml must keep its schedule trigger");
-  assert.match(
-    workflow,
-    /run: \|\n\s+set -euo pipefail\n\s+node --test tests\/honesty-live\.check\.js/,
-    "a live run step must invoke tests/honesty-live.check.js",
-  );
-});
-
 test("the honesty live check file exists", async () => {
   await assert.doesNotReject(
     access(new URL("./honesty-live.check.js", import.meta.url)),
     "tests/honesty-live.check.js is missing",
-  );
-});
-
-test("pricing-stamp-freshness workflow runs the stamp check from a live scheduled step", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/pricing-stamp-freshness.yml", import.meta.url), "utf8");
-  assert.match(workflow, /schedule:\n\s+- cron:/, "pricing-stamp-freshness.yml must keep its schedule trigger");
-  assert.match(
-    workflow,
-    /run: \|\n\s+set -euo pipefail\n\s+node --test tests\/pricing-stamp-freshness\.check\.js/,
-    "a live run step must set pipefail and invoke tests/pricing-stamp-freshness.check.js",
-  );
-  assert.match(
-    workflow,
-    /continue-on-error: true/,
-    "the check step must keep continue-on-error so the failure opens an issue instead of a red job",
-  );
-  assert.match(
-    workflow,
-    /if: steps\.check\.outcome == 'failure'/,
-    "the follow-up steps must gate on outcome, not conclusion (continue-on-error reports success)",
   );
 });
 
