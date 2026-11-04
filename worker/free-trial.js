@@ -10,10 +10,19 @@ export const FREE_PLAN_LIMITS = Object.freeze({
   brandingLocked: true,
 });
 
+/**
+ * @param {string} [plan]
+ * @returns {boolean}
+ */
 export function isFreePlanName(plan) {
   return String(plan || "").trim() === "Free";
 }
 
+/**
+ * @param {number} [used]
+ * @param {number} [cap]
+ * @returns {{ threshold: number, kind: "used_up" | "almost" | "half" } | null}
+ */
 export function freeTrialNudge(used, cap = FREE_ANSWER_CAP) {
   const u = Math.max(0, Number(used) || 0);
   const half = Math.floor(cap / 2);

@@ -1,17 +1,144 @@
 
 export const LEAD_DELETION_SCOPES = Object.freeze(["lead", "visitor"]);
 
+/**
+ * @typedef {object} LeadDeletionTargets
+ * @property {Set<string>} emails
+ * @property {Set<string>} leadIds
+ * @property {Set<string>} conversationIds
+ * @property {Set<string>} identityConversationIds
+ * @property {Set<string>} sessionIds
+ * @property {Set<string>} blockedSessions
+ * @property {Map<string, string>} questionKeys
+ * @property {number} ledgerRows
+ * @property {Map<string, string>} emailHashes
+ * @property {boolean} ambiguous
+ */
+
+/**
+ * @typedef {object} BotVisitor
+ * @property {unknown} [sessionId]
+ * @property {unknown} [email]
+ */
+
+/**
+ * @typedef {object} BotLead
+ * @property {unknown} [id]
+ * @property {unknown} [email]
+ * @property {unknown} [conversationId]
+ */
+
+/**
+ * @typedef {object} BotConversation
+ * @property {unknown} [id]
+ * @property {unknown} [question]
+ * @property {unknown} [sessionId]
+ * @property {BotVisitor} [visitor]
+ */
+
+/**
+ * @typedef {object} BotEscalation
+ * @property {unknown} [conversationId]
+ * @property {unknown} [count]
+ * @property {unknown} [question]
+ */
+
+/**
+ * @typedef {object} BotUnknownEntry
+ * @property {unknown} [id]
+ * @property {unknown} [question]
+ * @property {unknown} [count]
+ */
+
+/**
+ * @typedef {object} BotTicket
+ * @property {unknown} [leadId]
+ * @property {unknown} [conversationId]
+ * @property {unknown} [visitorEmail]
+ * @property {unknown} [dedupeKey]
+ */
+
+/**
+ * @typedef {object} BotNotification
+ * @property {Record<string, unknown> | null} [meta]
+ * @property {unknown} [dedupeKey]
+ * @property {unknown} [title]
+ * @property {unknown} [detail]
+ */
+
+/**
+ * @typedef {object} BotAction
+ * @property {unknown} [payload]
+ * @property {unknown} [payloadSummary]
+ */
+
+/**
+ * @typedef {object} BotEvent
+ * @property {unknown} [meta]
+ * @property {unknown} [title]
+ * @property {unknown} [detail]
+ */
+
+/**
+ * @typedef {object} BotPrivacyRequest
+ * @property {unknown} [targetEmail]
+ * @property {unknown} [requesterEmail]
+ * @property {unknown} [note]
+ * @property {unknown} [targetEmailHash]
+ */
+
+/**
+ * @typedef {object} DeletableBot
+ * @property {BotLead[]} [leads]
+ * @property {BotConversation[]} [conversations]
+ * @property {BotEscalation[]} [escalations]
+ * @property {BotUnknownEntry[]} [unknowns]
+ * @property {BotTicket[]} [tickets]
+ * @property {BotNotification[]} [notifications]
+ * @property {BotAction[]} [actionQueue]
+ * @property {BotEvent[]} [events]
+ * @property {BotPrivacyRequest[]} [privacyRequests]
+ */
+
+/**
+ * @typedef {object} DeletionCounts
+ * @property {number} leads
+ * @property {number} conversations
+ * @property {number} tickets
+ * @property {number} escalations
+ * @property {number} escalationsUnlinked
+ * @property {number} unknowns
+ * @property {number} unknownsUnlinked
+ * @property {number} notifications
+ * @property {number} actions
+ * @property {number} actionsScrubbed
+ * @property {number} events
+ * @property {number} privacyRequestsScrubbed
+ */
+
 const LEDGER_ID_CHUNK = 50;
 const SCRUBBED_EMAIL = "[deleted]";
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 export function normalizeLeadEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+/**
+ * @param {string} email
+ * @returns {boolean}
+ */
 function isAddress(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 export function normalizeQuestionKey(value) {
   return String(value || "")
     .toLowerCase()
@@ -20,18 +147,33 @@ export function normalizeQuestionKey(value) {
     .trim();
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function idKey(value) {
   return value === null || value === undefined ? "" : String(value).trim();
 }
 
+/**
+ * @param {BotConversation | null} conversation
+ * @returns {string}
+ */
 function conversationSessionId(conversation) {
   return String(conversation?.sessionId || conversation?.visitor?.sessionId || "").trim();
 }
 
+/**
+ * @param {BotConversation | null} conversation
+ * @returns {string}
+ */
 function conversationEmail(conversation) {
   return normalizeLeadEmail(conversation?.visitor?.email);
 }
 
+/**
+ * @returns {LeadDeletionTargets}
+ */
 export function emptyLeadDeletionTargets() {
   return {
     emails: new Set(),
@@ -47,6 +189,10 @@ export function emptyLeadDeletionTargets() {
   };
 }
 
+/**
+ * @param {LeadDeletionTargets} targets
+ * @returns {LeadDeletionTargets}
+ */
 export function cloneTargets(targets) {
   return {
     emails: new Set(targets.emails),
@@ -62,6 +208,12 @@ export function cloneTargets(targets) {
   };
 }
 
+/**
+ * @param {DeletableBot} bot
+ * @param {{ leadId?: unknown, email?: unknown }} [input]
+ * @param {{ followSessions?: boolean }} [options]
+ * @returns {LeadDeletionTargets | null}
+ */
 export function leadDeletionTargets(bot, input = {}, options = {}) {
   const targets = emptyLeadDeletionTargets();
   const leadId = idKey(input.leadId);
@@ -76,6 +228,12 @@ export function leadDeletionTargets(bot, input = {}, options = {}) {
   return targets;
 }
 
+/**
+ * @param {LeadDeletionTargets} targets
+ * @param {unknown} id
+ * @param {unknown} [question]
+ * @param {{ identity?: boolean }} [options]
+ */
 function addConversation(targets, id, question, { identity = false } = {}) {
   const key = idKey(id);
   if (!key) return;
@@ -86,6 +244,12 @@ function addConversation(targets, id, question, { identity = false } = {}) {
   }
 }
 
+/**
+ * @param {DeletableBot} bot
+ * @param {LeadDeletionTargets} targets
+ * @param {{ followSessions?: boolean }} [options]
+ * @returns {LeadDeletionTargets}
+ */
 export function expandTargetsInBot(bot, targets, { followSessions = true } = {}) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
@@ -125,6 +289,12 @@ export function expandTargetsInBot(bot, targets, { followSessions = true } = {})
   return targets;
 }
 
+/**
+ * @param {BotConversation[]} members
+ * @param {BotLead[]} leads
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function sessionHasOtherVisitor(members, leads, targets) {
   const memberIds = new Set(members.map((conversation) => idKey(conversation.id)));
   return (
@@ -133,14 +303,28 @@ function sessionHasOtherVisitor(members, leads, targets) {
   );
 }
 
+/**
+ * @param {string} email
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function isForeignEmail(email, targets) {
   return email !== "" && !targets.emails.has(email);
 }
 
+/**
+ * @param {{ id?: unknown, email?: unknown }} lead
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function isTargetLead(lead, targets) {
   return targets.leadIds.has(idKey(lead?.id)) || targets.emails.has(normalizeLeadEmail(lead?.email));
 }
 
+/**
+ * @param {LeadDeletionTargets} targets
+ * @param {string} email
+ */
 function addEmailFromLeadId(targets, email) {
   if (!isAddress(email) || targets.emails.has(email)) return;
   if (targets.emails.size) {
@@ -150,27 +334,56 @@ function addEmailFromLeadId(targets, email) {
   targets.emails.add(email);
 }
 
+/**
+ * @param {LeadDeletionTargets} targets
+ * @returns {number}
+ */
 function identitySize(targets) {
   return targets.emails.size + targets.leadIds.size + targets.identityConversationIds.size + targets.sessionIds.size;
 }
 
+/**
+ * @param {{ id?: unknown, email?: unknown }} lead
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function leadMatches(lead, targets) {
   return isTargetLead(lead, targets);
 }
 
+/**
+ * @param {{ id?: unknown, visitor?: BotVisitor }} conversation
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function identityConversationMatches(conversation, targets) {
   const email = conversationEmail(conversation);
   return targets.identityConversationIds.has(idKey(conversation?.id)) || (email !== "" && targets.emails.has(email));
 }
 
+/**
+ * @param {BotConversation} conversation
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function conversationMatches(conversation, targets) {
   return targets.conversationIds.has(idKey(conversation?.id)) || identityConversationMatches(conversation, targets);
 }
 
+/**
+ * @param {string} email
+ * @param {string} flags
+ * @returns {RegExp}
+ */
 function emailMentionPattern(email, flags) {
   return new RegExp(`(?<![A-Za-z0-9._%+\\-])${escapeRegExp(email)}(?![A-Za-z0-9_\\-]|\\.[A-Za-z0-9])`, flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 }
 
+/**
+ * @param {unknown} text
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function textMentionsTarget(text, targets) {
   const value = String(text || "");
   if (!value) return false;
@@ -180,16 +393,30 @@ function textMentionsTarget(text, targets) {
   return false;
 }
 
+/**
+ * @param {unknown} text
+ * @param {LeadDeletionTargets} targets
+ * @returns {string | null}
+ */
 function withoutTargetSegments(text, targets) {
   const segments = String(text || "").split(" · ");
   const kept = segments.filter((segment) => !textMentionsTarget(segment, targets));
   return kept.length === segments.length ? null : kept.join(" · ");
 }
 
+/**
+ * @param {string} value
+ * @returns {string}
+ */
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * @param {unknown} text
+ * @param {LeadDeletionTargets} targets
+ * @returns {unknown}
+ */
 function scrubText(text, targets) {
   if (!textMentionsTarget(text, targets)) return text;
   let next = withoutTargetSegments(text, targets) || String(text);
@@ -199,6 +426,11 @@ function scrubText(text, targets) {
   return next;
 }
 
+/**
+ * @param {unknown} value
+ * @param {LeadDeletionTargets} targets
+ * @returns {unknown}
+ */
 function scrubValue(value, targets) {
   if (typeof value === "string") return scrubText(value, targets);
   if (Array.isArray(value)) return value.map((item) => scrubValue(item, targets));
@@ -213,15 +445,26 @@ function scrubValue(value, targets) {
   return value;
 }
 
+/**
+ * @param {unknown} meta
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function metaTouchesTarget(meta, targets) {
   if (!meta || typeof meta !== "object") return false;
+  const record = Object.fromEntries(Object.entries(meta));
   return (
-    (idKey(meta.leadId) !== "" && targets.leadIds.has(idKey(meta.leadId))) ||
-    (idKey(meta.conversationId) !== "" && targets.conversationIds.has(idKey(meta.conversationId))) ||
-    (normalizeLeadEmail(meta.email) !== "" && targets.emails.has(normalizeLeadEmail(meta.email)))
+    (idKey(record.leadId) !== "" && targets.leadIds.has(idKey(record.leadId))) ||
+    (idKey(record.conversationId) !== "" && targets.conversationIds.has(idKey(record.conversationId))) ||
+    (normalizeLeadEmail(record.email) !== "" && targets.emails.has(normalizeLeadEmail(record.email)))
   );
 }
 
+/**
+ * @param {unknown} key
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 function dedupeKeyTouchesTarget(key, targets) {
   const value = String(key || "").toLowerCase();
   for (const email of targets.emails) {
@@ -230,6 +473,12 @@ function dedupeKeyTouchesTarget(key, targets) {
   return false;
 }
 
+/**
+ * @param {DeletableBot} bot
+ * @param {string} key
+ * @param {LeadDeletionTargets} targets
+ * @returns {string}
+ */
 function sharedQuestionWording(bot, key, targets) {
   const other = (Array.isArray(bot?.conversations) ? bot.conversations : []).find(
     (conversation) => !conversationMatches(conversation, targets) && normalizeQuestionKey(conversation.question) === key,
@@ -237,6 +486,12 @@ function sharedQuestionWording(bot, key, targets) {
   return other ? String(other.question) : key;
 }
 
+/**
+ * @param {DeletableBot} bot
+ * @param {LeadDeletionTargets} targets
+ * @param {{ followSessions?: boolean }} [options]
+ * @returns {DeletionCounts}
+ */
 export function eraseLeadFromBot(bot, targets, options = {}) {
   const counts = {
     leads: 0,
@@ -256,6 +511,7 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   expandTargetsInBot(bot, targets, options);
 
   if (Array.isArray(bot.escalations)) {
+    /** @type {BotEscalation[]} */
     const next = [];
     for (const item of bot.escalations) {
       const linked = idKey(item.conversationId) !== "" && targets.conversationIds.has(idKey(item.conversationId));
@@ -272,6 +528,7 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     bot.escalations = next;
   }
   if (Array.isArray(bot.unknowns)) {
+    /** @type {BotUnknownEntry[]} */
     const next = [];
     for (const item of bot.unknowns) {
       const id = idKey(item.id);
@@ -294,25 +551,32 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     bot.unknowns = next;
   }
 
-  const keep = (field, predicate) => {
-    if (!Array.isArray(bot[field])) return;
-    const before = bot[field].length;
-    bot[field] = bot[field].filter(predicate);
-    counts[field] += before - bot[field].length;
-  };
-
-  keep("leads", (lead) => !leadMatches(lead, targets));
-  keep("conversations", (conversation) => !conversationMatches(conversation, targets));
-  keep("tickets", (ticket) =>
-    !(
-      targets.leadIds.has(idKey(ticket.leadId)) ||
-      (idKey(ticket.conversationId) !== "" && targets.conversationIds.has(idKey(ticket.conversationId))) ||
-      targets.emails.has(normalizeLeadEmail(ticket.visitorEmail)) ||
-      dedupeKeyTouchesTarget(ticket.dedupeKey, targets)
-    ),
-  );
+  if (Array.isArray(bot.leads)) {
+    const before = bot.leads.length;
+    bot.leads = bot.leads.filter((lead) => !leadMatches(lead, targets));
+    counts.leads += before - bot.leads.length;
+  }
+  if (Array.isArray(bot.conversations)) {
+    const before = bot.conversations.length;
+    bot.conversations = bot.conversations.filter((conversation) => !conversationMatches(conversation, targets));
+    counts.conversations += before - bot.conversations.length;
+  }
+  if (Array.isArray(bot.tickets)) {
+    const before = bot.tickets.length;
+    bot.tickets = bot.tickets.filter(
+      (ticket) =>
+        !(
+          targets.leadIds.has(idKey(ticket.leadId)) ||
+          (idKey(ticket.conversationId) !== "" && targets.conversationIds.has(idKey(ticket.conversationId))) ||
+          targets.emails.has(normalizeLeadEmail(ticket.visitorEmail)) ||
+          dedupeKeyTouchesTarget(ticket.dedupeKey, targets)
+        ),
+    );
+    counts.tickets += before - bot.tickets.length;
+  }
 
   if (Array.isArray(bot.notifications)) {
+    /** @type {BotNotification[]} */
     const next = [];
     for (const notification of bot.notifications) {
       if (metaTouchesTarget(notification.meta, targets) || dedupeKeyTouchesTarget(notification.dedupeKey, targets)) {
@@ -334,6 +598,7 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   }
 
   if (Array.isArray(bot.actionQueue)) {
+    /** @type {BotAction[]} */
     const next = [];
     for (const action of bot.actionQueue) {
       if (metaTouchesTarget(action.payload, targets) || metaTouchesTarget(action.payloadSummary, targets)) {
@@ -354,14 +619,19 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
     bot.actionQueue = next;
   }
 
-  keep("events", (event) =>
-    !(
-      metaTouchesTarget(event.meta, targets) ||
-      textMentionsTarget(event.title, targets) ||
-      textMentionsTarget(event.detail, targets) ||
-      textMentionsTarget(JSON.stringify(event.meta ?? null), targets)
-    ),
-  );
+  if (Array.isArray(bot.events)) {
+    const before = bot.events.length;
+    bot.events = bot.events.filter(
+      (event) =>
+        !(
+          metaTouchesTarget(event.meta, targets) ||
+          textMentionsTarget(event.title, targets) ||
+          textMentionsTarget(event.detail, targets) ||
+          textMentionsTarget(JSON.stringify(event.meta ?? null), targets)
+        ),
+    );
+    counts.events += before - bot.events.length;
+  }
 
   if (Array.isArray(bot.privacyRequests)) {
     bot.privacyRequests = bot.privacyRequests.map((item) => {
@@ -386,11 +656,26 @@ export function eraseLeadFromBot(bot, targets, options = {}) {
   return counts;
 }
 
+/**
+ * @param {Partial<DeletionCounts>} [counts]
+ * @returns {number}
+ */
 export function totalErased(counts) {
   return Object.values(counts || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
 }
 
+/**
+ * @typedef {{ bots?: Record<string, DeletableBot> }} StoreSnapshot
+ */
+
+/**
+ * @param {string | StoreSnapshot} raw
+ * @param {string} botId
+ * @param {LeadDeletionTargets} targets
+ * @returns {{ json: string | null, unreadable: boolean }}
+ */
 export function eraseLeadFromStoreSnapshot(raw, botId, targets) {
+  /** @type {StoreSnapshot | null} */
   let store;
   try {
     store = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -406,6 +691,11 @@ export function eraseLeadFromStoreSnapshot(raw, botId, targets) {
   return { json: totalErased(counts) > 0 ? JSON.stringify(store) : null, unreadable: false };
 }
 
+/**
+ * @param {string[] | Set<string>} values
+ * @param {number} [size]
+ * @returns {string[][]}
+ */
 function chunks(values, size = LEDGER_ID_CHUNK) {
   const list = [...values];
   const out = [];
@@ -413,10 +703,18 @@ function chunks(values, size = LEDGER_ID_CHUNK) {
   return out;
 }
 
+/**
+ * @param {number} count
+ * @returns {string}
+ */
 function placeholders(count) {
   return new Array(count).fill("?").join(", ");
 }
 
+/**
+ * @param {unknown} value
+ * @returns {BotConversation | null}
+ */
 function parseJson(value) {
   try {
     const parsed = JSON.parse(String(value || "{}"));
@@ -426,6 +724,12 @@ function parseJson(value) {
   }
 }
 
+/**
+ * @param {D1Database} db
+ * @param {string} botId
+ * @param {LeadDeletionTargets} targets
+ * @returns {Promise<LeadDeletionTargets>}
+ */
 export async function expandTargetsInLedger(db, botId, targets) {
   for (const email of targets.emails) {
     const leads = await db
@@ -450,6 +754,9 @@ export async function expandTargetsInLedger(db, botId, targets) {
     }
   }
 
+  /**
+   * @param {Record<string, unknown>[]} [rows]
+   */
   const absorb = (rows) => {
     for (const row of rows || []) {
       targets.ledgerRows += 1;
@@ -477,10 +784,18 @@ export async function expandTargetsInLedger(db, botId, targets) {
   return targets;
 }
 
+/**
+ * @param {D1Database | null} db
+ * @param {string} botId
+ * @param {DeletableBot} bot
+ * @param {LeadDeletionTargets} targets
+ * @returns {Promise<LeadDeletionTargets>}
+ */
 export async function resolveSessions(db, botId, bot, targets) {
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
   const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
   const candidates = [...targets.sessionIds].filter((sessionId) => !targets.blockedSessions.has(sessionId));
+  /** @type {Map<string, { id: string, question: unknown, email: string }[]>} */
   const ledgerMembers = new Map(candidates.map((sessionId) => [sessionId, []]));
   if (db) {
     for (const group of chunks(candidates, 20)) {
@@ -531,6 +846,11 @@ export async function resolveSessions(db, botId, bot, targets) {
   return targets;
 }
 
+/**
+ * @param {DeletableBot} bot
+ * @param {LeadDeletionTargets} targets
+ * @returns {boolean}
+ */
 export function targetsFoundAnything(bot, targets) {
   if (targets.ledgerRows > 0) return true;
   const leads = Array.isArray(bot?.leads) ? bot.leads : [];
@@ -538,8 +858,18 @@ export function targetsFoundAnything(bot, targets) {
   return leads.some((lead) => leadMatches(lead, targets)) || conversations.some((conversation) => conversationMatches(conversation, targets));
 }
 
+/**
+ * @param {D1Database} db
+ * @param {string} botId
+ * @param {LeadDeletionTargets} targets
+ * @returns {Promise<{ leads: number, conversations: number }>}
+ */
 export async function deleteLeadLedgerRows(db, botId, targets) {
   const removed = { leads: 0, conversations: 0 };
+  /**
+   * @param {{ meta?: { changes?: unknown } } | null | undefined} result
+   * @returns {number}
+   */
   const changes = (result) => Number(result?.meta?.changes || 0);
   for (const email of targets.emails) {
     removed.leads += changes(await db.prepare("DELETE FROM siterep_leads WHERE bot_id = ? AND lower(email) = ?").bind(botId, email).run());

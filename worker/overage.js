@@ -5,10 +5,27 @@ export const OVERAGE_BUNDLE_SIZE = 500;
 export const OVERAGE_BUNDLE_PRICE_CENTS = 500;
 export const OVERAGE_PENDING_LIMIT = 5000;
 
+/**
+ * @typedef {object} OverageSettings
+ * @property {boolean} enabled
+ * @property {number} maxExtraPerMonth
+ * @property {string} reportedMonth
+ * @property {number} reportedCount
+ * @property {unknown[]} pending
+ */
+
+/**
+ * @returns {OverageSettings}
+ */
 export function defaultOverageSettings() {
   return { enabled: false, maxExtraPerMonth: DEFAULT_OVERAGE_CEILING, reportedMonth: "", reportedCount: 0, pending: [] };
 }
 
+/**
+ * @param {{ enabled?: unknown, maxExtraPerMonth?: unknown }} [input]
+ * @param {Partial<OverageSettings>} [current]
+ * @returns {OverageSettings}
+ */
 export function sanitizeOverageSettings(input = {}, current = {}) {
   const base = { ...defaultOverageSettings(), ...current };
   const maxRaw = input.maxExtraPerMonth ?? base.maxExtraPerMonth;
@@ -20,11 +37,19 @@ export function sanitizeOverageSettings(input = {}, current = {}) {
   };
 }
 
+/**
+ * @param {number} limit
+ * @returns {number}
+ */
 export function graceLimitFor(limit) {
   const safe = Math.max(0, Number(limit) || 0);
   return safe + Math.ceil(safe * RESPONSE_CAP_GRACE_RATIO);
 }
 
+/**
+ * @param {{ used: number, limit: number, overageEnabled?: boolean, overageEligible?: boolean, billingActive?: boolean, reportedThisMonth?: number, maxExtraPerMonth?: number }} options
+ * @returns {"included" | "grace" | "overage" | "locked"}
+ */
 export function answeringMode({
   used,
   limit,
