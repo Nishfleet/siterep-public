@@ -62,6 +62,11 @@ export default [
   },
 
   {
+    files: [...APP_CODE, ...TEST_CODE],
+    rules: { "max-lines": ["error", 800] },
+  },
+
+  {
     files: ["worker/**/*.js", "server/**/*.js"],
     ignores: ["server/crawler.js"],
     rules: {
