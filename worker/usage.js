@@ -1,13 +1,27 @@
+/**
+ * @param {Date} [now]
+ * @returns {string}
+ */
 export function currentUsageMonth(now = new Date()) {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * @param {{ responseUsageMonth?: string, responseCount?: number }} bot
+ * @param {Date} [now]
+ * @returns {number}
+ */
 export function effectiveResponseCount(bot, now = new Date()) {
   const month = String(bot.responseUsageMonth || "");
   if (month && month !== currentUsageMonth(now)) return 0;
   return bot.responseCount || 0;
 }
 
+/**
+ * @param {{ responseUsageMonth?: string, responseCount?: number }} bot
+ * @param {Date} [now]
+ * @returns {{ responseUsageMonth?: string, responseCount?: number }}
+ */
 export function rolloverMonthlyResponseUsage(bot, now = new Date()) {
   const month = currentUsageMonth(now);
   if (String(bot.responseUsageMonth || "") !== month) {

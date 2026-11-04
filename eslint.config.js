@@ -55,7 +55,7 @@ export default [
     files: APP_CODE,
     plugins: { "no-comments": noComments },
     rules: {
-      "no-comments/disallowComments": ["error", { allow: ["eslint", "global", "nosemgrep", "https:\\/\\/"] }],
+      "no-comments/disallowComments": ["error", { allow: ["eslint", "global", "nosemgrep", "https:\\/\\/", "\\*[\\s\\S]*?@(typedef|property|param|returns|type)"] }],
       "no-inline-comments": ["error", { ignorePattern: "^\\s*nosemgrep:" }],
       "no-warning-comments": ["error", { terms: WORKAROUND_TERMS, location: "anywhere" }],
     },

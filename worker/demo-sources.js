@@ -2,12 +2,41 @@ const PUBLIC_SITE_URL = "https://siterep.net";
 
 const STARTER_PRICE_INTENT = /\b(?:cost|costs|pricing|price|priced|fee|fees|charge|charges|much|worth|expensive|cheap|affordable|subscription)\b/i;
 
+/**
+ * @typedef {object} PricingPlan
+ * @property {unknown} [name]
+ * @property {unknown} [displayPrice]
+ * @property {unknown} [currency]
+ * @property {unknown} [amountSubunits]
+ * @property {unknown} [source]
+ */
+
+/**
+ * @typedef {object} DemoPricingSource
+ * @property {string} id
+ * @property {string} title
+ * @property {string} url
+ * @property {string} excerpt
+ * @property {string} content
+ * @property {string} sourceType
+ * @property {string} status
+ * @property {string} indexedAt
+ */
+
+/**
+ * @param {string} question
+ * @returns {boolean}
+ */
 export function isNamedStarterPriceQuestion(question) {
   const value = String(question || "");
   if (!value || !/\bstarter\b/i.test(value)) return false;
   return STARTER_PRICE_INTENT.test(value);
 }
 
+/**
+ * @param {PricingPlan} [plan]
+ * @returns {string}
+ */
 export function starterPriceAnswerFor(plan = {}) {
   const displayPrice = String(plan.displayPrice || "").trim();
   const trustworthy =
@@ -20,10 +49,17 @@ export function starterPriceAnswerFor(plan = {}) {
   return `The Starter plan costs ${displayPrice} per month, tax included — the exact live checkout total in your local currency. Start setup at live checkout to see the same total before you pay.`;
 }
 
+/**
+ * @returns {string}
+ */
 export function starterPriceUnavailableAnswer() {
   return "The live local cost for the Starter plan is not confirmed right now — checkout preview pricing is unavailable. Start setup at live checkout to see the exact total in your currency, tax included, before you pay, or email hello@siterep.net so the Starter total can be confirmed before payment.";
 }
 
+/**
+ * @param {string} answerText
+ * @returns {DemoPricingSource}
+ */
 export function starterPricingSource(answerText) {
   return {
     id: "demo-starter-pricing",
@@ -41,6 +77,10 @@ const PRICING_INTENT = /\b(?:cost|costs|costing|pricing|price|priced|prices|fee|
 const NAMED_PLAN = /\b(?:starter|growth|pro|agency)\b/i;
 const FREE_TRIAL = /\b(?:free trial|free start|trial)\b/i;
 
+/**
+ * @param {string} question
+ * @returns {boolean}
+ */
 export function isPricingQuestion(question) {
   const value = String(question || "");
   if (!value || !PRICING_INTENT.test(value)) return false;
@@ -49,9 +89,15 @@ export function isPricingQuestion(question) {
   return true;
 }
 
+/**
+ * @param {PricingPlan[]} [plans]
+ * @returns {string}
+ */
 export function planPricesAnswerFor(plans = []) {
   const named = ["Starter", "Growth", "Pro", "Agency"];
-  const priced = named.map((name) => plans.find((plan) => plan.name === name)).filter(Boolean);
+  const priced = named
+    .map((name) => plans.find((plan) => plan.name === name))
+    .filter((plan) => plan !== undefined);
   const allTrustworthy =
     priced.length === named.length &&
     priced.every((plan) => {
@@ -69,10 +115,17 @@ export function planPricesAnswerFor(plans = []) {
   return `${quoted} per month, tax included — the exact live checkout totals in your local currency. Start setup at live checkout to see the same totals before you pay.`;
 }
 
+/**
+ * @returns {string}
+ */
 export function planPricesUnavailableAnswer() {
   return "The live local totals for the plans are not confirmed right now — checkout preview pricing is unavailable. Start setup at live checkout to see the exact totals in your currency, tax included, before you pay, or email hello@siterep.net so the totals can be confirmed before payment.";
 }
 
+/**
+ * @param {string} answerText
+ * @returns {DemoPricingSource}
+ */
 export function planPricingSource(answerText) {
   return {
     id: "demo-plan-pricing",
@@ -86,11 +139,21 @@ export function planPricingSource(answerText) {
   };
 }
 
+/**
+ * @param {{ sources?: { id?: unknown }[] }} [answer]
+ * @returns {boolean}
+ */
 export function isExactDemoPricingAnswer(answer) {
   const id = String(answer?.sources?.[0]?.id || "");
   return id === "demo-plan-pricing" || id === "demo-starter-pricing";
 }
 
+/**
+ * @param {string} question
+ * @param {{ unknown?: boolean, answer?: string, sources?: unknown[] }} answer
+ * @param {{ plans?: PricingPlan[] } | null} [catalog]
+ * @returns {{ unknown?: boolean, answer?: string, sources?: unknown[] }}
+ */
 export function applyLiveDemoPricingAnswer(question, answer, catalog = null) {
   if (!answer || answer.unknown) return answer;
   if (!isNamedStarterPriceQuestion(question) && !isPricingQuestion(question)) return answer;
