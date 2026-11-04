@@ -12,20 +12,6 @@
       "count": 2
     }
   },
-  "server/index.js": {
-    "no-empty": {
-      "count": 1
-    },
-    "no-undef": {
-      "count": 1
-    },
-    "no-unused-vars": {
-      "count": 4
-    },
-    "no-useless-assignment": {
-      "count": 1
-    }
-  },
   "src/App.tsx": {
     "no-control-regex": {
       "count": 2
