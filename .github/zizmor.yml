@@ -2,3 +2,11 @@ rules:
   dependabot-cooldown:
     config:
       days: 3
+  # The default policy (all hash-pinned) plus one exception: the agent stub calls
+  # fleet-ops at @main, because runner group "agent" admits only agent.yml@refs/heads/main.
+  # https://docs.zizmor.sh/audits/#unpinned-uses
+  unpinned-uses:
+    config:
+      policies:
+        Nishfleet/fleet-ops/*: ref-pin
+        "*": hash-pin
