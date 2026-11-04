@@ -9,7 +9,7 @@ test("crawler stores content fingerprints for freshness audits", async () => {
 
   assert.match(crawler, /export function contentFingerprint/);
   assert.match(crawler, /contentFingerprint: contentFingerprint\(text\)/);
-  assert.match(worker, /import \{ contentFingerprint, crawlFeed, crawlPublicCloudSource, crawlSinglePage, crawlSite, normalizeUrl \}/);
+  assert.match(worker, /import \{[^}]*\bcontentFingerprint\b[^}]*\} from "\.\.\/server\/crawler\.js"/);
 });
 
 test("crawler parses RSS and Atom feeds into indexed sources", () => {
