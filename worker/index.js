@@ -11976,6 +11976,7 @@ async function deliverWebhookTarget(bot, action, target) {
       method: "POST",
       headers,
       body,
+      redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok) {

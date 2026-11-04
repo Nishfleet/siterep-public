@@ -87,3 +87,40 @@ test("guardedFetch refuses a redirect from a public host to a private one", asyn
   t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 302, headers: { location: "http://169.254.169.254/" } }));
   await assert.rejects(guardedFetch("https://example.com/hook"), /Blocked host: 169\.254\.169\.254/);
 });
+
+function recordHops(t, firstStatus) {
+  const hops = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    hops.push({ url: String(url), method: init.method || "GET", body: init.body, authorization: new Headers(init.headers).get("authorization") });
+    if (hops.length === 1) return new Response(null, { status: firstStatus, headers: { location: "https://collector.example.net/catch" } });
+    return new Response("ok", { status: 200 });
+  });
+  return hops;
+}
+
+const webhookInit = () => ({
+  method: "POST",
+  body: JSON.stringify({ lead: "visitor@example.org" }),
+  headers: { authorization: "Bearer hook-token", "content-type": "application/json" },
+});
+
+test("a cross-origin 302 on a POST follows as a bodiless GET without Authorization", async (t) => {
+  const hops = recordHops(t, 302);
+  await guardedFetch("https://example.com/hook", webhookInit());
+  assert.equal(hops.length, 2);
+  assert.deepEqual(hops[1], { url: "https://collector.example.net/catch", method: "GET", body: undefined, authorization: null });
+});
+
+test("a cross-origin 307 keeps the method but drops Authorization", async (t) => {
+  const hops = recordHops(t, 307);
+  await guardedFetch("https://example.com/hook", webhookInit());
+  assert.equal(hops[1].method, "POST");
+  assert.equal(hops[1].authorization, null);
+});
+
+test("redirect manual, as webhook delivery uses, never contacts the redirect target", async (t) => {
+  const hops = recordHops(t, 307);
+  const response = await guardedFetch("https://example.com/hook", { ...webhookInit(), redirect: "manual" });
+  assert.equal(response.status, 307);
+  assert.deepEqual(hops.map((hop) => hop.url), ["https://example.com/hook"]);
+});
