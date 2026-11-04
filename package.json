@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "api": "node -e \"console.error('Local Node API is retired for product routes. Use npm run cf:dev for the Worker API.'); process.exit(1)\"",
     "cf:dev": "wrangler dev --ip 127.0.0.1 --port 8787",
     "dev": "vite --host 127.0.0.1",
     "dev:all": "npm run cf:dev & npm run dev",
