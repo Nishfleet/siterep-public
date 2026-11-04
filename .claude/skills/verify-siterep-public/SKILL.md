@@ -24,18 +24,13 @@ on loopback in fully-local mode:
 
 ```bash
 npm run build          # tsc -b && vite build  -> ./dist (the assets the Worker serves)
-npx wrangler dev --local --ip 127.0.0.1 --port 8787
+npm run cf:dev         # wrangler dev --local --ip 127.0.0.1 --port 8787
 ```
 
-`--local` is required for a token-less run: `wrangler dev` (and the repo's
-`npm run cf:dev` script, which omits the flag) opens a remote proxy session for
-the bindings and exits with `Failed to start the remote proxy session … set a
-CLOUDFLARE_API_TOKEN` when no token is present. `--local` keeps every binding
-local (Miniflare/workerd-backed KV, D1, R2, Durable Object, Workers AI), so no
-Cloudflare account is touched and local state lives under `.wrangler/`. If a
-`CLOUDFLARE_API_TOKEN` is exported in the environment, `npm run cf:dev` works
-too — but prefer `--local` for deterministic proof that does not depend on a
-live account.
+`cf:dev` runs with `--local`, so every binding (KV, D1, R2, Durable Object,
+Workers AI) is local, no Cloudflare token or account is needed, and local state
+lives under `.wrangler/`.
+(https://developers.cloudflare.com/workers/development-testing/)
 
 - Base URL: `http://127.0.0.1:8787`. Loopback only — `cf:dev` binds
   `--ip 127.0.0.1`. Never use `localhost` for an assertion (it can resolve to
@@ -49,7 +44,7 @@ live account.
 
 ```bash
 mkdir -p /tmp/verify-siterep-public
-npx wrangler dev --local --ip 127.0.0.1 --port 8787 > /tmp/verify-siterep-public/worker.log 2>&1 &
+npm run cf:dev > /tmp/verify-siterep-public/worker.log 2>&1 &
 echo $! > /tmp/verify-siterep-public/worker.pid
 ```
 
@@ -59,7 +54,7 @@ start it under `setsid` so it owns its own session, then kill the session in
 CLEANUP:
 
 ```bash
-setsid bash -c 'npx wrangler dev --local --ip 127.0.0.1 --port 8787 > /tmp/verify-siterep-public/worker.log 2>&1 & echo $! > /tmp/verify-siterep-public/worker.pid' < /dev/null
+setsid bash -c 'npm run cf:dev > /tmp/verify-siterep-public/worker.log 2>&1 & echo $! > /tmp/verify-siterep-public/worker.pid' < /dev/null
 ```
 
 The public demo bot (`site-rep-demo` / `sr_demo_source_backed_widget_key`) is
@@ -92,7 +87,6 @@ markup, then re-run the primary launch before claiming anything works.
 
 `GET /api/health/live` — fast liveness, never touches storage. Healthy means
 HTTP 200 with `mode:"fast"`, `runtime:"cloudflare-worker"`, and `ok:true`. The
-release marker is pinned to `launch-hygiene-proof-health-2026-08-26` and the
 deploy identity falls back to a worker-code stamped commit + timestamp when
 `SITEREP_RELEASE_COMMIT` is unset (which is the case for `cf:dev`).
 
@@ -103,15 +97,14 @@ curl -fsS http://127.0.0.1:8787/api/health/live
 
 `GET /api/health/deep` — actively proves storage. Without an admin key it runs
 in public-safe mode: it asserts the deep proof ran and that no owner-side counts
-leak, but it does NOT assert the overall `status:"ok"`. `billing` and
-`notifications` are normally `not ready` on a fresh local Worker (no Dodo /
-email secrets loaded) — that is a warning, not a failure. Assert
-`deepProof.recordLedger.ready`, `deepProof.sourceContent.ready`, and
-`accountRbac.configured` are present; do not assert `selfServe.ready` locally
-(secrets are absent by design).
+leak, but it does NOT assert the overall `status:"ok"`. `billing` is normally
+not ready on a fresh local Worker (no payment keys loaded): a warning, not a
+failure. Assert the three storage checks at the top level of the response; do
+not assert `selfServe.ready` locally (secrets are absent by design).
 
 ```bash
-curl -s http://127.0.0.1:8787/api/health/deep | grep -o '"recordLedger":{"ready":true}'
+curl -s http://127.0.0.1:8787/api/health/deep | jq -e '.recordLedger.ready and .sourceContent.ready and .accountRbac.ready'
+# true
 ```
 
 Page-level proof the instance is actually serving the SPA — the Worker returns
@@ -153,6 +146,9 @@ Per-feature steps and the exact observable state that proves each one live in
 | Widget embed `public/widget.js` + `/api/public/config` | `features/widget-embed.md` |
 | Trust & honesty `/trust`, `/honesty`, `/api/public/*` | `features/trust-honesty.md` |
 | Comparison pages `/vs/*` | `features/comparison-pages.md` |
+| Dashboard sign-up and sign-in `/api/free/start`, `/api/customer/login` | `features/dashboard-login.md` |
+| Lead deletion `/api/leads/delete` | `features/lead-deletion.md` |
+| Paid checkout `/api/payments/dodo/checkout` | `features/checkout.md` |
 
 Two drive styles:
 
