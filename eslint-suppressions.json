@@ -88,6 +88,9 @@
     }
   },
   "worker/index.js": {
+    "no-restricted-globals": {
+      "count": 3
+    },
     "no-unused-vars": {
       "count": 11
     },
