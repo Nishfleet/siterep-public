@@ -1,9 +1,9 @@
-# The owner reviews every change by default: the product, CI workflows, this file,
-# the Dependabot config, tests, the dependency manifests, and the tool configs that
-# set the quality gates. GitHub's Actions security hardening guide says to put
-# workflow files under code owners, and its code owners docs say to own this file.
-# Last match wins.
-*                           @nish3451
+# Either the owner or the approver bot reviews a change by default. The bot approves only
+# after the one non-Claude review passes, CI is green and a run-proof is present (decisions
+# ledger 2026-11-04). The owner-only block at the end keeps the gate, the checks and the
+# reserved classes his: GitHub's Actions hardening guide says to code-own workflow files,
+# and its code owners docs say to own this file. Last match wins.
+*                           @nish3451 @nishfleet-approver
 
 # No owner, so these merge on the required checks alone: docs, lockfiles and pure
 # formatting config. Dependabot's npm patch and minor updates touch only lockfiles
@@ -21,3 +21,27 @@
 # Agent rules stay the owner's, even where they sit among unowned docs.
 **/AGENTS.md                @nish3451
 /CLAUDE.md                  @nish3451
+
+# The owner alone (decisions ledger 2026-11-04, approver bot): the review gate, the
+# checks, the schema, money, sign-in, data deletion and privacy promises.
+/.github/                   @nish3451
+# Lint, type and test configs, and package.json, which holds the commands CI runs.
+/eslint.config.js           @nish3451
+/eslint-suppressions.json   @nish3451
+/tsconfig.json              @nish3451
+/tsconfig.app.json          @nish3451
+/tsconfig.node.json         @nish3451
+/tsconfig.typecheck.json    @nish3451
+/package.json               @nish3451
+# Payments and billing (index.js holds the plan prices).
+/worker/index.js            @nish3451
+/worker/payment-events.js   @nish3451
+/worker/overage.js          @nish3451
+/worker/free-trial.js       @nish3451
+/worker/usage.js            @nish3451
+/src/checkout-errors.js     @nish3451
+/src/checkout-errors.d.ts   @nish3451
+# Sign-in (API keys for the MCP endpoint).
+/worker/site-rep-mcp.js     @nish3451
+# Data deletion.
+/worker/lead-deletion.js    @nish3451
