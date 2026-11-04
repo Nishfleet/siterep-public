@@ -69,7 +69,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.152.0"
           command: preview --name pr-${{ github.event.pull_request.number }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
       # A preview with no link is no preview: fail the check.
@@ -103,7 +102,7 @@ jobs:
         with:
           persist-credentials: false
       - run: pip install semgrep==1.172.0
-      - run: semgrep scan --config .semgrep/no-hand-built-orchestration.yml --config p/default --severity ERROR --error --metrics=off
+      - run: semgrep scan --config .semgrep/no-hand-built-orchestration.yml --config .semgrep/wrangler-from-lockfile.yml --config p/default --severity ERROR --error --metrics=off
 
   # Lints these workflow files; a broken workflow fails silently otherwise.
   actionlint:
