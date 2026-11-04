@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { contentFingerprint, crawlFeed, crawlPublicCloudSource, crawlSinglePage, crawlSite, normalizeUrl } from "../server/crawler.js";
+import { contentFingerprint, crawlFeed, crawlPublicCloudSource, crawlSinglePage, crawlSite, guardedFetch, normalizeUrl } from "../server/crawler.js";
 import { answerFromSources, candidateSourcesForQuestion, publicSource, unknownAnswer } from "../server/search.js";
 import { buildSourceManifest, retrievableSources } from "../server/source-manifest.js";
 import { renderInstallRecipesMarkdown } from "../server/install-recipes.js";
@@ -11972,10 +11972,11 @@ async function deliverWebhookTarget(bot, action, target) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), WEBHOOK_DELIVERY_TIMEOUT_MS);
   try {
-    const response = await fetch(target.url, {
+    const response = await guardedFetch(target.url, {
       method: "POST",
       headers,
       body,
+      redirect: "manual",
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -13047,13 +13048,13 @@ async function auditSource(source, checkedAt) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SOURCE_AUDIT_TIMEOUT_MS);
   try {
-    let response = await fetch(source.url, {
+    let response = await guardedFetch(source.url, {
       method: "HEAD",
       headers: { "user-agent": "SiteRepBot/0.1 (+https://siterep.net)" },
       signal: controller.signal,
     });
     if (response.status === 405 || response.status === 403) {
-      response = await fetch(source.url, {
+      response = await guardedFetch(source.url, {
         method: "GET",
         headers: { "user-agent": "SiteRepBot/0.1 (+https://siterep.net)" },
         signal: controller.signal,

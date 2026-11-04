@@ -62,6 +62,21 @@ export default [
   },
 
   {
+    files: ["worker/**/*.js", "server/**/*.js"],
+    ignores: ["server/crawler.js"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message:
+            "Use guardedFetch from server/crawler.js. It blocks private, loopback and metadata hosts on every redirect hop (tests/crawler-ssrf.test.js).",
+        },
+      ],
+    },
+  },
+
+  {
     files: TEST_CODE,
     plugins: { "no-comments": noComments },
     rules: {
