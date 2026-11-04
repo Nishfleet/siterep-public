@@ -509,7 +509,7 @@ function assertCrawlableTarget(value) {
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECT_HOPS = 5;
 
-async function guardedFetch(url, init = {}) {
+export async function guardedFetch(url, init = {}) {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
     assertCrawlableTarget(current);

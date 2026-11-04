@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isBlockedCrawlHost, normalizeUrl } from "../server/crawler.js";
+import { guardedFetch, isBlockedCrawlHost, normalizeUrl } from "../server/crawler.js";
 
 // https://url.spec.whatwg.org/ canonicalizes a host before it reaches us, so these fixtures use the parser's own form.
 
@@ -75,4 +75,15 @@ test("normalizeUrl rejects encoded-IP forms of loopback and metadata end to end"
 
 test("normalizeUrl still accepts a real public site", () => {
   assert.equal(normalizeUrl("https://example.com/docs"), "https://example.com/docs");
+});
+
+test("guardedFetch refuses a webhook or source URL that points at a private or metadata host", async () => {
+  for (const url of ["http://169.254.169.254/latest/meta-data", "http://127.0.0.1:8787/api/health", "http://10.0.0.5/hook"]) {
+    await assert.rejects(guardedFetch(url, { method: "POST", body: "{}" }), /Blocked host/, `${url} must be refused`);
+  }
+});
+
+test("guardedFetch refuses a redirect from a public host to a private one", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 302, headers: { location: "http://169.254.169.254/" } }));
+  await assert.rejects(guardedFetch("https://example.com/hook"), /Blocked host: 169\.254\.169\.254/);
 });
