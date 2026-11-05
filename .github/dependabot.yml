@@ -4,7 +4,8 @@ updates:
     directory: "/"
     # Patch and minor updates inside a ^ range touch only the lockfile, which
     # CODEOWNERS leaves unowned, so they merge on the required checks alone.
-    # A bump to an exact pin edits package.json and waits for the owner.
+    # A major, or any bump to an exact pin, edits package.json and waits for
+    # the owner.
     versioning-strategy: increase-if-necessary
     schedule:
       interval: "weekly"
@@ -21,10 +22,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-major"
     cooldown:
       # Owner standing rule, 2026-10-22: upstream releases are taken after
       # 3 days, not the 7 the semgrep p/default rule asks for. Same policy
