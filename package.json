@@ -25,7 +25,7 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@fontsource-variable/geist": "^5.3.0",
-    "@sentry/cloudflare": "10.78.0",
+    "@sentry/cloudflare": "11.10.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "fflate": "^0.8.3",
