@@ -1,0 +1,276 @@
+{
+  "writtenBy": "pi coding agent, model alias 'worker-capable' (LiteLLM provider) — a model from a different family than the later retrieval-tuning builder",
+  "note": "Held-out retrieval eval cases: written before any tuning, and never used by the builder to adjust the demo answering pipeline. 'expectedSourceIds' lists the demo sources (by id from worker/demo-sources.js PUBLIC_DEMO_SOURCES) a correct source-backed answer should cite. A no-answer case expects an empty list: the demo sources do not cover the question and the rep should say so instead of citing anything.",
+  "cases": [
+    {
+      "id": "short-cost",
+      "category": "short",
+      "question": "How much does this cost?",
+      "expectedSourceIds": ["demo-pricing"]
+    },
+    {
+      "id": "short-free-trial",
+      "category": "short",
+      "question": "Is there a free trial?",
+      "expectedSourceIds": ["demo-pricing"]
+    },
+    {
+      "id": "short-what-does-it-do",
+      "category": "short",
+      "question": "What does Site Rep do?",
+      "expectedSourceIds": ["demo-what-is"]
+    },
+    {
+      "id": "short-install",
+      "category": "short",
+      "question": "How do I install it?",
+      "expectedSourceIds": ["demo-install"]
+    },
+    {
+      "id": "short-cancel-anytime",
+      "category": "short",
+      "question": "Can I cancel anytime?",
+      "expectedSourceIds": ["demo-cancel-refund"]
+    },
+    {
+      "id": "short-money-back",
+      "category": "short",
+      "question": "Do I get my money back?",
+      "expectedSourceIds": ["demo-cancel-refund"]
+    },
+    {
+      "id": "short-different-from-others",
+      "category": "short",
+      "question": "How is this different from other chatbots?",
+      "expectedSourceIds": ["demo-source-proof"]
+    },
+    {
+      "id": "short-visitor-emails",
+      "category": "short",
+      "question": "What happens to visitor emails?",
+      "expectedSourceIds": ["demo-lead-capture"]
+    },
+    {
+      "id": "short-cookies",
+      "category": "short",
+      "question": "Do you use tracking cookies?",
+      "expectedSourceIds": ["demo-trust-controls"]
+    },
+    {
+      "id": "short-remove-branding",
+      "category": "short",
+      "question": "Can I remove the branding?",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "short-client-sites",
+      "category": "short",
+      "question": "How many client sites can Agency cover?",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "short-how-to-buy",
+      "category": "short",
+      "question": "How do I buy this for my site?",
+      "expectedSourceIds": ["demo-buy-next"]
+    },
+    {
+      "id": "short-setup-speed",
+      "category": "short",
+      "question": "How fast is setup?",
+      "expectedSourceIds": ["demo-get-started"]
+    },
+    {
+      "id": "long-wordpress-install",
+      "category": "long",
+      "question": "I run a WordPress site with a custom theme and I want to know exactly where the widget snippet goes and how I can tell that it is actually live on my domain.",
+      "expectedSourceIds": ["demo-install"]
+    },
+    {
+      "id": "long-agency-many-clients",
+      "category": "long",
+      "question": "My agency builds sites for about forty small clients and I need to know which plan covers that many installs before I pay for anything.",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "long-uncovered-question",
+      "category": "long",
+      "question": "When a visitor asks something my pages do not cover, what exactly does the widget say to them, and does the question still reach me somewhere so I can close the gap?",
+      "expectedSourceIds": ["demo-source-proof", "demo-lead-capture"]
+    },
+    {
+      "id": "long-full-signup-path",
+      "category": "long",
+      "question": "Walk me through the whole signup path from clicking start setup to seeing my dashboard, including what changes if I pick the free start instead of a paid plan.",
+      "expectedSourceIds": ["demo-get-started", "demo-pricing"]
+    },
+    {
+      "id": "long-reply-limits",
+      "category": "long",
+      "question": "We get a few hundred visitor chats a month and I need to know how many source-backed replies each plan includes so my answering does not run out half way through the month.",
+      "expectedSourceIds": ["demo-plan-features", "demo-pricing"]
+    },
+    {
+      "id": "long-privacy-subprocessors",
+      "category": "long",
+      "question": "I care a lot about privacy for my European visitors — what exactly does the widget store about them, do any cookies get set, and which third parties get to see their data?",
+      "expectedSourceIds": ["demo-trust-controls"]
+    },
+    {
+      "id": "long-hallucination-proof",
+      "category": "long",
+      "question": "Every chatbot I tried just made up confident answers — show me how this one proves an answer actually came from my own pages before I put it in front of paying customers.",
+      "expectedSourceIds": ["demo-source-proof"]
+    },
+    {
+      "id": "long-lead-follow-up",
+      "category": "long",
+      "question": "If a visitor gives you their email mid-conversation, what lands in my dashboard afterwards, and can my team turn that into a follow-up without starting from scratch?",
+      "expectedSourceIds": ["demo-lead-capture"]
+    },
+    {
+      "id": "long-growth-vs-pro",
+      "category": "long",
+      "question": "I am comparing Growth and Pro for a quickly growing product site and need the concrete bot, page, and reply numbers side by side before picking one.",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "long-cancel-still-active",
+      "category": "long",
+      "question": "I signed up last week and my situation changed — walk me through cancelling my subscription and tell me what happens to my service between now and the next renewal.",
+      "expectedSourceIds": ["demo-cancel-refund"]
+    },
+    {
+      "id": "long-checkout-total-trust",
+      "category": "long",
+      "question": "Before I put a card down I want to be sure the price shown at checkout is the real total in my currency, tax included, and that nothing extra gets charged later.",
+      "expectedSourceIds": ["demo-pricing"]
+    },
+    {
+      "id": "long-hand-built-site",
+      "category": "long",
+      "question": "Our built-from-scratch site has no plugin ecosystem to lean on — confirm the widget still works when the only thing I can do is paste a snippet before the closing body tag.",
+      "expectedSourceIds": ["demo-install", "demo-get-started"]
+    },
+    {
+      "id": "misspelled-what-is",
+      "category": "misspelled",
+      "question": "Wat is Site Rep",
+      "expectedSourceIds": ["demo-what-is"]
+    },
+    {
+      "id": "misspelled-install-wix",
+      "category": "misspelled",
+      "question": "How do i instll the widgit on my Wix site",
+      "expectedSourceIds": ["demo-install"]
+    },
+    {
+      "id": "misspelled-cancel",
+      "category": "misspelled",
+      "question": "can i cancle the subcription when ever i want",
+      "expectedSourceIds": ["demo-cancel-refund"]
+    },
+    {
+      "id": "misspelled-cost",
+      "category": "misspelled",
+      "question": "dowse it cost mony up frunt",
+      "expectedSourceIds": ["demo-pricing"]
+    },
+    {
+      "id": "misspelled-free-trial",
+      "category": "misspelled",
+      "question": "is there a free trail",
+      "expectedSourceIds": ["demo-pricing"]
+    },
+    {
+      "id": "misspelled-branding",
+      "category": "misspelled",
+      "question": "can i remov the brannding from the chatbox",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "misspelled-agency-sites",
+      "category": "misspelled",
+      "question": "how mant clinet sites doas the agansy plan alow",
+      "expectedSourceIds": ["demo-plan-features"]
+    },
+    {
+      "id": "misspelled-lead-dashboard",
+      "category": "misspelled",
+      "question": "duz the convosation get kept in a dashbord for the leads",
+      "expectedSourceIds": ["demo-lead-capture"]
+    },
+    {
+      "id": "misspelled-setup-quickness",
+      "category": "misspelled",
+      "question": "hoe quik is the settup on my websight",
+      "expectedSourceIds": ["demo-get-started"]
+    },
+    {
+      "id": "misspelled-double-charge",
+      "category": "misspelled",
+      "question": "i got charegd twoce, do i get a refuned",
+      "expectedSourceIds": ["demo-cancel-refund"]
+    },
+    {
+      "id": "no-answer-open-api",
+      "category": "no-answer",
+      "question": "Do you offer an open API?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-slack",
+      "category": "no-answer",
+      "question": "Can I connect the widget to Slack?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-french",
+      "category": "no-answer",
+      "question": "Does the widget speak French to visitors?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-sso",
+      "category": "no-answer",
+      "question": "Do you support single sign-on for our support team?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-ab-tests",
+      "category": "no-answer",
+      "question": "Can I run A/B tests on different greeting messages?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-webhooks",
+      "category": "no-answer",
+      "question": "Do you support webhooks for new leads?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-pdf-brochure",
+      "category": "no-answer",
+      "question": "Can the rep read my PDF brochure and answer from it?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-mobile-app",
+      "category": "no-answer",
+      "question": "Is there a mobile app for replying to leads?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-charge-own-customers",
+      "category": "no-answer",
+      "question": "Can I charge my own customers through the widget?",
+      "expectedSourceIds": []
+    },
+    {
+      "id": "no-answer-phone-calls",
+      "category": "no-answer",
+      "question": "Does Site Rep make phone calls for me?",
+      "expectedSourceIds": []
+    }
+  ]
+}
