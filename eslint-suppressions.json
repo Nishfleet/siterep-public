@@ -5,6 +5,9 @@
     }
   },
   "server/crawler.js": {
+    "max-lines": {
+      "count": 1
+    },
     "no-empty": {
       "count": 3
     },
@@ -13,6 +16,9 @@
     }
   },
   "src/App.tsx": {
+    "max-lines": {
+      "count": 1
+    },
     "no-control-regex": {
       "count": 2
     },
@@ -49,6 +55,11 @@
   "tests/honesty-live.check.js": {
     "preserve-caught-error": {
       "count": 2
+    }
+  },
+  "tests/lead-deletion.test.js": {
+    "max-lines": {
+      "count": 1
     }
   },
   "tests/sentry-error-reporting.test.js": {
@@ -88,6 +99,9 @@
     }
   },
   "worker/index.js": {
+    "max-lines": {
+      "count": 1
+    },
     "no-restricted-globals": {
       "count": 3
     },
@@ -96,6 +110,11 @@
     },
     "no-useless-assignment": {
       "count": 11
+    }
+  },
+  "worker/lead-deletion.js": {
+    "max-lines": {
+      "count": 1
     }
   },
   "worker/mcp-events.js": {
