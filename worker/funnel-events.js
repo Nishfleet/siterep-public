@@ -20,8 +20,13 @@ export const FUNNEL_MAX_DAY_RANGE = FUNNEL_RETENTION_DAYS;
 
 const FUNNEL_EVENT_RATE_LIMIT_PER_MINUTE = 600;
 const FUNNEL_EVENT_RATE_LIMIT_MAX_BUCKETS = 1024;
+/** @type {Map<string, number>} */
 const funnelEventRateLimitBuckets = new Map();
 
+/**
+ * @param {string} event
+ * @returns {boolean}
+ */
 export function checkFunnelEventRateLimit(event) {
   const now = Date.now();
   const minute = Math.floor(now / 60000);
@@ -38,6 +43,10 @@ export function checkFunnelEventRateLimit(event) {
 
 const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * @param {unknown} name
+ * @returns {boolean}
+ */
 export function isValidFunnelEventName(name) {
   return typeof name === "string" && FUNNEL_EVENT_NAMES.includes(name);
 }
@@ -49,7 +58,15 @@ export function funnelDayKey(now = new Date()) {
   return `${FUNNEL_EVENT_KEY_PREFIX}${year}-${month}-${day}`;
 }
 
+/**
+ * Drop non-numeric, non-finite or oversized values and keep only the known
+ * funnel event names.
+ *
+ * @param {Record<string, unknown>} aggregate
+ * @returns {Record<string, number>}
+ */
 export function scrubFunnelAggregate(aggregate) {
+  /** @type {Record<string, number>} */
   const scrubbed = {};
   if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return scrubbed;
   for (const event of FUNNEL_EVENT_NAMES) {
@@ -61,12 +78,21 @@ export function scrubFunnelAggregate(aggregate) {
   return scrubbed;
 }
 
-export function bumpFunnelAggregate(aggregate = {}, eventName) {
+/**
+ * @param {Record<string, unknown>} aggregate
+ * @param {string} eventName
+ * @returns {Record<string, number>}
+ */
+export function bumpFunnelAggregate(aggregate, eventName) {
   const next = scrubFunnelAggregate(aggregate);
   next[eventName] = Math.min(Number(next[eventName] || 0) + 1, FUNNEL_MAX_COUNT_PER_EVENT_PER_DAY);
   return next;
 }
 
+/**
+ * @param {unknown} rawBody
+ * @returns {{ ok: false } | { ok: true, event: string }}
+ */
 export function parseFunnelEventPayload(rawBody) {
   try {
     const parsed = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
@@ -78,8 +104,14 @@ export function parseFunnelEventPayload(rawBody) {
   }
 }
 
+/**
+ * @param {KVNamespace} kv
+ * @param {string} eventName
+ * @param {Date} [now]
+ */
 export async function recordFunnelEvent(kv, eventName, now = new Date()) {
   const key = funnelDayKey(now);
+  /** @type {Record<string, unknown>} */
   let aggregate = {};
   let existing = null;
   try {
@@ -99,6 +131,11 @@ export async function recordFunnelEvent(kv, eventName, now = new Date()) {
   return { key, event: eventName, count: next[eventName] };
 }
 
+/**
+ * @param {unknown} rawBody
+ * @param {KVNamespace} [store]
+ * @param {{ now?: Date, rateLimitCheck?: (event: string) => boolean }} [options]
+ */
 export async function collectFunnelEvent(rawBody, store, { now = new Date(), rateLimitCheck = checkFunnelEventRateLimit } = {}) {
   let event = null;
   try {
@@ -113,10 +150,24 @@ export async function collectFunnelEvent(rawBody, store, { now = new Date(), rat
   }
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} fallback
+ * @returns {string}
+ */
 function validDay(value, fallback) {
   return DAY_KEY_PATTERN.test(String(value || "")) ? String(value) : fallback;
 }
 
+/**
+ * Enumerate the day keys covered by the retention window, clamped to
+ * FUNNEL_MAX_DAY_RANGE days ending at `to` (default: today).
+ *
+ * @param {string} [from]
+ * @param {string} [to]
+ * @param {Date} [now]
+ * @returns {{ keys: string[], from: string, to: string }}
+ */
 export function funnelDayRange(from = "", to = "", now = new Date()) {
   const today = funnelDayKey(now).slice(FUNNEL_EVENT_KEY_PREFIX.length);
   const toDay = validDay(to, today);
@@ -131,10 +182,17 @@ export function funnelDayRange(from = "", to = "", now = new Date()) {
   return { keys, from: keys[0]?.slice(FUNNEL_EVENT_KEY_PREFIX.length) || fromDay, to: toDay };
 }
 
+/**
+ * @param {KVNamespace} [kv]
+ * @param {{ from?: string, to?: string }} [options]
+ * @param {Date} [now]
+ */
 export async function readFunnelStats(kv, { from = "", to = "" } = {}, now = new Date()) {
   if (!kv) return { days: {}, totals: {}, from: "", to: "", retentionDays: FUNNEL_RETENTION_DAYS };
   const range = funnelDayRange(from, to, now);
+  /** @type {Record<string, Record<string, number>>} */
   const days = {};
+  /** @type {Record<string, number>} */
   const totals = {};
   for (const key of range.keys) {
     let raw = null;
