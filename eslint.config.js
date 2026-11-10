@@ -52,6 +52,12 @@ export default [
   },
 
   {
+    rules: {
+      "max-lines": ["error", { max: 800 }],
+    },
+  },
+
+  {
     files: APP_CODE,
     plugins: { "no-comments": noComments },
     rules: {
