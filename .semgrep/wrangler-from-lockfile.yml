@@ -1,0 +1,14 @@
+rules:
+  - id: wrangler-version-outside-lockfile
+    languages: [generic]
+    severity: ERROR
+    message: >-
+      Wrangler's version lives in package.json and package-lock.json, where
+      Dependabot updates it. Run `npx wrangler` (the installed copy) and omit
+      wrangler-action's wranglerVersion, so it uses that copy.
+      https://github.com/cloudflare/wrangler-action#configuration
+    pattern-regex: (wranglerVersion\s*:|npx\s+(--yes\s+|-y\s+)?wrangler@)
+    paths:
+      include:
+        - .github/
+        - "*.md"
