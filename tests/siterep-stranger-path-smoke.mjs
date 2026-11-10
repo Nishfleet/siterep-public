@@ -149,17 +149,22 @@ try {
 
   let crawled = 0;
   let lastSources = [];
+  let lastJobs = [];
   const crawlDeadline = Date.now() + 90000;
   while (Date.now() < crawlDeadline) {
     const response = await fetch(`${base}/api/customer/bot?botId=${encodeURIComponent(botId)}`, { headers: auth });
     if (!response.ok) throw new Error(`GET /api/customer/bot failed with ${response.status}.`);
     const payload = await response.json();
     lastSources = (payload.sources || []).map((source) => ({ id: source.id, status: source.status }));
+    lastJobs = (payload.crawlJobs || []).map((job) => ({ status: job.status, error: job.error || "" }));
     crawled = lastSources.filter((source) => source.status === "indexed").length;
-    if (crawled > 0) break;
+    if (crawled > 0 || (lastJobs.length > 0 && lastJobs.every((job) => job.status === "failed"))) break;
     await page.waitForTimeout(1500);
   }
-  assert(crawled > 0, `The sign-up crawl never indexed a source page (last seen: ${JSON.stringify(lastSources)}).`);
+  assert(
+    crawled > 0,
+    `The sign-up crawl never indexed a source page (sources: ${JSON.stringify(lastSources)}, crawl jobs: ${JSON.stringify(lastJobs)}).`,
+  );
   timings.firstCrawlIndexedMs = Date.now() - startedAt;
 
   const idleDeadline = Date.now() + 60000;
@@ -249,7 +254,11 @@ try {
 } catch (error) {
   console.error(String(error && error.message ? error.message : error));
   console.error(JSON.stringify({ ok: false, timingsMs: timings }, null, 2));
-  console.error(workerLog.join("").slice(-2000));
+  const workerProblems = workerLog
+    .join("")
+    .split("\n")
+    .filter((line) => line.trim() && !/^\[wrangler:info\] [A-Z]+ \S+ [23]\d\d /.test(line));
+  console.error(workerProblems.slice(-40).join("\n"));
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();

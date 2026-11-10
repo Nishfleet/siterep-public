@@ -1,3 +1,28 @@
+/**
+ * @typedef {object} PaymentWebhookEvent
+ * @property {string} [eventId]
+ * @property {string} [eventType]
+ * @property {string} [paymentLinkId]
+ * @property {string} [paymentId]
+ * @property {string} [payloadSha256]
+ */
+
+/**
+ * @typedef {object} PaymentLedgerEntry
+ * @property {unknown} [referenceId]
+ * @property {unknown} [eventType]
+ * @property {unknown} [amountSubunits]
+ * @property {unknown} [currency]
+ * @property {unknown} [providerId]
+ * @property {unknown} [eventId]
+ * @property {unknown} [createdAt]
+ */
+
+/**
+ * @param {D1Database} db
+ * @param {PaymentWebhookEvent} event
+ * @returns {Promise<{ duplicate: boolean, eventId: string, retry?: boolean }>}
+ */
 export async function reserveWebhookEvent(db, event) {
   const eventId = event.eventId || `evt_sha_${String(event.payloadSha256 || "").slice(0, 40)}` || `evt_${crypto.randomUUID()}`;
   const existing = await db.prepare(`SELECT event_id, status FROM payment_webhook_events WHERE event_id = ?`).bind(eventId).first();
@@ -19,6 +44,13 @@ export async function reserveWebhookEvent(db, event) {
   return { duplicate: false, eventId };
 }
 
+/**
+ * @param {D1Database} db
+ * @param {string} eventId
+ * @param {string} status
+ * @param {string} [error]
+ * @returns {Promise<void>}
+ */
 export async function markWebhookEvent(db, eventId, status, error = "") {
   if (!eventId) return;
   await db
@@ -27,6 +59,11 @@ export async function markWebhookEvent(db, eventId, status, error = "") {
     .run();
 }
 
+/**
+ * @param {D1Database} db
+ * @param {PaymentLedgerEntry} entry
+ * @returns {D1PreparedStatement}
+ */
 export function paymentLedgerEntryStatement(db, entry) {
   return db
     .prepare(
@@ -36,6 +73,11 @@ export function paymentLedgerEntryStatement(db, entry) {
     .bind(entry.referenceId || "", entry.eventType || "", Number(entry.amountSubunits || 0), entry.currency || "", entry.providerId || "", entry.eventId || "", entry.createdAt || new Date().toISOString());
 }
 
+/**
+ * @param {D1Database} db
+ * @param {PaymentLedgerEntry} entry
+ * @returns {Promise<void>}
+ */
 export async function insertPaymentLedgerEntry(db, entry) {
   await paymentLedgerEntryStatement(db, entry).run();
 }

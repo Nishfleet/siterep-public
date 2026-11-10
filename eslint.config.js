@@ -55,9 +55,29 @@ export default [
     files: APP_CODE,
     plugins: { "no-comments": noComments },
     rules: {
-      "no-comments/disallowComments": ["error", { allow: ["eslint", "global", "nosemgrep", "https:\\/\\/"] }],
+      "no-comments/disallowComments": ["error", { allow: ["eslint", "global", "nosemgrep", "https:\\/\\/", "\\*[\\s\\S]*?@(typedef|property|param|returns|type)"] }],
       "no-inline-comments": ["error", { ignorePattern: "^\\s*nosemgrep:" }],
       "no-warning-comments": ["error", { terms: WORKAROUND_TERMS, location: "anywhere" }],
+    },
+  },
+
+  {
+    files: [...APP_CODE, ...TEST_CODE],
+    rules: { "max-lines": ["error", 800] },
+  },
+
+  {
+    files: ["worker/**/*.js", "server/**/*.js"],
+    ignores: ["server/crawler.js"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message:
+            "Use guardedFetch from server/crawler.js. It blocks private, loopback and metadata hosts on every redirect hop (tests/crawler-ssrf.test.js).",
+        },
+      ],
     },
   },
 

@@ -11,6 +11,16 @@ export const MCP_MAX_DAY_RANGE = MCP_RETENTION_DAYS;
 
 const MCP_DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Day aggregate of MCP event counts, keyed by event name.
+ *
+ * @typedef {Record<string, number>} McpAggregate
+ */
+
+/**
+ * @param {unknown} name
+ * @returns {boolean}
+ */
 export function isValidMcpEventName(name) {
   return typeof name === "string" && MCP_EVENT_NAMES.includes(name);
 }
@@ -22,7 +32,15 @@ export function mcpDayKey(now = new Date()) {
   return `${MCP_EVENT_KEY_PREFIX}${year}-${month}-${day}`;
 }
 
+/**
+ * Drop non-numeric, non-finite or oversized values and keep only the known
+ * MCP event names.
+ *
+ * @param {Record<string, unknown>} aggregate
+ * @returns {McpAggregate}
+ */
 export function scrubMcpAggregate(aggregate) {
+  /** @type {Record<string, number>} */
   const scrubbed = {};
   if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return scrubbed;
   for (const event of MCP_EVENT_NAMES) {
@@ -34,16 +52,29 @@ export function scrubMcpAggregate(aggregate) {
   return scrubbed;
 }
 
-export function bumpMcpAggregate(aggregate = {}, eventName) {
+/**
+ * @param {Record<string, unknown>} aggregate
+ * @param {string} eventName
+ * @returns {McpAggregate}
+ */
+export function bumpMcpAggregate(aggregate, eventName) {
   const next = scrubMcpAggregate(aggregate);
   next[eventName] = Math.min(Number(next[eventName] || 0) + 1, MCP_MAX_COUNT_PER_EVENT_PER_DAY);
   return next;
 }
 
+/**
+ * Persist one MCP event into the current day-aggregate.
+ *
+ * @param {KVNamespace} kv
+ * @param {string} eventName
+ * @param {Date} [now]
+ */
 export async function recordMcpEvent(kv, eventName, now = new Date()) {
   if (!isValidMcpEventName(eventName)) return { event: null, recorded: false };
   const key = mcpDayKey(now);
   try {
+    /** @type {Record<string, unknown>} */
     let aggregate = {};
     let existing = null;
     try {
@@ -66,10 +97,24 @@ export async function recordMcpEvent(kv, eventName, now = new Date()) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} fallback
+ * @returns {string}
+ */
 function validDay(value, fallback) {
   return MCP_DAY_KEY_PATTERN.test(String(value || "")) ? String(value) : fallback;
 }
 
+/**
+ * Enumerate the day keys covered by the retention window, clamped to
+ * MCP_MAX_DAY_RANGE days ending at `to` (default: today).
+ *
+ * @param {string} [from]
+ * @param {string} [to]
+ * @param {Date} [now]
+ * @returns {{ keys: string[], from: string, to: string }}
+ */
 export function mcpDayRange(from = "", to = "", now = new Date()) {
   const today = mcpDayKey(now).slice(MCP_EVENT_KEY_PREFIX.length);
   const toDay = validDay(to, today);
@@ -84,10 +129,17 @@ export function mcpDayRange(from = "", to = "", now = new Date()) {
   return { keys, from: keys[0]?.slice(MCP_EVENT_KEY_PREFIX.length) || fromDay, to: toDay };
 }
 
+/**
+ * @param {KVNamespace} [kv]
+ * @param {{ from?: string, to?: string }} [options]
+ * @param {Date} [now]
+ */
 export async function readMcpStats(kv, { from = "", to = "" } = {}, now = new Date()) {
   if (!kv) return { days: {}, totals: {}, from: "", to: "", retentionDays: MCP_RETENTION_DAYS };
   const range = mcpDayRange(from, to, now);
+  /** @type {Record<string, Record<string, number>>} */
   const days = {};
+  /** @type {Record<string, number>} */
   const totals = {};
   for (const key of range.keys) {
     let raw = null;

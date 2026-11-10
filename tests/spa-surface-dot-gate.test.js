@@ -87,7 +87,7 @@ async function buildWorkerBundle() {
     platform: "neutral",
     write: false,
     outfile: "worker-bundle.mjs",
-    external: ["cloudflare:workers"],
+    external: ["cloudflare:workers", "node:*"],
     logLevel: "silent",
   });
   return out.outputFiles[0].text;
@@ -124,24 +124,19 @@ async function createRuntime() {
   mkdirSync(bundleDir, { recursive: true });
   const bundlePath = join(bundleDir, "worker-bundle.mjs");
   writeFileSync(bundlePath, bundled);
-  const mf = new Miniflare.Miniflare({
+  const mf = new Miniflare.Miniflare(Miniflare.convertV4MiniflareOptions({
     modulesRoot: bundleDir,
     scriptPath: bundlePath,
     modules: [{ type: "ESModule", path: bundlePath }],
     compatibilityDate: "2026-05-03",
+    compatibilityFlags: ["nodejs_als"],
     serviceBindings: { ASSETS: createMockAssets() },
-  });
+  }));
   return mf;
 }
 
-test("runtime: dot-in-path guesses answer HTTP 404 with noindex", async (t) => {
-  let mf;
-  try {
-    mf = await createRuntime();
-  } catch (error) {
-    t.skip(`runtime gate unavailable: ${error && error.message ? error.message : error}`);
-    return;
-  }
+test("runtime: dot-in-path guesses answer HTTP 404 with noindex", async () => {
+  const mf = await createRuntime();
   try {
     for (const path of DOT_GATE_PATHS) {
       const response = await mf.dispatchFetch("https://siterep.net" + path);
@@ -154,14 +149,8 @@ test("runtime: dot-in-path guesses answer HTTP 404 with noindex", async (t) => {
   }
 });
 
-test("runtime: real bundled assets keep returning 200 with their original content type", async (t) => {
-  let mf;
-  try {
-    mf = await createRuntime();
-  } catch (error) {
-    t.skip(`runtime gate unavailable: ${error && error.message ? error.message : error}`);
-    return;
-  }
+test("runtime: real bundled assets keep returning 200 with their original content type", async () => {
+  const mf = await createRuntime();
   try {
     for (const path of REAL_FILE_PATHS) {
       const response = await mf.dispatchFetch("https://siterep.net" + path);
@@ -174,14 +163,8 @@ test("runtime: real bundled assets keep returning 200 with their original conten
   }
 });
 
-test("runtime: SPA surfaces (/, /signin) still serve the shell with 200", async (t) => {
-  let mf;
-  try {
-    mf = await createRuntime();
-  } catch (error) {
-    t.skip(`runtime gate unavailable: ${error && error.message ? error.message : error}`);
-    return;
-  }
+test("runtime: SPA surfaces (/, /signin) still serve the shell with 200", async () => {
+  const mf = await createRuntime();
   try {
     for (const path of ["/", "/signin"]) {
       const response = await mf.dispatchFetch("https://siterep.net" + path);
@@ -194,14 +177,24 @@ test("runtime: SPA surfaces (/, /signin) still serve the shell with 200", async 
   }
 });
 
-test("runtime: dot-less unknown paths still 404 (no regression on the existing gate)", async (t) => {
-  let mf;
+test("runtime: HTML omits Cache-Control no-transform, so Cloudflare can compress it (#185: 30 kB became 156 kB)", async () => {
+  const mf = await createRuntime();
   try {
-    mf = await createRuntime();
-  } catch (error) {
-    t.skip(`runtime gate unavailable: ${error && error.message ? error.message : error}`);
-    return;
+    for (const path of ["/", "/signin"]) {
+      const response = await mf.dispatchFetch("https://siterep.net" + path);
+      assert.doesNotMatch(
+        response.headers.get("cache-control") || "",
+        /\bno-transform\b/i,
+        `${path}: no-transform stops Cloudflare's edge compression, and the home page went from about 30 kB to 156 kB on the wire (#183 added it, #185 removed it).`,
+      );
+    }
+  } finally {
+    await mf.dispose();
   }
+});
+
+test("runtime: dot-less unknown paths still 404 (no regression on the existing gate)", async () => {
+  const mf = await createRuntime();
   try {
     for (const path of ["/foo", "/bar/baz"]) {
       const response = await mf.dispatchFetch("https://siterep.net" + path);

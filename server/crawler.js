@@ -509,18 +509,26 @@ function assertCrawlableTarget(value) {
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECT_HOPS = 5;
 
-async function guardedFetch(url, init = {}) {
+export async function guardedFetch(url, init = {}) {
   let current = url;
+  let { method = "GET", body } = init;
+  const headers = new Headers(init.headers);
+  const follow = (init.redirect ?? "follow") === "follow";
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
     assertCrawlableTarget(current);
-    const response = await fetch(current, { ...init, redirect: "manual" });
-    if (REDIRECT_STATUSES.has(response.status)) {
-      const location = response.headers.get("location");
-      if (!location) throw new Error(`Redirect without location from ${current}`);
-      current = new URL(location, current).toString();
-      continue;
+    const response = await fetch(current, { ...init, method, headers, body, redirect: "manual" });
+    if (!follow || !REDIRECT_STATUSES.has(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) throw new Error(`Redirect without location from ${current}`);
+    const next = new URL(location, current);
+    const upper = method.toUpperCase();
+    if (((response.status === 301 || response.status === 302) && upper === "POST") || (response.status === 303 && upper !== "GET" && upper !== "HEAD")) {
+      method = "GET";
+      body = undefined;
+      for (const name of ["content-encoding", "content-language", "content-location", "content-type"]) headers.delete(name);
     }
-    return response;
+    if (next.origin !== new URL(current).origin) headers.delete("authorization");
+    current = next.toString();
   }
   throw new Error(`Too many redirects fetching ${url}`);
 }

@@ -1,37 +1,40 @@
 name: Deploy production
-# Deploys main once its CI run succeeds (GitHub workflow_run), or by hand (fleet-ops#8615).
+# Deploys each push to main, or by hand (fleet-ops#8615). The merge queue already
+# ran the required CI checks on the exact commit that lands on main, so this
+# workflow does not wait on a second CI run (no workflow_run trigger, zizmor
+# dangerous-triggers). The production environment allows only main.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch: {}
 permissions:
   contents: read
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
 jobs:
   deploy:
-    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 30
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://siterep.net
     steps:
-      # The workflow_run head is trusted: the job's if: runs only for a CI run on a push
-      # to main (workflow_run.event == push), never for a pull_request head (#237).
-      # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-          cache: npm
+          # A job holding deploy secrets never restores the Actions cache (https://docs.zizmor.sh/audits/#cache-poisoning).
+          package-manager-cache: false
       - run: npm ci
       - run: npm run deploy:cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - run: curl -fsS -o /dev/null --retry 5 --retry-all-errors --retry-delay 10 https://siterep.net
+      - name: Production serves this commit with storage ready
+        run: |
+          curl -fsS --retry 5 --retry-all-errors --retry-delay 10 https://siterep.net/api/health/deep -o deep.json
+          jq -e --arg sha "$GITHUB_SHA" '.ok and .release.source == "deploy-stamped" and .release.commit == $sha' deep.json
