@@ -21,6 +21,11 @@
     "worker/overage.js",
     "worker/payment-events.js",
     "worker/demo-sources.js",
-    "worker/lead-deletion.js"
+    "worker/lead-deletion.js",
+    "worker/widget-preview-csp.js",
+    "worker/sentry-route-segments.js",
+    "worker/readiness.js",
+    "worker/mcp-events.js",
+    "worker/funnel-events.js"
   ]
 }
