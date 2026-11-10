@@ -14741,8 +14741,6 @@ function normalizeSourceUrl(value, siteUrl) {
   }
 }
 
-
-
 function slug(value) {
   return String(value)
     .toLowerCase()
