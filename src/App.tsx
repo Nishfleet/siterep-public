@@ -1281,6 +1281,7 @@ type BotState = {
   allowedOrigins: string[];
   widgetSettings: WidgetSettings;
   leadRules?: LeadRules;
+  leadRetentionDays?: number;
   integrationSettings?: IntegrationSettings;
   integrationReadiness?: IntegrationReadiness;
   actionQueue?: ActionQueueItem[];
@@ -1334,6 +1335,12 @@ const defaultWidgetSettings: WidgetSettings = {
   hotkey: "",
   suggestedQuestions: ["What does it cost?", "How do I install it?", "Can it answer with sources?"],
 };
+const leadRetentionOptions = [
+  { days: 30, label: "30 days" },
+  { days: 90, label: "3 months" },
+  { days: 180, label: "6 months" },
+  { days: 365, label: "12 months" },
+];
 const PUBLIC_DEMO_BOT_ID = "site-rep-demo";
 const PUBLIC_DEMO_PUBLIC_KEY = "sr_demo_source_backed_widget_key";
 const publicDemoQuestions = [
@@ -1528,6 +1535,9 @@ function App() {
   const [leadNotice, setLeadNotice] = useState("");
   const [privacyRequests, setPrivacyRequests] = useState<PrivacyRequest[]>([]);
   const [privacyRequestLeadChoice, setPrivacyRequestLeadChoice] = useState<Record<string, string>>({});
+  const [leadRetentionDays, setLeadRetentionDays] = useState(365);
+  const [leadRetentionSaving, setLeadRetentionSaving] = useState(false);
+  const [leadRetentionNotice, setLeadRetentionNotice] = useState("");
   const [publicKey, setPublicKey] = useState("");
   const [ownerAccessKey, setOwnerAccessKey] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -1864,6 +1874,7 @@ function App() {
   const readinessScore = launchChecks.filter((item) => item.done).length;
   const currentBotSummary = botRegistry.find((bot) => bot.botId === botId);
   const isPublicDemo = botId === PUBLIC_DEMO_BOT_ID;
+  const leadRetentionLabel = leadRetentionOptions.find((option) => option.days === leadRetentionDays)?.label || `${leadRetentionDays} days`;
   const activePricingPlan = plans.find((plan) => plan.name === (billing?.plan || currentBotSummary?.plan || "Starter")) || plans[0];
   const pendingRequests = signupRequests.filter((request) => request.status === "new");
   const report = launchReport || currentBotSummary?.launchReport || null;
@@ -3514,6 +3525,25 @@ function App() {
     }
   }
 
+  async function saveLeadRetention(nextDays: number) {
+    setLeadRetentionSaving(true);
+    setLeadRetentionNotice("");
+    try {
+      const bot = await api<BotState>("/api/privacy/retention-settings", {
+        method: "POST",
+        body: JSON.stringify({ botId, retentionDays: nextDays }),
+      });
+      applyBotState(bot);
+      await refreshBotRegistry();
+      const label = leadRetentionOptions.find((option) => option.days === nextDays)?.label || `${nextDays} days`;
+      setLeadRetentionNotice(`Saved. Visitor leads and conversations are deleted ${label} after the visitor's last message.`);
+    } catch (error) {
+      setLeadRetentionNotice(error instanceof Error ? error.message : "Could not save the retention setting.");
+    } finally {
+      setLeadRetentionSaving(false);
+    }
+  }
+
   async function updateBotStatus(nextStatus: "draft" | "live" | "paused") {
     setBotOpsNotice("");
     try {
@@ -4528,6 +4558,8 @@ function App() {
     setTickets(bot.tickets || []);
     setNotifications(bot.notifications || []);
     setPrivacyRequests(bot.privacyRequests || []);
+    setLeadRetentionDays(Number(bot.leadRetentionDays) || 365);
+    setLeadRetentionNotice("");
     setBilling(bot.billing || null);
     setCommandCenter(bot.commandCenter || null);
     setEvents(bot.events || []);
@@ -6765,6 +6797,29 @@ function App() {
               ) : (
                 <p>No leads yet.</p>
               )}
+            </div>
+            <div className="source-sync-card" aria-label="Lead and conversation retention">
+              <div>
+                <strong>Lead and conversation retention</strong>
+                <span>
+                  Visitor leads and conversations are deleted {leadRetentionLabel} after the visitor&apos;s last message. The default is 12 months and you can choose a shorter period. Payment and invoice records are not affected.
+                </span>
+              </div>
+              <div className="source-sync-options" role="group" aria-label="Choose lead and conversation retention">
+                {leadRetentionOptions.map((option) => (
+                  <Button
+                    key={option.days}
+                    type="button"
+                    className={leadRetentionDays === option.days ? "selected" : ""}
+                    aria-pressed={leadRetentionDays === option.days}
+                    disabled={isPublicDemo || leadRetentionSaving || !botId}
+                    onClick={() => saveLeadRetention(option.days)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+              {leadRetentionNotice ? <p role="status">{leadRetentionNotice}</p> : null}
             </div>
           </div>
 
