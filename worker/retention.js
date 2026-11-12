@@ -2,7 +2,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const LEAD_RETENTION_DEFAULT_DAYS = 365;
 export const LEAD_RETENTION_MIN_DAYS = 1;
-export const LEAD_RETENTION_OPTIONS = Object.freeze([30, 90, 180, 365]);
 export const LEAD_RETENTION_CRON = "17 4 * * *";
 
 /**
