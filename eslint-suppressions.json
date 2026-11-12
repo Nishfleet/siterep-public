@@ -37,11 +37,6 @@
       "count": 1
     }
   },
-  "tests/agent-brief.test.js": {
-    "no-regex-spaces": {
-      "count": 1
-    }
-  },
   "tests/demo-refusal-evals.test.js": {
     "no-unused-vars": {
       "count": 1
@@ -50,11 +45,6 @@
   "tests/funnel-events.test.js": {
     "no-unused-vars": {
       "count": 1
-    }
-  },
-  "tests/honesty-live.check.js": {
-    "preserve-caught-error": {
-      "count": 2
     }
   },
   "tests/lead-deletion.test.js": {
