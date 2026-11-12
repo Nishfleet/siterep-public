@@ -20,16 +20,31 @@ import { reportError, sentryOptions } from "./sentry.js";
 import { widgetPreviewCsp } from "./widget-preview-csp.js";
 import {
   LEAD_DELETION_SCOPES,
+  cloneTargets,
   deleteLeadLedgerRows,
+  emptyLeadDeletionTargets,
   eraseLeadFromBot,
   eraseLeadFromStoreSnapshot,
   expandTargetsInBot,
   expandTargetsInLedger,
   leadDeletionTargets,
+  leadRetentionTargets,
+  mergeLeadDeletionTargets,
   normalizeLeadEmail,
+  recordVisitorActivityMs,
   resolveSessions,
   targetsFoundAnything,
 } from "./lead-deletion.js";
+import {
+  LEAD_RETENTION_CRON,
+  LEAD_RETENTION_DEFAULT_DAYS,
+  LEAD_RETENTION_MIN_DAYS,
+  LEAD_RETENTION_OPTIONS,
+  isValidLeadRetentionDays,
+  leadRetentionCutoffMs,
+  leadRetentionPeriodLabel,
+  sanitizeLeadRetentionDays,
+} from "./retention.js";
 import {
   answeringMode,
   defaultOverageSettings,
@@ -312,6 +327,12 @@ These notes describe the current Site Rep product behavior and should not be rea
 - Lead and visitor deletion requests are completed through the same self-serve path. A completed request keeps the lead id and a salted one-way hash of the visitor's email, never the address itself. Whole-account deletion requests can still be opened from the customer dashboard and are tracked for review. Export requests can use the dashboard exports or hello@siterep.net.
 - Deletion cannot recall copies already delivered outside Site Rep, such as lead emails already sent to the team or payloads already sent to a configured webhook.
 
+## How long visitor data is kept
+
+- Leads and their conversations are deleted automatically 12 months after the visitor's last message. A workspace owner can choose a shorter retention period in the dashboard.
+- The daily retention purge removes the same visitor records from the live store, the record ledger, Site Rep's KV recovery mirror, and daily backups. Payment and invoice records are not affected by this visitor-data retention period.
+- Cloudflare point-in-time recovery can still restore an earlier state for up to 30 days, as described above. A recovery copy that cannot be scrubbed expires within that window.
+
 ## Visitor-facing behavior
 
 Site Rep should make the data boundary visible in the answer flow. If a visitor asks a question that the approved
@@ -364,6 +385,7 @@ This page explains what Site Rep does today, how customer and visitor data is ha
 - Customer dashboard: leads, conversations, unknown questions, source gaps, install health, exports, notifications, and deletion-review requests are visible in the private dashboard.
 - Self-serve lead deletion: workspace owners delete a visitor's lead, conversations, and related follow-up records from the dashboard or the owner API, and lead deletion requests complete through the same path, with an audit entry that holds no visitor details. Live data and Site Rep's KV backups are scrubbed at once, and the result says so if a backup could not be checked; Cloudflare point-in-time recovery copies keep earlier states for up to 30 days. Copies already sent outside Site Rep, such as lead emails and webhooks, are not recalled. Whole-account deletion requests are still tracked for review.
 - Visitor data minimization: visitor records store only the question and any name, email, or need the visitor chooses to submit. Visitor IP addresses are used only transiently in memory for rate limiting and are not written to conversations or leads.
+- Visitor data retention: leads and their conversations are deleted automatically 12 months after the visitor's last message, and a workspace owner can choose a shorter period in the dashboard. The daily purge covers the live store, record ledger, KV mirror, and daily backups. Payment and invoice records are not affected.
 - No tracking cookies: the chat widget sets no cookies and no persistent local storage; it uses session-only storage (cleared when the tab closes) for a random session id.
 - Access control: admin routes require server-side admin access, customer routes use scoped session access, and public widget routes do not return private access material.
 - Paid unlock: Dodo and Razorpay paths unlock customer access only after server-side payment verification.
@@ -380,13 +402,13 @@ Data is processed by Cloudflare (Workers, Workers AI, D1, R2, KV), Dodo Payments
 - Site Rep does not currently include SOC 2 Type II, HIPAA, BAA, zero-retention, or no-training-on-data certification.
 - Site Rep focuses on source-backed website chat, lead capture, and private follow-up queues. Full helpdesk replacement, native CRM sync, and automated execution are not included in the public self-serve product.
 - Site Rep does not promise guaranteed conversion lift, guaranteed setup time, or enterprise omnichannel coverage.
-- Larger legal, regional privacy, retention, and enterprise compliance requests need written review before purchase.
+- Larger legal, regional privacy, and enterprise compliance requests need written review before purchase.
 
 ## Data map
 
 - Approved website sources: used to answer visitors with citations; customers can edit, replace, audit, export, and roll back supported snapshots.
-- Visitor conversations and feedback: used for team follow-up, source repair, lead follow-up, and quality checks.
-- Lead details: submitted by visitors for human follow-up; exported privately for the customer; deleted on request by the workspace owner.
+- Visitor conversations and feedback: used for team follow-up, source repair, lead follow-up, and quality checks; deleted automatically 12 months after the visitor's last message, or sooner when the workspace owner chooses a shorter retention period.
+- Lead details: submitted by visitors for human follow-up; exported privately for the customer; deleted on request by the workspace owner or automatically after the retention period.
 - Payment records: used only to verify checkout, activation, billing portal access, renewals, and plan status.
 - Operational events: install checks, source health, quota warnings, notification receipts, and error visibility for reliability work.
 - Error reports: scrubbed reports sent to Sentry so service errors can be found and fixed; visitor text, emails, bodies, query strings, cookies, and headers are removed first, and Sentry deletes each report after 30 days.
@@ -1685,6 +1707,11 @@ export class CiteRepCoordinator extends DurableObject {
         return response.toResponse();
       }
 
+      if (request.method === "POST" && url.pathname === "/__internal/scheduled/lead-retention-purge") {
+        sendJson(response, 200, await purgeExpiredLeadData(this.env));
+        return response.toResponse();
+      }
+
       if (request.method === "POST" && url.pathname === "/__internal/scheduled/freshness-pick") {
         const store = await this.readStore();
         const week = 7 * 24 * 60 * 60 * 1000;
@@ -2521,6 +2548,7 @@ function ensureBot(store, botId) {
       installs: [],
       allowedOrigins: [],
       routingProfile: "frugal",
+      leadRetentionDays: LEAD_RETENTION_DEFAULT_DAYS,
       abuseProtection: defaultAbuseProtectionSettings(),
       qualityRun: null,
       previousQualityRun: null,
@@ -3600,6 +3628,11 @@ function publicTrustStatusPayload(env = activeEnv) {
         evidence: "Visitor records store only the question and any name/email/need the visitor chooses to submit. Visitor IP addresses are used only transiently in memory for rate limiting and abuse prevention; they are not written to conversations or leads.",
       },
       {
+        area: "Visitor data retention",
+        status: "confirmed",
+        evidence: "Leads and their conversations are deleted automatically 12 months after the visitor's last message. A workspace owner can choose a shorter period in the dashboard. The scheduled purge covers the live store, record ledger, KV mirror, and daily backups; payment and invoice records are not affected.",
+      },
+      {
         area: "No tracking cookies",
         status: "confirmed",
         evidence: "The chat widget sets no cookies and no persistent local storage. It uses session-only storage (cleared when the browser tab closes) for a random session id.",
@@ -3651,8 +3684,14 @@ function publicTrustStatusPayload(env = activeEnv) {
       {
 	        data: "Lead details",
 	        purpose: "Let the site team follow up with a visitor who asked for help.",
-	        customerControl: "Review, status, notes, follow-up dates, and CSV export.",
-	        ownerControl: "Review, status, notes, follow-up dates, and CSV export.",
+	        customerControl: "Review, status, notes, follow-up dates, and CSV export; delete on request or automatically after the retention period.",
+	        ownerControl: "Review, status, notes, follow-up dates, and CSV export; delete on request or automatically after the retention period.",
+	      },
+      {
+	        data: "Retention period",
+	        purpose: "Limit how long visitor leads and conversations are kept after the visitor's last message.",
+	        customerControl: "Use the 12-month default or choose a shorter period in the dashboard.",
+	        ownerControl: "Use the 12-month default or choose a shorter period in the dashboard.",
 	      },
       {
 	        data: "Payment and billing records",
@@ -4134,6 +4173,9 @@ async function handleScheduled(event, env) {
   await runScheduledTask("notifications", () => postAdminScheduledPath("/api/internal/notifications/process", event, env));
   await runScheduledTask("account-rbac-backfill", () => postCoordinatorScheduledPath("/__internal/scheduled/account-rbac-backfill", event, env));
   await runScheduledTask("source-auto-sync", () => postCoordinatorScheduledPath("/__internal/scheduled/source-auto-sync", event, env));
+  if (event?.cron === LEAD_RETENTION_CRON) {
+    await runScheduledTask("lead-retention-purge", () => postCoordinatorScheduledPath("/__internal/scheduled/lead-retention-purge", event, env));
+  }
   await runScheduledTask("store-backup", () => postCoordinatorScheduledPath("/__internal/scheduled/store-backup", event, env));
   await runScheduledTask("source-freshness-audit", () => runWorkerFreshnessAudit(env));
 }
@@ -8658,6 +8700,30 @@ async function handleApi(request, response, url) {
     return;
   }
 
+  if (request.method === "POST" && (url.pathname === "/api/privacy/retention-settings" || url.pathname === "/api/retention/settings")) {
+    const body = await readJson(request);
+    const botId = privacyRouteBotId(request, url, body);
+    if (!botId) {
+      sendJson(response, 400, { error: "A bot id is required." });
+      return;
+    }
+    const requested = body.retentionDays ?? body.leadRetentionDays ?? body.days ?? body.privacyRetentionDays ?? body.retention?.days ?? body.privacy?.retentionDays;
+    if (requested !== undefined && !isValidLeadRetentionDays(requested)) {
+      sendJson(response, 400, { error: `Retention must be a whole number from ${LEAD_RETENTION_MIN_DAYS} to ${LEAD_RETENTION_DEFAULT_DAYS} days.` });
+      return;
+    }
+    const bot = await updateStore((store) => {
+      const record = ensureBot(store, botId);
+      const days = sanitizeLeadRetentionDays(requested ?? record.leadRetentionDays);
+      record.leadRetentionDays = days;
+      record.updatedAt = new Date().toISOString();
+      pushEvent(record, "privacy", "Lead retention updated", `Visitor leads and conversations are deleted ${leadRetentionPeriodLabel(days)} after the visitor's last message. Payment and invoice records are not affected.`, { days });
+      return record;
+    });
+    sendJson(response, 200, toPublicBot(bot));
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/privacy/deletion-request") {
     const body = await readJson(request);
     const botId = privacyRouteBotId(request, url, body);
@@ -9453,6 +9519,8 @@ function isOwnerAllowedRoute(method, pathname) {
       "/api/actions/status",
       "/api/privacy/deletion-request",
       "/api/privacy/deletion-request/complete",
+      "/api/privacy/retention-settings",
+      "/api/retention/settings",
       "/api/billing/dodo/portal",
       "/api/api-keys",
       "/api/api-keys/revoke",
@@ -9544,6 +9612,7 @@ function timingSafeEqual(value, expected) {
 
 function toPublicBot(bot) {
   const launchReport = buildLaunchReport(bot);
+  const leadRetentionDays = sanitizeLeadRetentionDays(bot.leadRetentionDays);
   return {
     botId: bot.botId,
     publicKey: bot.publicKey,
@@ -9576,6 +9645,15 @@ function toPublicBot(bot) {
     allowedOrigins: bot.allowedOrigins || [],
 	    widgetSettings: sanitizeWidgetSettings({}, bot.widgetSettings),
     leadRules: publicLeadRulesFor(bot),
+    leadRetentionDays,
+    retentionDays: leadRetentionDays,
+    retention: {
+      leadRetentionDays,
+      defaultDays: LEAD_RETENTION_DEFAULT_DAYS,
+      maxDays: LEAD_RETENTION_DEFAULT_DAYS,
+      optionsDays: [...LEAD_RETENTION_OPTIONS],
+      periodLabel: leadRetentionPeriodLabel(leadRetentionDays),
+    },
     integrationSettings: publicIntegrationSettingsFor(bot),
     integrationReadiness: integrationReadinessFor(bot),
     actionCatalog: ACTION_CATALOG,
@@ -9638,6 +9716,7 @@ function toBotSummary(bot) {
     lifecycleStatus: bot.lifecycleStatus || "draft",
     publishBlockers: publicLaunchBlockers(bot),
     routingProfile: normalizeRoutingProfile(bot.routingProfile),
+    leadRetentionDays: sanitizeLeadRetentionDays(bot.leadRetentionDays),
     siteUrl: bot.siteUrl || "",
     sourceCount: (bot.sources || []).length,
     leadCount: (bot.leads || []).length,
@@ -10671,6 +10750,220 @@ class AmbiguousLeadDeletionError extends Error {
     super(AMBIGUOUS_LEAD_WRITE_ERROR);
     this.name = "AmbiguousLeadDeletionError";
   }
+}
+
+function isRetentionEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function ledgerConversationSession(row) {
+  const conversation = parseJsonObject(row?.conversation_json);
+  return String(conversation.sessionId || conversation.visitor?.sessionId || "").trim();
+}
+
+function ledgerVisitorActivityMs(row, column) {
+  return recordVisitorActivityMs(parseJsonObject(row?.[column]));
+}
+
+function recentStoreRetentionTargets(bot, cutoffMs) {
+  const recent = { emails: new Set(), leadIds: new Set(), conversationIds: new Set(), sessionIds: new Set() };
+  for (const lead of Array.isArray(bot?.leads) ? bot.leads : []) {
+    if (recordVisitorActivityMs(lead) < cutoffMs) continue;
+    const leadId = String(lead.id || "").trim();
+    const email = normalizeLeadEmail(lead.email);
+    const conversationId = String(lead.conversationId || "").trim();
+    if (leadId) recent.leadIds.add(leadId);
+    if (email) recent.emails.add(email);
+    if (conversationId) recent.conversationIds.add(conversationId);
+  }
+  for (const conversation of Array.isArray(bot?.conversations) ? bot.conversations : []) {
+    if (recordVisitorActivityMs(conversation) < cutoffMs) continue;
+    const conversationId = String(conversation.id || "").trim();
+    const email = normalizeLeadEmail(conversation.visitor?.email);
+    const sessionId = String(conversation.sessionId || conversation.visitor?.sessionId || "").trim();
+    if (conversationId) recent.conversationIds.add(conversationId);
+    if (email) recent.emails.add(email);
+    if (sessionId) recent.sessionIds.add(sessionId);
+  }
+  return recent;
+}
+
+async function expiredLedgerRetentionTargets(db, botId, cutoffIso, storeRecent = null) {
+  const cutoffMs = Date.parse(cutoffIso);
+  const targets = emptyLeadDeletionTargets();
+  const protectedEmails = new Set(storeRecent?.emails || []);
+  const protectedLeadIds = new Set(storeRecent?.leadIds || []);
+  const protectedConversationIds = new Set(storeRecent?.conversationIds || []);
+  const protectedSessions = new Set(storeRecent?.sessionIds || []);
+  const recentExpiredLeads = [];
+  const recentExpiredConversations = [];
+
+  const recentLeads = (await db
+    .prepare("SELECT lead_id, email, conversation_id, lead_json FROM siterep_leads WHERE bot_id = ? AND updated_at >= ?")
+    .bind(botId, cutoffIso)
+    .all()).results || [];
+  const recentConversations = (await db
+    .prepare("SELECT conversation_id, visitor_email, conversation_json FROM siterep_conversations WHERE bot_id = ? AND updated_at >= ?")
+    .bind(botId, cutoffIso)
+    .all()).results || [];
+
+  for (const row of recentLeads) {
+    const leadId = String(row.lead_id || "").trim();
+    const email = normalizeLeadEmail(row.email);
+    const conversationId = String(row.conversation_id || "").trim();
+    const activity = ledgerVisitorActivityMs(row, "lead_json");
+    if (activity > 0 && activity < cutoffMs) {
+      recentExpiredLeads.push(row);
+      continue;
+    }
+    if (leadId) protectedLeadIds.add(leadId);
+    if (email) protectedEmails.add(email);
+    if (conversationId) protectedConversationIds.add(conversationId);
+  }
+  for (const row of recentConversations) {
+    const conversationId = String(row.conversation_id || "").trim();
+    const email = normalizeLeadEmail(row.visitor_email);
+    const sessionId = ledgerConversationSession(row);
+    const activity = ledgerVisitorActivityMs(row, "conversation_json");
+    if (activity > 0 && activity < cutoffMs) {
+      recentExpiredConversations.push(row);
+      continue;
+    }
+    if (conversationId) protectedConversationIds.add(conversationId);
+    if (email) protectedEmails.add(email);
+    if (sessionId) protectedSessions.add(sessionId);
+  }
+
+  const addExpiredLead = (row) => {
+    const leadId = String(row.lead_id || "").trim();
+    const email = normalizeLeadEmail(row.email);
+    const conversationId = String(row.conversation_id || "").trim();
+    if (!leadId) return;
+    if (protectedLeadIds.has(leadId) || protectedEmails.has(email) || protectedConversationIds.has(conversationId)) return;
+    targets.leadIds.add(leadId);
+    if (isRetentionEmail(email)) targets.emails.add(email);
+    if (conversationId) targets.conversationIds.add(conversationId);
+  };
+  const addExpiredConversation = (row) => {
+    const conversationId = String(row.conversation_id || "").trim();
+    const email = normalizeLeadEmail(row.visitor_email);
+    const sessionId = ledgerConversationSession(row);
+    if (!conversationId) return;
+    if (protectedConversationIds.has(conversationId) || protectedSessions.has(sessionId) || protectedEmails.has(email)) return;
+    targets.conversationIds.add(conversationId);
+    if (sessionId) targets.sessionIds.add(sessionId);
+    if (isRetentionEmail(email)) targets.emails.add(email);
+  };
+
+  const expiredLeads = (await db
+    .prepare("SELECT lead_id, email, conversation_id FROM siterep_leads WHERE bot_id = ? AND updated_at < ?")
+    .bind(botId, cutoffIso)
+    .all()).results || [];
+  const expiredConversations = (await db
+    .prepare("SELECT conversation_id, visitor_email, conversation_json FROM siterep_conversations WHERE bot_id = ? AND updated_at < ?")
+    .bind(botId, cutoffIso)
+    .all()).results || [];
+
+  for (const row of [...recentExpiredLeads, ...expiredLeads]) addExpiredLead(row);
+  for (const row of [...recentExpiredConversations, ...expiredConversations]) addExpiredConversation(row);
+
+  return { targets, protectedEmails, protectedLeadIds, protectedConversationIds };
+}
+
+export async function purgeExpiredLeadData(env = activeEnv) {
+  const summary = {
+    ok: true,
+    startedAt: new Date().toISOString(),
+    bots: 0,
+    purgedBots: 0,
+    leads: 0,
+    conversations: 0,
+    ledgerLeads: 0,
+    ledgerConversations: 0,
+    snapshots: 0,
+    unreadableSnapshots: 0,
+    uncheckedCopies: false,
+    errors: 0,
+  };
+  const store = await readStore();
+  const db = recordLedgerDb(env);
+  if (db) {
+    try {
+      await ensureRecordLedgerSchema(env);
+    } catch (error) {
+      summary.errors += 1;
+      console.warn(JSON.stringify({ type: "lead_retention_schema_failed", ...safeErrorFields(error) }));
+    }
+  }
+
+  const plans = [];
+  for (const bot of Object.values(store.bots || {})) {
+    const botId = String(bot?.botId || "").trim();
+    if (!botId) continue;
+    const days = sanitizeLeadRetentionDays(bot.leadRetentionDays);
+    const cutoffMs = leadRetentionCutoffMs(days);
+    const storeTargets = leadRetentionTargets(bot, cutoffMs);
+    plans.push({
+      botId,
+      days,
+      cutoffMs,
+      cutoffIso: new Date(cutoffMs).toISOString(),
+      storeTargets,
+      storeRecent: recentStoreRetentionTargets(bot, cutoffMs),
+      scrubTargets: cloneTargets(storeTargets),
+    });
+  }
+  summary.bots = plans.length;
+
+  for (const plan of plans) {
+    try {
+      let ledgerTargets = null;
+      if (db) {
+        const expired = await expiredLedgerRetentionTargets(db, plan.botId, plan.cutoffIso, plan.storeRecent);
+        mergeLeadDeletionTargets(plan.scrubTargets, expired.targets);
+        ledgerTargets = cloneTargets(plan.scrubTargets);
+        for (const email of expired.protectedEmails) ledgerTargets.emails.delete(email);
+        for (const leadId of expired.protectedLeadIds) ledgerTargets.leadIds.delete(leadId);
+        for (const conversationId of expired.protectedConversationIds) ledgerTargets.conversationIds.delete(conversationId);
+        const removed = await deleteLeadLedgerRows(db, plan.botId, ledgerTargets);
+        summary.ledgerLeads += removed.leads;
+        summary.ledgerConversations += removed.conversations;
+      }
+      const kv = await eraseLeadFromKvSnapshots(plan.botId, plan.scrubTargets, env);
+      summary.snapshots += kv.scrubbed;
+      summary.unreadableSnapshots += kv.unreadable.length;
+      summary.uncheckedCopies = summary.uncheckedCopies || kv.unchecked;
+    } catch (error) {
+      summary.errors += 1;
+      console.warn(JSON.stringify({ type: "lead_retention_bot_failed", botId: plan.botId, ...safeErrorFields(error) }));
+    }
+  }
+
+  const updated = await updateStore((nextStore) => {
+    for (const plan of plans) {
+      const record = nextStore.bots?.[plan.botId];
+      if (!record) continue;
+      const currentTargets = leadRetentionTargets(record, plan.cutoffMs);
+      const counts = eraseLeadFromBot(record, currentTargets, { followSessions: false });
+      const removed = counts.leads + counts.conversations;
+      if (!removed) continue;
+      summary.purgedBots += 1;
+      summary.leads += counts.leads;
+      summary.conversations += counts.conversations;
+      record.updatedAt = new Date().toISOString();
+      pushEvent(
+        record,
+        "privacy",
+        "Expired visitor data deleted",
+        `${removed} lead or conversation record${removed === 1 ? "" : "s"} passed the ${leadRetentionPeriodLabel(plan.days)} retention period and were deleted. Payment and invoice records are unaffected.`,
+        { days: plan.days, cutoff: plan.cutoffIso, leads: counts.leads, conversations: counts.conversations },
+      );
+    }
+    return summary;
+  }, { forceMirror: true });
+  const result = updated || summary;
+  result.ok = result.errors === 0 && !result.uncheckedCopies && result.unreadableSnapshots === 0;
+  return result;
 }
 
 async function deleteLeadData(botId, input = {}, options = {}) {
