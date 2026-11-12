@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 
 registerHooks({
@@ -17,7 +16,8 @@ registerHooks({
   },
 });
 
-const { CiteRepCoordinator } = await import("../worker/index.js");
+const { CiteRepCoordinator, default: worker } = await import("../worker/index.js");
+const { LEAD_RETENTION_CRON } = await import("../worker/retention.js");
 
 let DatabaseSync = null;
 try {
@@ -184,10 +184,10 @@ function harness({ oldDays = 400 } = {}) {
       new Request("https://siterep.test/__internal/scheduled/lead-retention-purge", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" },
-        body: JSON.stringify({ cron: "17 4 * * *" }),
+        body: JSON.stringify({ cron: LEAD_RETENTION_CRON }),
       }),
     );
-  return { storage, kv, d1, backup, backupKey, botRecord, post, get, purge };
+  return { coordinator, storage, kv, d1, backup, backupKey, botRecord, post, get, purge };
 }
 
 async function seedLedger(h) {
@@ -252,8 +252,8 @@ test("a workspace can shorten retention and the next daily purge uses it", async
   assert.equal(saved.status, 200);
   const savedBot = await saved.json();
   assert.equal(savedBot.leadRetentionDays, 30);
-  assert.equal(savedBot.retention.defaultDays, 365);
-  assert.deepEqual(savedBot.retention.optionsDays, [30, 90, 180, 365]);
+  assert.equal(savedBot.retentionDays, undefined, "no duplicate retention field on the public bot");
+  assert.equal(savedBot.retention, undefined, "no duplicate retention object on the public bot");
 
   const response = await h.purge();
   assert.equal(response.status, 200);
@@ -274,13 +274,35 @@ test("the retention setting accepts the default or a shorter period, never a lon
   assert.equal((await restored.json()).leadRetentionDays, 365);
 });
 
-test("privacy, trust, and the scheduled trigger state the retention policy", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const wrangler = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
-  assert.match(worker, /Leads and their conversations are deleted automatically 12 months after the visitor's last message/);
-  assert.match(worker, /Payment and invoice records are not affected/);
-  assert.match(worker, /area: "Visitor data retention"/);
-  assert.match(worker, /leadRetentionDays/);
-  assert.match(worker, /lead-retention-purge/);
-  assert.match(wrangler, /"17 4 \* \* \*"/);
+function scheduledEnv(h) {
+  return {
+    CITEREP_ADMIN_KEY: "test-admin-key",
+    CITEREP_STORE: h.kv,
+    ...(h.d1 ? { SITEREP_PAYMENTS_DB: h.d1 } : {}),
+    CITEREP_COORDINATOR: { getByName: () => ({ fetch: (...args) => h.coordinator.fetch(...args) }) },
+  };
+}
+
+function scheduledCtx() {
+  const pending = [];
+  return {
+    waitUntil: (promise) => pending.push(promise),
+    passThroughOnException() {},
+    settle: () => Promise.allSettled(pending),
+  };
+}
+
+test("the retention cron triggers the purge through the scheduled handler, and the trust payload states the policy", async () => {
+  const h = harness();
+  await worker.scheduled({ cron: LEAD_RETENTION_CRON, scheduledTime: Date.now() }, scheduledEnv(h), scheduledCtx());
+  assert.deepEqual(h.botRecord().leads.map((lead) => lead.email), [RECENT_EMAIL], "the retention cron runs the purge");
+
+  const idle = harness();
+  await worker.scheduled({ cron: "0 9 * * 1", scheduledTime: Date.now() }, scheduledEnv(idle), scheduledCtx());
+  assert.equal(idle.botRecord().leads.length, 3, "a non-retention cron must not purge");
+
+  const trust = await (await worker.fetch(new Request("https://siterep.net/api/public/trust-status"), scheduledEnv(h), scheduledCtx())).json();
+  const retentionControl = (trust.confirmedControls || []).find((control) => control.area === "Visitor data retention");
+  assert.match(retentionControl?.evidence || "", /deleted automatically 12 months after the visitor's last message/);
+  assert.match(retentionControl?.evidence || "", /payment and invoice records are not affected/i);
 });

@@ -1282,14 +1282,6 @@ type BotState = {
   widgetSettings: WidgetSettings;
   leadRules?: LeadRules;
   leadRetentionDays?: number;
-  retentionDays?: number;
-  retention?: {
-    leadRetentionDays: number;
-    defaultDays: number;
-    maxDays: number;
-    optionsDays: number[];
-    periodLabel: string;
-  };
   integrationSettings?: IntegrationSettings;
   integrationReadiness?: IntegrationReadiness;
   actionQueue?: ActionQueueItem[];
@@ -4566,7 +4558,7 @@ function App() {
     setTickets(bot.tickets || []);
     setNotifications(bot.notifications || []);
     setPrivacyRequests(bot.privacyRequests || []);
-    setLeadRetentionDays(Number(bot.leadRetentionDays || bot.retention?.leadRetentionDays) || 365);
+    setLeadRetentionDays(Number(bot.leadRetentionDays) || 365);
     setLeadRetentionNotice("");
     setBilling(bot.billing || null);
     setCommandCenter(bot.commandCenter || null);

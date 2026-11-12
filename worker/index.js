@@ -39,7 +39,6 @@ import {
   LEAD_RETENTION_CRON,
   LEAD_RETENTION_DEFAULT_DAYS,
   LEAD_RETENTION_MIN_DAYS,
-  LEAD_RETENTION_OPTIONS,
   isValidLeadRetentionDays,
   leadRetentionCutoffMs,
   leadRetentionPeriodLabel,
@@ -8700,14 +8699,14 @@ async function handleApi(request, response, url) {
     return;
   }
 
-  if (request.method === "POST" && (url.pathname === "/api/privacy/retention-settings" || url.pathname === "/api/retention/settings")) {
+  if (request.method === "POST" && url.pathname === "/api/privacy/retention-settings") {
     const body = await readJson(request);
     const botId = privacyRouteBotId(request, url, body);
     if (!botId) {
       sendJson(response, 400, { error: "A bot id is required." });
       return;
     }
-    const requested = body.retentionDays ?? body.leadRetentionDays ?? body.days ?? body.privacyRetentionDays ?? body.retention?.days ?? body.privacy?.retentionDays;
+    const requested = body.retentionDays;
     if (requested !== undefined && !isValidLeadRetentionDays(requested)) {
       sendJson(response, 400, { error: `Retention must be a whole number from ${LEAD_RETENTION_MIN_DAYS} to ${LEAD_RETENTION_DEFAULT_DAYS} days.` });
       return;
@@ -9520,7 +9519,6 @@ function isOwnerAllowedRoute(method, pathname) {
       "/api/privacy/deletion-request",
       "/api/privacy/deletion-request/complete",
       "/api/privacy/retention-settings",
-      "/api/retention/settings",
       "/api/billing/dodo/portal",
       "/api/api-keys",
       "/api/api-keys/revoke",
@@ -9646,14 +9644,6 @@ function toPublicBot(bot) {
 	    widgetSettings: sanitizeWidgetSettings({}, bot.widgetSettings),
     leadRules: publicLeadRulesFor(bot),
     leadRetentionDays,
-    retentionDays: leadRetentionDays,
-    retention: {
-      leadRetentionDays,
-      defaultDays: LEAD_RETENTION_DEFAULT_DAYS,
-      maxDays: LEAD_RETENTION_DEFAULT_DAYS,
-      optionsDays: [...LEAD_RETENTION_OPTIONS],
-      periodLabel: leadRetentionPeriodLabel(leadRetentionDays),
-    },
     integrationSettings: publicIntegrationSettingsFor(bot),
     integrationReadiness: integrationReadinessFor(bot),
     actionCatalog: ACTION_CATALOG,

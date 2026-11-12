@@ -836,8 +836,6 @@ test("the dashboard and public trust copy describe self-serve deletion, not tick
   assert.match(app, /"\/api\/privacy\/deletion-request\/complete"/);
   assert.doesNotMatch(worker, /is not instant erasure/);
   assert.match(worker, /Customers can delete a visitor's lead from the dashboard lead inbox/);
-  assert.match(worker, /Leads and their conversations are deleted automatically 12 months after the visitor's last message/);
-  assert.match(worker, /choose a shorter retention period in the dashboard/);
   const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
   assert.doesNotMatch(worker, /including the record ledger and recovery backups|lead data instantly/);
   for (const copy of [worker, llms]) assert.match(copy, /point-in-time recovery copies keep earlier states for up to 30 days/);

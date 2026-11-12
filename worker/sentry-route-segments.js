@@ -21,7 +21,7 @@ export const ROUTE_SEGMENTS = new Set([
   "process", "process-customer-access", "profile", "public", "quality",
   "razorpay", "record", "record-ledger", "register", "release-status",
   "reminders", "remove", "report", "report.json", "reset-usage", "resolve",
-  "retest", "retention", "retention-settings", "retrain", "revoke", "rollback", "routing", "run",
+  "retest", "retention-settings", "retrain", "revoke", "rollback", "routing", "run",
   "scheduled", "session", "settings", "sign-in", "sign-up", "signin", "signup",
   "signup-requests", "source", "source-auto-sync", "source-content",
   "source-fix", "sources", "start", "start-free", "stats", "status",
