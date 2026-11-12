@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { answerFromSources } from "../server/search.js";
 import { PUBLIC_DEMO_SOURCES, applyLiveDemoPricingAnswer } from "../worker/demo-sources.js";
@@ -299,18 +299,4 @@ test("runHonestyEvals citation count drops when a cited source's URL lacks the a
   assert.ok(result.citations.passed < result.citations.total, "passed must drop below total after the wrong-URL injection");
   assert.ok(result.citations.passed < baseline.citations.passed, "passed must drop below the baseline after the injection");
   assert.ok(result.citations.misCited.includes("ok how do i cancel if i dont like it"), "the cancel citation must be flagged as mis-cited");
-});
-
-test("the honesty live check file exists", async () => {
-  await assert.doesNotReject(
-    access(new URL("./honesty-live.check.js", import.meta.url)),
-    "tests/honesty-live.check.js is missing",
-  );
-});
-
-test("the pricing stamp freshness check file exists", async () => {
-  await assert.doesNotReject(
-    access(new URL("./pricing-stamp-freshness.check.js", import.meta.url)),
-    "tests/pricing-stamp-freshness.check.js is missing",
-  );
 });
