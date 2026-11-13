@@ -13,6 +13,22 @@ on:
 permissions: {}
 jobs:
   answer:
+    # Mirror the lane's own dispatch job (fleet-ops answer.yml): only a change request
+    # on the head of an agent/issue-* PR, or a red CI run on that head, starts the lane.
+    # The lane takes no inputs: as a called workflow it sees the caller's github context
+    # and derives the issue from head_branch and the PR from pull_requests[0] itself.
+    if: >-
+      (github.event_name == 'pull_request_review' &&
+        github.event.review.state == 'changes_requested' &&
+        (github.event.review.user.login == 'nishfleet-approver' ||
+          github.event.review.author_association == 'OWNER') &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        startsWith(github.event.pull_request.head.ref, 'agent/issue-')) ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'failure' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'agent/issue-'))
     # The lane's job dispatches agent.yml on main with the issue and the PR. A called
     # workflow can only lower the caller's GITHUB_TOKEN permissions, never raise them.
     permissions: {actions: write}
