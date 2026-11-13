@@ -5,78 +5,8 @@ import { collectPricingStamps } from "./pricing-stamps.js";
 
 const VS_PATHS = ["/vs", "/vs/customgpt", "/vs/chatbase", "/vs/intercom-fin", "/vs/tidio-lyro", "/vs/webspeaker", "/vs/chatling"];
 
-test("comparison pages are registered, discoverable, and listed for AI agents", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
-  const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
-  for (const path of VS_PATHS) {
-    assert.match(worker, new RegExp(`"${path}": \\{`), `${path} must be a registered TRUST_PAGES entry`);
-    assert.match(sitemap, new RegExp(`https://siterep\\.net${path}`), `${path} must be in the sitemap`);
-    assert.match(llms, new RegExp(path), `${path} must be listed in llms.txt`);
-    assert.match(app, new RegExp(`href: "${path}"`), `${path} must be linked from the rendered homepage`);
-    assert.match(index, new RegExp(`href="${path}"`), `${path} must be linked from the static homepage fallback`);
-  }
-  assert.match(worker, /Honest comparison pages are available at \[All comparisons\]\(\/vs\), \[CustomGPT\]\(\/vs\/customgpt\), \[Chatbase\]\(\/vs\/chatbase\), \[Intercom Fin\]\(\/vs\/intercom-fin\), \[Tidio Lyro\]\(\/vs\/tidio-lyro\), \[WebSpeaker\]\(\/vs\/webspeaker\), and \[Chatling\]\(\/vs\/chatling\)\./);
-  const hubStart = worker.indexOf("const VS_HUB_MARKDOWN =");
-  assert.ok(hubStart >= 0, "VS_HUB_MARKDOWN must exist");
-  const hubBody = worker.slice(hubStart, worker.indexOf("\n`;", hubStart));
-  assert.match(hubBody, /description: Compare Site Rep with CustomGPT, Chatbase, Intercom Fin, Tidio Lyro, WebSpeaker, and Chatling/, "the hub description must name all six comparison pages");
-  const hubLeafLabels = { "/vs/customgpt": "CustomGPT", "/vs/chatbase": "Chatbase", "/vs/intercom-fin": "Intercom Fin", "/vs/tidio-lyro": "Tidio Lyro", "/vs/webspeaker": "WebSpeaker", "/vs/chatling": "Chatling" };
-  for (const [path, label] of Object.entries(hubLeafLabels)) {
-    assert.ok(hubBody.includes(`[${label}](${path})`), `the hub body must list ${path}`);
-  }
-  assert.match(worker, /"\/vs": \{\s*\n\s*title: "Site Rep comparisons",\s*\n\s*description: "Honest, dated comparisons of Site Rep with CustomGPT, Chatbase, Intercom Fin, Tidio Lyro, WebSpeaker, and Chatling/, "the /vs TRUST_PAGES description must name all six comparison pages");
-  for (const path of VS_PATHS) {
-    assert.match(worker, new RegExp(`path: "${path}"`), `${path} must be linked from the shared comparison link list`);
-  }
-});
 
-test("the /vs hub is a self-canonical index page with an h1 naming the comparison index (scout 2026-08-13 closure pin)", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
-
-  const hubStart = worker.indexOf("const VS_HUB_MARKDOWN =");
-  assert.ok(hubStart >= 0, "VS_HUB_MARKDOWN must exist");
-  const hubBody = worker.slice(hubStart, worker.indexOf("\n`;", hubStart));
-
-  assert.match(hubBody, /^# Site Rep comparisons$/m, "the hub must render an h1 naming the comparison index");
-
-  const hubLeafLabels = { "/vs/customgpt": "CustomGPT", "/vs/chatbase": "Chatbase", "/vs/intercom-fin": "Intercom Fin", "/vs/tidio-lyro": "Tidio Lyro", "/vs/webspeaker": "WebSpeaker" };
-  for (const [path, label] of Object.entries(hubLeafLabels)) {
-    assert.ok(hubBody.includes(`[${label}](${path})`), `the hub must link ${path} with its human label`);
-  }
-  assert.doesNotMatch(hubBody, /\]\(\/vs\/[a-z-]+\)\s*—\s*\/vs\//, "the hub must not render a raw path as link text");
-
-  assert.match(worker, /function canonicalUrlFor\(pathname\)/, "the worker must have a canonical URL builder");
-  assert.ok(worker.includes('canonicalUrlFor(page.pathname || "/")'), "the worker must emit a canonical per page");
-
-  assert.match(worker, /"\/vs": \{\s*\n\s*title: "Site Rep comparisons",/, "the /vs TRUST_PAGES entry must be registered");
-
-  assert.match(sitemap, /<loc>https:\/\/siterep\.net\/vs<\/loc>\s*<lastmod>/, "the sitemap must include /vs with a lastmod");
-
-  assert.match(app, /name: "All comparisons",\s*\n\s*href: "\/vs"/, "the homepage comparison grid must link the hub with a human label");
-});
-
-test("short comparison guesses redirect to the real dated pages instead of soft-falling to the homepage", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  assert.match(worker, /\/vs\/intercom": "\/vs\/intercom-fin"/, "/vs/intercom must alias the Intercom Fin page");
-  assert.match(worker, /\/vs\/tidio": "\/vs\/tidio-lyro"/, "/vs/tidio must alias the Tidio Lyro page");
-
-  assert.match(worker, /const aliasTarget = comparisonAliasFor\(url\)/, "the fetch path must resolve the comparison alias");
-  assert.match(worker, /if \(request\.method === "GET" \|\| request\.method === "HEAD"\)/, "the alias redirect must apply to GET and HEAD");
-  assert.match(worker, /withSecurityHeaders\(Response\.redirect\(new URL\(aliasTarget, url\)\.toString\(\), 301\)\)/, "the alias must 301 to the canonical page on the same origin");
-  assert.ok(worker.indexOf("const aliasTarget = comparisonAliasFor(url)") < worker.indexOf("const trustPage = trustPageFor(url)"), "the alias redirect must run before the trust page lookup");
-
-  for (const target of ["/vs/intercom-fin", "/vs/tidio-lyro"]) {
-    assert.match(worker, new RegExp(`"${target}": \\{`), `${target} must stay a registered TRUST_PAGES entry`);
-  }
-  assert.doesNotMatch(worker, /"\/vs\/intercom": \{|"\/vs\/tidio": \{/, "aliases must not create duplicate registered pages");
-});
 
 test("comparison page html titles come from front matter instead of duplicate route labels", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");

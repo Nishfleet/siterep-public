@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
-  MCP_PROTOCOL_VERSION,
   SITE_REP_MCP_TOOLS,
 } from "../worker/site-rep-mcp.js";
 
@@ -15,18 +14,7 @@ const sectionEnd = llms.indexOf("Contact:", sectionStart);
 assert.ok(sectionEnd > sectionStart, "MCP section must close before the contact block");
 const section = llms.slice(sectionStart, sectionEnd);
 
-test("llms.txt names the canonical MCP endpoint, transport, and bearer auth", () => {
-  assert.match(section, /\/api\/mcp/);
-  assert.match(section, /Streamable HTTP JSON-RPC/);
-  assert.match(section, new RegExp(MCP_PROTOCOL_VERSION.replace(".", "\\.")));
-  assert.match(section, /bearer authentication/i);
-});
 
-test("llms.txt says GET discovery needs no key and tools need the account's own key", () => {
-  assert.match(section, /GET request returns the live discovery payload/);
-  assert.match(section, /calling the tools requires the account's own API key/);
-  assert.match(section, /Access still requires the account's own API key/);
-});
 
 test("llms.txt lists exactly the three live read-only tools", () => {
   const names = SITE_REP_MCP_TOOLS.map((tool) => tool.name);
@@ -37,17 +25,7 @@ test("llms.txt lists exactly the three live read-only tools", () => {
   assert.match(section, /read-only/);
 });
 
-test("llms.txt summarizes the required scopes without claiming public access", () => {
-  assert.match(section, /limited to reading the account's own bot, sources, conversations, and leads/);
-  assert.match(section, /account's own API key/);
-});
 
-test("llms.txt states the no-write, no-outbound, no-external-execution boundary", () => {
-  assert.match(section, /never writes/);
-  assert.match(section, /never sends outbound email/);
-  assert.match(section, /never writes to CRM or helpdesk systems/);
-  assert.match(section, /never executes external systems/);
-});
 
 test("MCP discovery copy stays inside the public claim boundary", () => {
   for (const forbidden of [

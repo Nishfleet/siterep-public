@@ -73,16 +73,6 @@
       "count": 3
     }
   },
-  "tests/source-freshness.test.js": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
-  "tests/spa-surface-dot-gate.test.js": {
-    "no-unused-vars": {
-      "count": 1
-    }
-  },
   "worker/funnel-events.js": {
     "no-useless-assignment": {
       "count": 3

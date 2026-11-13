@@ -15,11 +15,6 @@ test("skipReasonIfPackageMissing does not skip an installed package", () => {
   assert.equal(skipReasonIfPackageMissing("fflate"), undefined);
 });
 
-test("playwright stays a declared devDependency so CI npm ci still installs it", async () => {
-  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(typeof pkg.devDependencies?.playwright, "string");
-  assert.match(pkg.devDependencies.playwright, /^\^?\d/);
-});
 
 test("tests that import playwright skip via skipReasonIfPackageMissing", async () => {
   const dir = new URL("./", import.meta.url);

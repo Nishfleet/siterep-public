@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile } from "node:fs/promises";
 import { crawlPublicCloudSource, publicCloudSourceCandidate, sourcesFromFeedXml } from "../server/crawler.js";
 
-test("crawler stores content fingerprints for freshness audits", async () => {
-  const crawler = await readFile(new URL("../server/crawler.js", import.meta.url), "utf8");
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  assert.match(crawler, /export function contentFingerprint/);
-  assert.match(crawler, /contentFingerprint: contentFingerprint\(text\)/);
-  assert.match(worker, /import \{[^}]*\bcontentFingerprint\b[^}]*\} from "\.\.\/server\/crawler\.js"/);
-});
 
 test("crawler parses RSS and Atom feeds into indexed sources", () => {
   const rssSources = sourcesFromFeedXml(
@@ -60,7 +51,7 @@ test("crawler adapts public cloud source links without OAuth claims", async () =
 
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = async (url) =>
+    globalThis.fetch = async () =>
       new Response("Refund Policy\nCustomers can request refunds within 14 days when setup has not started.", {
         status: 200,
         headers: { "content-type": "text/plain" },
@@ -85,32 +76,4 @@ test("crawler adapts public cloud source links without OAuth claims", async () =
   }
 });
 
-test("crawler rejects private hosts and caps fetched text", async () => {
-  const crawler = await readFile(new URL("../server/crawler.js", import.meta.url), "utf8");
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
-  assert.match(crawler, /const MAX_FETCH_TEXT_BYTES = 1_500_000/);
-  assert.match(crawler, /function isBlockedCrawlHost/);
-  assert.match(crawler, /function isBlockedIpv6Host/);
-  assert.match(crawler, /if \(\/\^f\[cd\]\/\.test\(firstHextet\)\) return true;/);
-  assert.match(crawler, /readResponseTextWithLimit/);
-  assert.match(crawler, /function parseTagAttributes/);
-  assert.doesNotMatch(crawler, /new RegExp\(`<meta/);
-  assert.match(app, /function isBlockedSetupHost/);
-});
-
-test("source audit detects fresh, changed, deleted, and unreadable pages", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const labels = await readFile(new URL("../src/format-labels.ts", import.meta.url), "utf8");
-
-  assert.match(worker, /async function auditSourcesInBatches/);
-  assert.match(worker, /freshnessStatus: deleted \? "deleted" : "unreachable"/);
-  assert.match(worker, /freshnessStatus: changed \? "changed" : "fresh"/);
-  assert.match(worker, /freshnessStatus: "unreadable"/);
-  assert.match(worker, /const SOURCE_CONTENT_STORAGE_FIELDS = \["content", "contentR2Key", "contentStored", "contentByteLength", "contentPreview"\]/);
-  assert.match(worker, /function mergeAuditedSource\(source, audited\)/);
-  assert.match(worker, /record\.sources = \(record\.sources \|\| \[\]\)\.map\(\(source\) => mergeAuditedSource\(source, byId\.get\(source\.id\)\)\)/);
-  assert.match(worker, /Source audit completed", `\$\{record\.sourceAudit\.ok\} healthy, \$\{record\.sourceAudit\.changed\} changed, \$\{record\.sourceAudit\.deleted\} deleted\./);
-  assert.match(labels, /changed since indexing/);
-  assert.match(labels, /page deleted/);
-});

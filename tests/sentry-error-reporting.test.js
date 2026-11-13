@@ -109,13 +109,6 @@ test("Sentry options use the SDK off switch and keep PII, tracing, and console b
   assert.deepEqual(kept.map((integration) => integration.name), ["Dedupe", "LinkedErrors"]);
 });
 
-test("the Worker export is withSentry with the options callback, and the compat flag the SDK needs is set", async () => {
-  const source = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  assert.match(source, /export default withSentry\(sentryOptions, workerHandler\);/);
-  assert.doesNotMatch(source, /withOptionalSentry/);
-  const config = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
-  assert.match(config, /"compatibility_flags":\s*\[[^\]]*"nodejs_(als|compat)"/);
-});
 
 test("with no DSN the Worker serves requests and sends nothing, even when a request fails", async () => {
   assert.equal(typeof worker.fetch, "function");

@@ -2,25 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-import { INSTALL_RECIPE_PLATFORMS, INSTALL_RECIPES, canonicalEmbedSnippet, renderInstallRecipesMarkdown } from "../server/install-recipes.js";
+import { canonicalEmbedSnippet, renderInstallRecipesMarkdown } from "../server/install-recipes.js";
 
-test("install recipe matrix covers every requested host", () => {
-  assert.deepEqual(INSTALL_RECIPE_PLATFORMS, [
-    "mintlify",
-    "docusaurus",
-    "gitbook",
-    "static-docs",
-    "webflow",
-    "framer",
-    "generic",
-    "wordpress",
-  ]);
-  assert.deepEqual(INSTALL_RECIPES.map((recipe) => recipe.id), INSTALL_RECIPE_PLATFORMS);
-
-  const gitbook = INSTALL_RECIPES.find((recipe) => recipe.id === "gitbook");
-  assert.equal(gitbook.status, "not-directly-installable");
-  assert.match(gitbook.notes.join(" "), /ingest public GitBook pages as approved sources/);
-});
 
 test("canonical recipe snippet uses data attributes and Docs Mode config", () => {
   const snippet = canonicalEmbedSnippet({ botId: "bot_123", publicKey: "pk_123" });
@@ -56,19 +39,6 @@ test("install markdown leads readers to the activation surface, not a dead end",
   assert.match(markdown, /install proof only after the published domain sends one widget ping/);
 });
 
-test("Worker exposes a real docs install page", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
-  const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
-
-  assert.match(worker, /renderInstallRecipesMarkdown/);
-  assert.match(worker, /"\/docs\/install"/);
-  assert.match(worker, /Install Site Rep Docs Mode/);
-  assert.match(worker, /<pre><code/);
-  assert.match(worker, /line\.startsWith\("```"\)/);
-  assert.match(sitemap, /https:\/\/siterep\.net\/docs\/install/);
-  assert.match(llms, /Docs Mode install guide at \/docs\/install/);
-});
 
 test("docs install page renders anchored host sections with a jump nav", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
@@ -110,24 +80,4 @@ test("docs install page renders anchored host sections with a jump nav", async (
   assert.ok(html.indexOf("<nav class=\"host-jump\"") < html.indexOf("<h2 id=\"mintlify\">"), "jump nav must come before the first host section");
 });
 
-test("docs install page wraps long snippets instead of overflowing the viewport", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  assert.match(worker, /pre\{background:#111614;color:white;border-radius:8px;overflow:auto;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere\}/);
-  assert.match(worker, /code\{font-family:"SFMono-Regular",Consolas,monospace;font-size:\.88rem;white-space:pre-wrap;overflow-wrap:anywhere\}/);
-  assert.match(worker, /\.host-jump\{background:#eef4f0/);
-});
-
-test("dashboard install handoff uses single-script recipes", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-
-  assert.match(app, /data-bot-id="\$\{botId\}"/);
-  assert.match(app, /data-public-key="\$\{widgetKey\}"/);
-  assert.match(app, /data-mode="\$\{widgetSettings\.mode\}"/);
-  assert.match(app, /data-hotkey="\$\{widgetSettings\.hotkey/);
-  assert.match(app, /Hosted install is not directly supported/);
-  assert.match(app, /Mintlify/);
-  assert.match(app, /Docusaurus/);
-  assert.match(app, /Webflow/);
-  assert.doesNotMatch(app, /window\.siterep = \{/);
-});

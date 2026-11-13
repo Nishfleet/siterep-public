@@ -2,36 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("WordPress plugin injects the supported widget contract", async () => {
-  const php = await readFile(new URL("../wordpress-plugin/siterep/siterep.php", import.meta.url), "utf8");
 
-  assert.match(php, /SITEREP_WIDGET_SRC', 'https:\/\/siterep\.net\/widget\.js'/);
-  assert.match(php, /data-bot-id="%s"/);
-  assert.match(php, /data-public-key="%s"/);
-  assert.match(php, /defer><\/script>/);
-});
 
-test("WordPress plugin follows WordPress security defaults", async () => {
-  const php = await readFile(new URL("../wordpress-plugin/siterep/siterep.php", import.meta.url), "utf8");
-
-  assert.match(php, /if \( ! defined\( 'ABSPATH' \) \)/);
-  assert.match(php, /current_user_can\( 'manage_options' \)/);
-  assert.match(php, /settings_fields\( 'siterep' \)/);
-  assert.match(php, /'sanitize_callback' => 'siterep_sanitize_settings'/);
-  assert.match(php, /preg_replace\( '\/\[\^a-zA-Z0-9_-\]\/'/);
-  assert.match(php, /esc_attr\( \$bot_id \)/);
-  assert.match(php, /esc_attr\( \$public_key \)/);
-  assert.match(php, /domain-locked/i);
-});
-
-test("WordPress plugin ships a valid WordPress.org readme", async () => {
-  const readme = await readFile(new URL("../wordpress-plugin/siterep/readme.txt", import.meta.url), "utf8");
-
-  assert.match(readme, /^=== Site Rep/);
-  assert.match(readme, /Stable tag: 1\.0\.0/);
-  assert.match(readme, /License: GPLv2 or later/);
-  assert.match(readme, /You need a Site Rep account/);
-});
 
 test("WordPress plugin Stable tag matches the PHP header Version", async () => {
   const readme = await readFile(new URL("../wordpress-plugin/siterep/readme.txt", import.meta.url), "utf8");

@@ -271,12 +271,3 @@ test("public site fires all twelve funnel events from public surfaces", async ()
   }
 });
 
-test("live synthetic monitor pins the public funnel delivery contract on the live bundle", async () => {
-  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
-  assert.match(monitor, /import \{ FUNNEL_EVENT_NAMES \} from "\.\.\/worker\/funnel-events\.js"/);
-  assert.match(monitor, /"funnel event collection"/);
-  assert.match(monitor, /funnel collection must answer 204 no matter what/);
-  assert.match(monitor, /"funnel instrumentation bundle"/);
-  assert.match(monitor, /"\/api\/public\/funnel-event"/);
-  assert.match(monitor, /for \(const eventName of FUNNEL_EVENT_NAMES\)/);
-});

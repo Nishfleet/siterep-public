@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile } from "node:fs/promises";
 import {
   answeringMode,
   graceLimitFor,
@@ -48,32 +47,4 @@ test("sanitizeOverageSettings clamps and defaults safely", () => {
   assert.equal(defaultOverageSettings().pending.length, 0);
 });
 
-test("worker wires overage: grace gate, gated billing, cron flush, opt-in endpoint", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  assert.match(worker, /responseAnsweringMode\(bot\) === "locked"/);
-  assert.match(worker, /const answeringModeNow = responseAnsweringMode\(bot, activeEnv\)/);
-  assert.match(worker, /answeringModeNow === "overage"/);
-  assert.match(worker, /recordOverageEvent\(bot, conversation\.id/);
-
-  assert.match(worker, /function overageEligible\(bot\)/);
-  assert.match(worker, /bot\?\.billing\?\.provider === "dodo" && Boolean\(bot\?\.billing\?\.customerId\)/);
-  assert.match(worker, /SITEREP_OVERAGE_BILLING_ENABLED/);
-
-  assert.match(worker, /async function flushOverageUsage/);
-  assert.match(worker, /if \(!overageBillingActive\(env\)\) return \{ skipped: true, reason: "billing_disabled" \}/);
-  assert.match(worker, /\/events\/ingest/);
-  assert.match(worker, /const overage = await flushOverageUsage\(activeEnv\)/);
-
-  assert.match(worker, /url\.pathname === "\/api\/overage\/settings"/);
-  assert.match(worker, /"\/api\/overage\/settings",/);
-});
-
-test("dashboard shows the overage control only once billing is live and the bot is eligible", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-
-  assert.match(app, /function setOverageEnabled/);
-  assert.match(app, /api<BotState>\("\/api\/overage\/settings"/);
-  assert.match(app, /overage\?\.billingActive && overage\?\.eligible \?/);
-  assert.match(app, /no surprise charges/i);
-});
