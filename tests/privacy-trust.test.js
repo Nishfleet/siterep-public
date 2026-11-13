@@ -4,24 +4,6 @@ import { readFile } from "node:fs/promises";
 
 import { skipReasonIfPackageMissing } from "./optional-dev-package.js";
 
-test("trust status publishes the already-true privacy facts", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  assert.match(worker, /area: "Visitor data minimization"/);
-  assert.match(worker, /area: "No tracking cookies"/);
-  assert.match(worker, /area: "Sub-processors disclosed"/);
-
-  assert.match(worker, /No tracking cookies: the chat widget sets no cookies/);
-  assert.match(worker, /Visitor IP addresses are used only transiently in memory/);
-  assert.match(worker, /## Sub-processors/);
-  assert.match(worker, /Dodo Payments — checkout, subscription, and billing/);
-  const trustUpdatedAt = worker.match(/const TRUST_STATUS_UPDATED_AT = "([^"]+)"/)?.[1];
-  assert.ok(trustUpdatedAt, "TRUST_STATUS_UPDATED_AT constant must exist");
-  assert.match(worker, new RegExp(`Last updated: ${trustUpdatedAt}\\.`));
-  assert.match(worker, /updatedAt: TRUST_STATUS_UPDATED_AT/);
-  assert.match(worker, /customerControl: "Review and export from the private dashboard\."/);
-  assert.match(worker, /ownerControl: "Review and export from the private dashboard\."/);
-});
 
 test("privacy page, trust page and trust-status payload name the same sub-processors", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");

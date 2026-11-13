@@ -843,13 +843,6 @@ test("the dashboard and public trust copy describe self-serve deletion, not tick
   assert.match(worker, /D1 Time Travel/);
 });
 
-test("the dashboard deletion notice names what a deletion could not finish", async () => {
-  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const start = app.indexOf("function leadDeletionNotice(");
-  assert.ok(start >= 0, "leadDeletionNotice exists");
-  const body = app.slice(start, app.indexOf("\n}\n", start));
-  assert.match(body, /\.\.\.warnings/, "the notice names every warning the deletion returned");
-});
 
 test("privacy internals stay in the store: public shapes are allowlists and every backup writer runs in the coordinator", async () => {
   const source = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");

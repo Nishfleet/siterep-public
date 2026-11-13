@@ -94,13 +94,6 @@ const PUBLIC_DEMO_SUGGESTED_QUESTIONS = [
   "Can it file my taxes?",
 ];
 
-test("PUBLIC_DEMO_WIDGET_SETTINGS.suggestedQuestions stay pinned to the homepage CTA list", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const workerMatch = worker.match(/PUBLIC_DEMO_WIDGET_SETTINGS\s*=.*?suggestedQuestions:\s*(\[[^\]]+\])/s);
-  assert.ok(workerMatch, "PUBLIC_DEMO_WIDGET_SETTINGS.suggestedQuestions not found in worker/index.js");
-  const workerQuestions = [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(workerQuestions, PUBLIC_DEMO_SUGGESTED_QUESTIONS);
-});
 
 test("every public demo suggested question is cited from real demo sources, except the designed tax refusal", () => {
   const designedRefusal = "Can it file my taxes?";

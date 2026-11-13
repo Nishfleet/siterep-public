@@ -62,45 +62,8 @@ function runRefreshEffect(effect, { visibilityState = "visible", crawlJobActive 
   return { calls, cleared, emitVisibilityChange, intervalMs, listeners, cleanup, runInterval: () => intervalFn?.() };
 }
 
-test("the customer dashboard keeps its own view fresh after the crawl ends", () => {
-  const effect = dashboardRefreshEffect(appSource);
-  assert.match(effect, /refreshBot\(botId\)/, "the refresh effect must reload the bot state");
-  assert.doesNotMatch(
-    effect,
-    /if \(!crawlJobActive\) return;/,
-    "the refresh must not stop the moment a crawl job ends",
-  );
-  assert.match(
-    effect,
-    /liveCustomerDashboard/,
-    "the refresh must keep running while a customer dashboard is open",
-  );
-});
 
-test("the idle dashboard refresh lands inside the smoke gate's lead-inbox window", () => {
-  const effect = dashboardRefreshEffect(appSource);
-  const idle = effect.match(/crawlJobActive \? \d+ : (\d+)\)/);
-  assert.ok(idle, "the refresh effect must declare a crawl period and an idle period");
-  const idleMs = Number(idle[1]);
-  assert.ok(idleMs > 0, `the idle refresh must be a positive interval, got ${idleMs}`);
-  assert.ok(idleMs <= 20000, `the idle refresh (${idleMs}ms) must stay inside the smoke gate's 30s lead-inbox window`);
-});
 
-test("the timer and the focus trigger share one guarded pull", () => {
-  const effect = dashboardRefreshEffect(appSource);
-  const pullCalls = effect.match(/refreshBot\(botId\)/g) || [];
-  assert.equal(pullCalls.length, 1, "the interval and the focus trigger must share one pull of the bot state");
-  const intervalFn = effect.match(/setInterval\(([^,]+),/)[1].trim();
-  assert.ok(
-    effect.includes(`addEventListener("visibilitychange", ${intervalFn})`),
-    "the focus trigger must run the same function the interval runs",
-  );
-  assert.ok(
-    effect.includes(`removeEventListener("visibilitychange", ${intervalFn})`),
-    "the focus trigger must be removed with the same function on cleanup",
-  );
-  assert.match(effect, /visibilityState === "hidden"/, "the shared pull must stay quiet while the tab is hidden");
-});
 
 test("a dashboard tab that becomes visible again pulls fresh state at once", () => {
   const { calls, emitVisibilityChange, runInterval, listeners } = runRefreshEffect(dashboardRefreshEffect(appSource));

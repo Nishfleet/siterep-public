@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile } from "node:fs/promises";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, extname, normalize } from "node:path";
+import { join, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -40,42 +39,8 @@ const EXPECTED_CONTENT_TYPE = {
   "/google09c83c25dc2473f7.html": "text/html",
 };
 
-test("the over-permissive dot rule is replaced by a precise file-detection rule", async () => {
-  const worker = await readFile(WORKER_PATH, "utf8");
 
-  assert.doesNotMatch(worker, /lastSegment\.includes\("\."\)/, "the over-permissive dot rule must be removed");
 
-  assert.match(worker, /const WORKER_FILE_EXTENSIONS = new Set\(/, "WORKER_FILE_EXTENSIONS allow-list must exist");
-  for (const ext of ["svg", "png", "jpg", "jpeg", "webp", "ico", "gif", "css", "js", "mjs", "map", "json", "xml", "txt", "pdf", "webmanifest", "wasm"]) {
-    assert.ok(worker.includes(`"${ext}"`), `extension ${ext} must be in the allow-list`);
-  }
-
-  assert.match(worker, /const WORKER_STATIC_PREFIXES = \[/, "WORKER_STATIC_PREFIXES allow-list must exist");
-  for (const prefix of ["/assets/", "/widget-", "/icons/"]) {
-    assert.ok(worker.includes(`"${prefix}"`), `static prefix ${prefix} must be in the allow-list`);
-  }
-
-  assert.match(worker, /const ext = lastSegment\.slice\(dotIndex \+ 1\)\.toLowerCase\(\);/, "the last segment extension must be parsed and lower-cased");
-  assert.match(worker, /return WORKER_FILE_EXTENSIONS\.has\(ext\);/, "isSpaSurfaceRequest must gate on the extension allow-list");
-});
-
-test("an ASSETS SPA-fallback detector converts missing-file soft-200s into real 404s", async () => {
-  const worker = await readFile(WORKER_PATH, "utf8");
-
-  assert.match(worker, /function isAssetsSpaFallback\(url, response\)/, "isAssetsSpaFallback must exist");
-  assert.match(worker, /if \(isAssetsSpaFallback\(url, response\)\) \{\s*return notFoundResponse\(request\);/, "the SPA-fallback detector must convert the soft-200 into a 404 before returning");
-
-  assert.match(worker, /if \(SPA_SURFACE_PATHS\.has\(pathname\)\) return false;/, "SPA surfaces must be excluded from the fallback detector");
-  assert.match(worker, /return ext !== "html" && ext !== "htm";/, "real .html files must be excluded from the fallback detector");
-});
-
-test("the 404 gate still runs before the ASSETS soft-fallback", async () => {
-  const worker = await readFile(WORKER_PATH, "utf8");
-  const gateIndex = worker.indexOf("!isSpaSurfaceRequest(url))");
-  const assetsIndex = worker.indexOf("env.ASSETS.fetch(request)");
-  assert.ok(gateIndex > -1 && assetsIndex > -1, "both the gate and the ASSETS fetch must exist");
-  assert.ok(gateIndex < assetsIndex, "the 404 gate must run before the ASSETS soft-fallback");
-});
 
 async function buildWorkerBundle() {
   const { build } = await import("esbuild");

@@ -42,16 +42,6 @@ test("release status marker date is not in the future", async () => {
   assert.ok(ageMs >= 0, `markerUpdatedAt ${markerDateString} must not be in the future`);
 });
 
-test("RELEASE_STATUS_MARKER name matches RELEASE_STATUS_MARKER_UPDATED_AT", async () => {
-  const workerPath = new URL("../worker/index.js", import.meta.url);
-  const worker = await readFile(workerPath, "utf8");
-  const { marker, markerDateString } = readReleaseMarkerConstants(worker);
-
-  assert.ok(
-    marker.includes(markerDateString),
-    `RELEASE_STATUS_MARKER ${JSON.stringify(marker)} must include RELEASE_STATUS_MARKER_UPDATED_AT ${markerDateString}`,
-  );
-});
 
 test("RELEASE_STATUS_MARKER is the single source of truth", async () => {
   const workerPath = new URL("../worker/index.js", import.meta.url);

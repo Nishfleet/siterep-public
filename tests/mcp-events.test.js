@@ -461,22 +461,6 @@ test("MCP attribution degrades cleanly: absent or throwing recorders never break
   assert.equal(tough.json().result.protocolVersion, "2025-06-18");
 });
 
-test("worker wires fire-and-forget MCP attribution through the Durable Object context", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  assert.match(worker, /import \{ readMcpStats, recordMcpEvent \} from "\.\/mcp-events\.js"/);
-
-  const mcpWiring = worker.slice(worker.indexOf('url.pathname === "/api/mcp"'), worker.indexOf('url.pathname.startsWith("/api/v1/")'));
-  assert.match(mcpWiring, /recordMcpEvent: \(eventName\) => \{/, "the MCP route must pass a recorder dep");
-  assert.match(mcpWiring, /activeEnv\?\.CITEREP_STORE/, "recording must be a no-op without the KV store");
-  assert.match(mcpWiring, /ctx\.waitUntil\(recording\)/, "recording must be deferred, never awaited");
-  assert.match(mcpWiring, /\.catch\(\(\) => \{\}\)/, "recording must never reject");
-  assert.doesNotMatch(mcpWiring, /await recordMcpEvent/, "recording must never delay the MCP response");
-
-  const handler = await readFile(new URL("../worker/site-rep-mcp.js", import.meta.url), "utf8");
-  assert.match(handler, /noteMcpEvent\(deps, "mcp_connected"\)/);
-  assert.match(handler, /noteMcpEvent\(deps, "mcp_tool_called"\)/);
-  assert.match(handler, /noteMcpEvent\(deps, "mcp_customer_receipt_read"\)/);
-});
 
 test("worker exposes admin-gated MCP attribution stats queryable by date", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");

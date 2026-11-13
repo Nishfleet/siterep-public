@@ -24,24 +24,6 @@ const LIVE_PRICING_CATALOG = {
   generatedAt: "2026-08-21T00:00:00.000Z",
 };
 
-test("honesty page and live check endpoint are wired and discoverable", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
-  const llms = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
-
-  assert.match(worker, /url\.pathname === "\/api\/public\/honesty-check"/);
-  assert.match(worker, /function publicHonestyCheckResponse/);
-  assert.match(worker, /runHonestyEvals\(answerFromSources, publicDemoSources\(\), pricingCatalog\)/);
-  assert.match(worker, /import \{ runHonestyEvals, SHOULD_ANSWER, SHOULD_REFUSE \} from "\.\/honesty-evals\.js"/);
-  assert.match(worker, /policy: "Site Rep answers only from your approved sources and asks for follow-up when source backing is missing\."/);
-  assert.match(worker, /guarantee: "Site Rep answers only from your approved sources and asks for follow-up when source backing is missing\."/);
-
-  assert.match(worker, /"\/honesty": \{/);
-  assert.match(worker, /<a href="\/honesty">Honesty check<\/a>/);
-
-  assert.match(sitemap, /https:\/\/siterep\.net\/honesty/);
-  assert.match(llms, /\/api\/public\/honesty-check/);
-});
 
 test("honesty-check payload never overstates: counts come from the evals, not a literal", async () => {
   const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");

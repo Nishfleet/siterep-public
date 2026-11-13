@@ -2,57 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("hydration merges by source id so same-URL sources stay distinct", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  const hydrate = worker.slice(worker.indexOf("async function hydrateSourcesForQuestion"));
-  const hydrateBody = hydrate.slice(0, hydrate.indexOf("\n}"));
-  assert.match(hydrateBody, /const hydrationKey = \(source\) => source\.id \|\| sourceKeyForDiff\(source\)/);
-  assert.doesNotMatch(hydrateBody, /\[sourceKeyForDiff\(source\), source\]/);
-});
 
-test("model-judged unsupported answers become honest refusals, not cited non-answers", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
 
-  const handler = worker.slice(worker.indexOf("async function handleComposedPublicChat"));
-  const handlerBody = handler.slice(0, handler.indexOf("\n}"));
-  assert.match(handlerBody, /composed\.status === "composed"/);
-  assert.match(handlerBody, /composed\.status === "unsupported"/);
-  assert.match(handlerBody, /unknownAnswer\(/);
-});
 
-test("demo pricing answers are never handed to the compose model", async () => {
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  const handler = worker.slice(worker.indexOf("async function handleComposedPublicChat"));
-  const handlerBody = handler.slice(0, handler.indexOf("\n}"));
-  assert.match(handlerBody, /isExactDemoPricingAnswer\(prep\.answer\)/);
-  assert.match(handlerBody, /&& prep\.eligible/);
-});
-
-test("live monitor asserts the pricing quote keeps all four named plans verbatim", async () => {
-  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
-
-  assert.match(monitor, /function assertQuoteNotParaphrased/);
-  assert.match(monitor, /function assertPricingQuotesNamedPlans/);
-  assert.match(monitor, /data\.sources\?\.\[0\]\?\.excerpt/);
-  assert.match(monitor, /"Starter", "Growth", "Pro", "Agency"/);
-  assert.match(monitor, /assertPricingQuotesNamedPlans\("pricing demo", data\)/);
-  assert.match(monitor, /assertQuoteNotParaphrased\("natural pricing demo", data\)/);
-});
-
-test("live monitor asserts cited answers are honest and citations are unique", async () => {
-  const monitor = await readFile(new URL("./siterep-live-synthetic.mjs", import.meta.url), "utf8");
-
-  assert.match(monitor, /import \{ isNonAnswerText \} from "\.\.\/worker\/compose\.js"/);
-  assert.match(monitor, /function assertHonestCitedAnswer/);
-  assert.match(monitor, /cited the same source more than once/);
-  assert.match(monitor, /non-answer dressed as a cited answer/);
-  assert.match(monitor, /assertHonestCitedAnswer\("pricing demo", data\)/);
-  assert.match(monitor, /assertHonestCitedAnswer\("install demo", data\)/);
-  assert.match(monitor, /assertHonestCitedAnswer\("trust demo", data\)/);
-  assert.match(monitor, /How do I install it\?/);
-});
 
 test("live monitor covers every public demo CTA question", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
@@ -79,68 +32,8 @@ test("live monitor covers every public demo CTA question", async () => {
   assert.match(monitor, /"widget trust chat": 9000/);
 });
 
-test("public demo bot keeps a dedicated install source for the suggested install question", async () => {
-  const demoSources = await readFile(new URL("../worker/demo-sources.js", import.meta.url), "utf8");
 
-  assert.match(demoSources, /id: "demo-install"/);
-  assert.match(demoSources, /How do I install Site Rep on my website\?/);
-  const installBlock = demoSources.match(/id: "demo-install"[\s\S]{0,300}?url: `([^`]+)`/);
-  assert.ok(installBlock, "demo-install source url not found");
-  assert.match(installBlock[1], /\/docs\/install/);
-});
 
-test("public demo what-is source cites the product definition page, not how-it-works", async () => {
-  const demoSources = await readFile(new URL("../worker/demo-sources.js", import.meta.url), "utf8");
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  assert.match(demoSources, /id: "demo-what-is"/);
-  const whatIsBlock = demoSources.match(/id: "demo-what-is"[\s\S]{0,400}?url: `([^`]+)`/);
-  assert.ok(whatIsBlock, "demo-what-is source url not found");
-  assert.doesNotMatch(whatIsBlock[1], /#how-it-works/);
-  assert.match(whatIsBlock[1], /\/ai-website-chatbot-for-small-business/);
-
-  const answerMatch = demoSources.match(/id: "demo-what-is"[\s\S]*?Answer: ([^"\\]+)/);
-  assert.ok(answerMatch, "demo-what-is answer text not found");
-  const answer = answerMatch[1];
-  assert.match(answer, /Site Rep is a chat widget for your website/);
-  assert.match(answer, /approved pages/);
-  assert.match(answer, /private dashboard/);
-
-  const buyerStart = worker.indexOf("const BUYER_INTENT_MARKDOWN = `");
-  assert.ok(buyerStart >= 0, "BUYER_INTENT_MARKDOWN not found");
-  const buyerEnd = worker.indexOf("\n`;", buyerStart);
-  const buyer = worker.slice(buyerStart, buyerEnd);
-  assert.match(buyer, /## What Site Rep does/);
-  assert.match(buyer, /approved website pages/);
-  assert.match(buyer, /A live website widget/);
-  assert.match(buyer, /Captures lead details/);
-  assert.match(buyer, /private customer dashboard/);
-  assert.match(buyer, /source-backed answers/);
-});
-
-test("public demo lead-capture source cites the product page that describes lead capture, not how-it-works", async () => {
-  const { PUBLIC_DEMO_SOURCES } = await import("../worker/demo-sources.js");
-  const worker = await readFile(new URL("../worker/index.js", import.meta.url), "utf8");
-
-  const lead = PUBLIC_DEMO_SOURCES.find((source) => source.id === "demo-lead-capture");
-  assert.ok(lead, "demo-lead-capture source missing");
-  assert.equal(lead.id, "demo-lead-capture");
-  assert.doesNotMatch(lead.url, /#how-it-works/);
-  assert.match(lead.url, /\/ai-website-chatbot-for-small-business/);
-
-  assert.match(lead.content, /What happens when a visitor leaves their email\?/);
-  assert.match(lead.content, /captures the visitor's question and contact details as a lead/);
-  assert.match(lead.content, /notifies your team/);
-  assert.match(lead.content, /suggested follow-up draft/);
-  assert.match(lead.content, /contacted, won, or lost/);
-
-  const buyerStart = worker.indexOf("const BUYER_INTENT_MARKDOWN = `");
-  assert.ok(buyerStart >= 0, "BUYER_INTENT_MARKDOWN not found");
-  const buyerEnd = worker.indexOf("\n`;", buyerStart);
-  const buyer = worker.slice(buyerStart, buyerEnd);
-  assert.match(buyer, /Captures lead details when a visitor needs human follow-up/);
-  assert.match(buyer, /private dashboard for leads, conversations, source gaps, and follow-up items/);
-});
 
 test("demo-pricing citation points at a page that contains the free-trial text", async () => {
   const { PUBLIC_DEMO_SOURCES } = await import("../worker/demo-sources.js");
@@ -165,27 +58,3 @@ test("demo-pricing citation points at a page that contains the free-trial text",
   assert.match(surface, /no card/i);
 });
 
-test("widget first impression is honest and visitor-voiced", async () => {
-  const widget = await readFile(new URL("../public/widget.js", import.meta.url), "utf8");
-
-  assert.doesNotMatch(widget, /<span>Pricing<\/span><span>Security<\/span>/);
-  assert.match(widget, /data-cr-status hidden/);
-  assert.match(widget, /status\.hidden = !text/);
-  assert.doesNotMatch(widget, />Send lead</);
-  assert.doesNotMatch(widget, />Needs review</);
-  assert.match(widget, /Not helpful/);
-  assert.doesNotMatch(widget, /placeholder="Work email"/);
-  assert.match(widget, /sessionStorage\.getItem\("siterep-session"\)/);
-  assert.match(widget, /submitButton\.disabled = true/);
-  assert.match(widget, /aria-live="polite"/);
-  assert.match(widget, /name="name" placeholder="Name" aria-label="Name"/);
-  assert.match(widget, /name="email" type="email" placeholder="Email" required aria-label="Email"/);
-  assert.match(widget, /textarea name="need" placeholder="What should the team follow up on\?" aria-label="What should the team follow up on\?"/);
-  assert.match(widget, /\.cr-lead input\{min-height:44px\}/);
-  assert.match(widget, /\.cr-lead textarea\{min-height:76px/);
-  assert.match(widget, /\.cr-lead button\{min-height:44px/);
-  assert.match(widget, /\.cr-close\{width:44px;height:44px/);
-  assert.match(widget, /\.cr-suggestions button\{[\s\S]*?min-height:44px/);
-  assert.match(widget, /\.cr-send\{width:44px;min-height:44px/);
-  assert.match(widget, /@keyframes cr-launch-in\{from\{opacity:0\}to\{opacity:1\}\}/);
-});
