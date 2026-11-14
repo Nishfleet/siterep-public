@@ -26,6 +26,11 @@ export const LEAD_DELETION_SCOPES = Object.freeze(["lead", "visitor"]);
  * @property {unknown} [id]
  * @property {unknown} [email]
  * @property {unknown} [conversationId]
+ * @property {unknown} [firstSeenAt]
+ * @property {unknown} [updatedAt]
+ * @property {unknown} [lastSeenAt]
+ * @property {unknown} [createdAt]
+ * @property {{ createdAt?: unknown }} [feedback]
  */
 
 /**
@@ -34,6 +39,11 @@ export const LEAD_DELETION_SCOPES = Object.freeze(["lead", "visitor"]);
  * @property {unknown} [question]
  * @property {unknown} [sessionId]
  * @property {BotVisitor} [visitor]
+ * @property {unknown} [firstSeenAt]
+ * @property {unknown} [updatedAt]
+ * @property {unknown} [lastSeenAt]
+ * @property {unknown} [createdAt]
+ * @property {{ createdAt?: unknown }} [feedback]
  */
 
 /**
@@ -286,6 +296,148 @@ export function expandTargetsInBot(bot, targets, { followSessions = true } = {})
       targets.questionKeys.set(key, normalizeQuestionKey(conversation.question));
     }
   }
+  return targets;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number}
+ */
+function activityTimestampMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 0 && value < 1e12 ? value * 1000 : value;
+  }
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * The visitor's own latest activity, not an owner status or note edit. A
+ * conversation's updatedAt can move when the owner reviews it, so it is only
+ * used when older records have no visitor timestamp at all.
+ * @param {BotLead | BotConversation | null | undefined} record
+ * @returns {number}
+ */
+export function recordVisitorActivityMs(record) {
+  const visitorActivity = Math.max(
+    activityTimestampMs(record?.createdAt),
+    activityTimestampMs(record?.firstSeenAt),
+    activityTimestampMs(record?.lastSeenAt),
+    activityTimestampMs(record?.feedback?.createdAt),
+  );
+  return visitorActivity || activityTimestampMs(record?.updatedAt);
+}
+
+/**
+ * @param {DeletableBot} bot
+ * @param {LeadDeletionTargets} targets
+ * @returns {number}
+ */
+function deletionTargetsLastActivityMs(bot, targets) {
+  const leads = Array.isArray(bot?.leads) ? bot.leads : [];
+  const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
+  let latest = 0;
+  for (const lead of leads) {
+    if (!targets.leadIds.has(idKey(lead.id)) && !targets.emails.has(normalizeLeadEmail(lead.email))) continue;
+    latest = Math.max(latest, recordVisitorActivityMs(lead));
+  }
+  for (const conversation of conversations) {
+    if (!targets.conversationIds.has(idKey(conversation.id)) && !targets.emails.has(conversationEmail(conversation))) continue;
+    latest = Math.max(latest, recordVisitorActivityMs(conversation));
+  }
+  return latest;
+}
+
+/**
+ * Merge one target set into another without dropping any identifier or
+ * recovery-copy hint.
+ * @param {LeadDeletionTargets} target
+ * @param {LeadDeletionTargets} source
+ * @returns {LeadDeletionTargets}
+ */
+export function mergeLeadDeletionTargets(target, source) {
+  for (const value of source.emails) target.emails.add(value);
+  for (const value of source.leadIds) target.leadIds.add(value);
+  for (const value of source.conversationIds) target.conversationIds.add(value);
+  for (const value of source.identityConversationIds) target.identityConversationIds.add(value);
+  for (const value of source.sessionIds) target.sessionIds.add(value);
+  for (const value of source.blockedSessions) target.blockedSessions.add(value);
+  for (const [key, value] of source.questionKeys) {
+    if (!target.questionKeys.has(key)) target.questionKeys.set(key, value);
+  }
+  for (const [key, value] of source.emailHashes || []) {
+    if (!target.emailHashes.has(key)) target.emailHashes.set(key, value);
+  }
+  target.ledgerRows += Number(source.ledgerRows) || 0;
+  target.ambiguous = target.ambiguous || Boolean(source.ambiguous);
+  return target;
+}
+
+/**
+ * Build the records tied to one conversation, including the rest of its
+ * browser session when that session belongs to the same visitor.
+ * @param {DeletableBot} bot
+ * @param {unknown} conversationId
+ * @param {{ followSessions?: boolean }} [options]
+ * @returns {LeadDeletionTargets | null}
+ */
+export function conversationDeletionTargets(bot, conversationId, options = {}) {
+  const key = idKey(conversationId);
+  const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
+  const conversation = conversations.find((item) => idKey(item.id) === key);
+  if (!conversation) return null;
+  const targets = emptyLeadDeletionTargets();
+  const email = conversationEmail(conversation);
+  if (isAddress(email)) targets.emails.add(email);
+  const sessionId = conversationSessionId(conversation);
+  if (sessionId) targets.sessionIds.add(sessionId);
+  addConversation(targets, conversation.id, conversation.question, { identity: true });
+  return expandTargetsInBot(bot, targets, options);
+}
+
+/**
+ * Return everything that must be deleted once a visitor has been silent for
+ * the retention period. Leads and conversations are grouped by the same
+ * identifiers used by manual deletion, so a recent message protects the whole
+ * visitor record while an old anonymous session can still be removed.
+ * @param {DeletableBot} bot
+ * @param {number} cutoffMs
+ * @returns {LeadDeletionTargets}
+ */
+export function leadRetentionTargets(bot, cutoffMs) {
+  const targets = emptyLeadDeletionTargets();
+  const cutoff = Number(cutoffMs);
+  if (!Number.isFinite(cutoff)) return targets;
+
+  const leads = Array.isArray(bot?.leads) ? bot.leads : [];
+  const conversations = Array.isArray(bot?.conversations) ? bot.conversations : [];
+  const leadTargets = [];
+  const leadConversationIds = new Set();
+
+  for (const lead of leads) {
+    const input = idKey(lead.id) ? { leadId: lead.id } : { email: lead.email };
+    const candidate = leadDeletionTargets(bot, input, { followSessions: true });
+    if (!candidate) continue;
+    leadTargets.push(candidate);
+    for (const id of candidate.conversationIds) leadConversationIds.add(id);
+  }
+
+  for (const candidate of leadTargets) {
+    const latest = deletionTargetsLastActivityMs(bot, candidate);
+    if (latest > 0 && latest < cutoff) mergeLeadDeletionTargets(targets, candidate);
+  }
+
+  for (const conversation of conversations) {
+    const id = idKey(conversation.id);
+    if (!id || leadConversationIds.has(id)) continue;
+    const latest = recordVisitorActivityMs(conversation);
+    if (!latest || latest >= cutoff) continue;
+    const candidate = conversationDeletionTargets(bot, id, { followSessions: true });
+    if (!candidate) continue;
+    const candidateLatest = deletionTargetsLastActivityMs(bot, candidate);
+    if (candidateLatest > 0 && candidateLatest < cutoff) mergeLeadDeletionTargets(targets, candidate);
+  }
+
   return targets;
 }
 
