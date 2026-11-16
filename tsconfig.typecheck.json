@@ -15,17 +15,16 @@
     "skipLibCheck": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": [
-    "worker/free-trial.js",
-    "worker/usage.js",
-    "worker/overage.js",
-    "worker/payment-events.js",
-    "worker/demo-sources.js",
-    "worker/lead-deletion.js",
-    "worker/widget-preview-csp.js",
-    "worker/sentry-route-segments.js",
-    "worker/readiness.js",
-    "worker/mcp-events.js",
-    "worker/funnel-events.js"
+  // Every worker module is typechecked by default. The exclude list below is
+  // the legacy files not yet clean under strict checkJs (being split in #266);
+  // do not add new files to it.
+  "include": ["worker/**/*.js"],
+  "exclude": [
+    "worker/compose.js",
+    "worker/honesty-evals.js",
+    "worker/index.js",
+    "worker/routes/sources.js",
+    "worker/sentry.js",
+    "worker/site-rep-mcp.js"
   ]
 }
